@@ -1,6 +1,6 @@
 ---
 title: 'HPC Guide'
-pubDate: '2025-09-10'
+pubDate: '2025-09-08'
 ---
 
 ## Overview

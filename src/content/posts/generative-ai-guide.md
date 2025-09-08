@@ -1,0 +1,291 @@
+---
+title: 'Modern Generative AI Guide'
+pubDate: '2025-09-10'
+---
+
+## Why this guide
+
+Modern generative AI moves quickly. Don’t lock yourself into defaults like “BERT + FAISS + all-MiniLM” just because a quick tutorial said so. Learn the landscape, then pick the right tools for your use case. This guide covers Hugging Face (models, datasets, formats), local and server runtimes (llama.cpp, Ollama, vLLM), and multi-provider access via OpenRouter—plus practical patterns for building solid projects.
+
+---
+
+## Key concepts (quick primer)
+
+- Foundation vs instruction-tuned models: base models (e.g., Llama 3.1 base) vs chat/instruct versions fine-tuned for following instructions.
+- Context window: maximum tokens per request; large contexts (e.g., 128k) change RAG and prompting strategies.
+- Tokenization: different families (SentencePiece/BPE) affect token count and latency.
+- Throughput vs latency: batch/continuous batching, quantization, and hardware determine cost/perf.
+
+---
+
+## Hugging Face: the ecosystem you’ll actually use
+
+Hugging Face is a community hub for models, datasets, and apps (Spaces). You’ll use it to:
+
+- Discover models and their licenses, sizes, and evals
+- Pull canonical weights/configs and tokenizers
+- Load and stream datasets at scale
+- Reproduce and compare baselines
+
+### Models on the Hub
+
+Typical repository contents for Transformer LLMs:
+
+- `config.json` (architecture and hyperparameters)
+- `tokenizer.json` or `tokenizer.model` (+ vocab files)
+- Weight files: `.safetensors` (preferred) or legacy `.bin`
+- `generation_config.json` (sampling defaults)
+
+You’ll find families like Llama, Mistral, Qwen, Phi, Gemma, OpenMistral, etc., in multiple sizes and instruction variants. Read model cards for:
+
+- License (commercial use?), safety notes, and evaluation metrics
+- Context length, tokenizer details, and memory requirements
+- Recommended inference backends (e.g., vLLM, TGI, llama.cpp, TensorRT-LLM)
+
+### Datasets on the Hub
+
+Use the `datasets` library for large and streaming loads:
+
+```python
+from datasets import load_dataset
+
+# Stream JSONL shards directly from the Hub
+ds = load_dataset("my-org/my-dataset", split="train", streaming=True)
+for row in ds.take(3):
+    print(row)
+
+# Local JSONL
+ds_local = load_dataset("json", data_files={"train": "data.jsonl"})
+```
+
+Datasets support map/filter/shuffle, memory-mapped Arrow, and push/pull for collaboration. Prefer canonical public datasets for benchmarking when possible.
+
+### Model formats you’ll encounter
+
+- PyTorch weights: `.safetensors` (zero-copy, safe) — the default for Transformers
+- GGUF: quantized, CPU/GPU-friendly format for `llama.cpp` and `Ollama`
+- ONNX: graph format for cross-runtime acceleration (ONNX Runtime, DirectML)
+- TensorRT-LLM/MLC/AWQ/GPTQ: specialized compilers/quantization stacks; check model card support
+
+Use format-native runtimes when you want portability (GGUF), maximum throughput (TensorRT-LLM), or server features (vLLM).
+
+---
+
+## Local inference: llama.cpp and Ollama
+
+### llama.cpp (C/C++ low-dependency runtime)
+
+Best for lightweight local inference and experimentation; strong CPU quantization support and GPU offload.
+
+1) Convert HF weights to GGUF (scripts in the `llama.cpp` repo):
+
+```bash
+# Example flow (exact script names vary by model family)
+python llama.cpp/convert.py --model /path/to/hf-model --out model.gguf --dtype q4_k_m
+```
+
+2) Run inference:
+
+```bash
+./main -m model.gguf -p "Explain transformers in 3 bullet points" -n 256 --temp 0.7
+```
+
+Tips:
+
+- Choose quantization to fit RAM/VRAM (e.g., Q4_K_M vs Q5_K_S). Heavier quantization → smaller, faster, lower fidelity.
+- Stable prompts and stop tokens matter for repeatable results.
+
+### Ollama (developer-friendly local model runner)
+
+Ollama wraps GGUF models with a simple CLI and local REST API.
+
+```bash
+# Install from docs, then:
+ollama pull llama3.1
+ollama run llama3.1
+```
+
+Custom `Modelfile`:
+
+```Dockerfile
+FROM llama3.1
+PARAMETER temperature 0.7
+SYSTEM You are a helpful, terse assistant.
+```
+
+Then:
+
+```bash
+ollama create my-assistant -f Modelfile
+ollama run my-assistant
+```
+
+Use the local HTTP API for apps. Good for prototypes and offline demos.
+
+---
+
+## Server-grade inference: vLLM (OpenAI-compatible)
+
+vLLM is a high-throughput LLM server with PagedAttention and continuous batching. It serves HF models via an OpenAI-compatible API.
+
+Run a model:
+
+```bash
+pip install vllm
+python -m vllm.entrypoints.openai.api_server \
+  --model meta-llama/Meta-Llama-3.1-8B-Instruct \
+  --max-model-len 32768 \
+  --tensor-parallel-size 1
+```
+
+Client (OpenAI SDK-style):
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="sk-no-key")
+resp = client.chat.completions.create(
+    model="meta-llama/Meta-Llama-3.1-8B-Instruct",
+    messages=[{"role": "user", "content": "Write a haiku about GPUs."}],
+)
+print(resp.choices[0].message.content)
+```
+
+Notes:
+
+- Tune `--gpu-memory-utilization`, `--max-model-len`, and tensor parallel degree to hardware.
+- vLLM supports many model families and quantization schemes; check docs for AWQ/GPTQ integration.
+
+---
+
+## Multi-provider access: OpenRouter
+
+OpenRouter aggregates frontier and open models behind a single, OpenAI-compatible API. You pick the model; they route to providers (price/perf vary by model).
+
+Setup:
+
+1) Create an API key in your dashboard.
+2) Use an OpenAI-compatible client with `base_url` and your key.
+
+```python
+from openai import OpenAI
+import os
+
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=os.environ["OPENROUTER_API_KEY"],
+)
+
+resp = client.chat.completions.create(
+    model="anthropic/claude-3.5-sonnet",
+    messages=[{"role": "user", "content": "Compare Llama 3.1 and Qwen 2."}],
+)
+print(resp.choices[0].message.content)
+```
+
+Why use it:
+
+- Try multiple state-of-the-art models quickly (e.g., Claude, GPT-4o, Llama, Mistral, Qwen) without new SDKs.
+- Compare quality, latency, and price before you commit to one vendor.
+
+---
+
+## Don’t default your stack: embeddings, vector stores, and RAG
+
+Instead of always picking `all-MiniLM` + FAISS:
+
+- Evaluate multiple embedding models: `bge-base(-en)-v1.5`, `gte-*`, `e5-*`, `voyage-*` (paid), domain-specific encoders. Use public evals (MTEB) and your own retrieval tests.
+- Vector DBs: try FAISS for in-process; or production stores like Qdrant, Weaviate, pgvector, Milvus, LanceDB. Consider recall, filtering, hybrid search, and operational fit.
+- Chunking: semantic-aware chunking often beats naive fixed-size. Keep overlap small; store titles/headers separately.
+- RAG pipeline: retrieval → re-ranking (e.g., cross-encoder) → structured prompts. Cache retrieved context and responses.
+
+Minimal retrieval sketch (HF embeddings + Qdrant):
+
+```python
+from sentence_transformers import SentenceTransformer
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, VectorParams, PointStruct
+
+model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")  # swap for stronger embeddings
+client = QdrantClient(host="localhost", port=6333)
+
+client.recreate_collection(
+    collection_name="docs",
+    vectors_config=VectorParams(size=384, distance=Distance.COSINE),
+)
+
+texts = ["Doc A...", "Doc B..."]
+vecs = model.encode(texts, normalize_embeddings=True)
+client.upsert("docs", [PointStruct(id=i, vector=vecs[i], payload={"text": t}) for i, t in enumerate(texts)])
+
+query = "What is in Doc B?"
+qvec = model.encode([query], normalize_embeddings=True)[0]
+hits = client.search("docs", query_vector=qvec, limit=3)
+```
+
+Swap the encoder, add reranking, and evaluate retrieval quality—don’t assume defaults are best.
+
+---
+
+## Building good projects: patterns that ship
+
+- Prompting as an interface: define schemas (JSON Mode, function/tool calling) and validate outputs.
+- Evals: build small, automatic tests early. Use task-specific metrics (e.g., exact match for QA, Rouge/BLEU for summarization) and Golden Sets. Tools like Ragas can help for RAG.
+- Guardrails: Pydantic validation, regex/JSON schema, allow lists. Consider safety filters for public apps.
+- Observability: log prompts, latencies, tokens, costs. Redact PII. Track drift.
+- Caching: local + hosted caches (e.g., KV stores). Deduplicate identical requests and retrieved contexts.
+- Cost control: use smaller models for most traffic; escalate to larger ones only when needed (router policies).
+
+---
+
+## Choosing the right runtime
+
+- Prototyping/offline: `Ollama` (GGUF) or `llama.cpp` — low setup, great UX.
+- Single-node serving: `vLLM` — high throughput, OpenAI-compatible API for apps.
+- Cloud APIs: `OpenRouter` — fast model switching/comparison across providers.
+- Hardware-optimized: `TensorRT-LLM`, `Hugging Face TGI`, or vendor-specific services for maximum perf.
+
+---
+
+## Quick starts
+
+1) Local chat with Ollama
+
+```bash
+ollama pull mistral
+ollama run mistral
+```
+
+2) Serve Llama 3.1 with vLLM and call it with OpenAI SDK
+
+```bash
+python -m vllm.entrypoints.openai.api_server --model meta-llama/Meta-Llama-3.1-8B-Instruct
+```
+
+```python
+from openai import OpenAI
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="sk-no-key")
+print(client.chat.completions.create(model="meta-llama/Meta-Llama-3.1-8B-Instruct", messages=[{"role": "user", "content": "Say hi"}]).choices[0].message.content)
+```
+
+3) Try multiple frontier models via OpenRouter
+
+```python
+from openai import OpenAI
+import os
+client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.environ["OPENROUTER_API_KEY"])
+print(client.chat.completions.create(model="openai/gpt-4o", messages=[{"role": "user", "content": "Give 3 project ideas with data sources."}]).choices[0].message.content)
+```
+
+---
+
+## References
+
+- Hugging Face Hub: [huggingface.co](https://huggingface.co)
+- Transformers: [huggingface.co/docs/transformers](https://huggingface.co/docs/transformers)
+- Datasets: [huggingface.co/docs/datasets](https://huggingface.co/docs/datasets)
+- llama.cpp: [github.com/ggerganov/llama.cpp](https://github.com/ggerganov/llama.cpp)
+- Ollama: [ollama.com](https://ollama.com)
+- vLLM: [github.com/vllm-project/vllm](https://github.com/vllm-project/vllm)
+- OpenRouter: [openrouter.ai](https://openrouter.ai)
+
