@@ -4,9 +4,9 @@ export const themeConfig: ThemeConfig = {
   // SITE INFO ///////////////////////////////////////////////////////////////////////////////////////////
   site: {
     website: 'https://astro-chiri.netlify.app/', // Site domain
-    title: 'CHIRI', // Site title
-    author: '3ASH', // Author name
-    description: 'Minimal blog built by Astro', // Site description
+    title: 'Dr. TMA Pai Endowment Chair - ITIS', // Site title
+    author: 'Dr. TMA Pai Endowment Chair - ITIS', // Author name
+    description: 'Official website for Dr. TMA Pai Endowment Chair - ITIS', // Site description
     language: 'en-US' // Default language
   },
 

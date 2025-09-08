@@ -1,11 +1,9 @@
-# Chiri 🌸
+# Dr. TMA Pai Endowment Chair - ITIS
 
 ![screenshot-light](public/screenshots/screenshot-light.png)
 ![screenshot-dark](public/screenshots/screenshot-dark.png)
 
-Chiri is a minimal blog theme built with [Astro](https://astro.build), offering customization options while preserving its clean aesthetic.
-
-Check the [demo](https://astro-chiri.netlify.app/) for more details.
+Official website for Dr. TMA Pai Endowment Chair - ITIS, built with [Astro](https://astro.build).
 
 ## Features
 
@@ -21,9 +19,7 @@ Check the [demo](https://astro-chiri.netlify.app/) for more details.
 
 ## Getting Started
 
-1. [Fork](https://github.com/the3ash/astro-chiri/fork) this repository, or use this template to [create a new repository](https://github.com/new?template_name=astro-chiri&template_owner=the3ash).
-
-2. Run the following commands:
+1. Clone this repository and run the following commands:
 
    ```bash
    git clone <your-repo-url>
@@ -51,7 +47,8 @@ Check the [demo](https://astro-chiri.netlify.app/) for more details.
 ## Commands
 
 - `pnpm new <title>` - Create a new post (use `_title` for drafts)
-- `pnpm update-theme` - Update the theme to the latest version
+- `pnpm dev` - Start development server
+- `pnpm build` - Build for production
 
 ## References
 
