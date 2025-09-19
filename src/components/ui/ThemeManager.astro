@@ -59,7 +59,7 @@
 
       getEffectiveTheme() {
         const stored = this.getStoredTheme()
-        return stored || this.getSystemTheme()
+        return stored || 'light'
       },
 
       isUsingSystemTheme() {
@@ -94,6 +94,11 @@
       init() {
         if (this.initialized) return
 
+        // If no stored preference, default to light
+        if (this.getStoredTheme() === null) {
+          this.setStoredTheme('light')
+        }
+
         // Set initial theme (maintain current theme when refreshing page)
         this.applyTheme(this.getEffectiveTheme())
 
@@ -101,9 +106,10 @@
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
           const newSystemTheme = e.matches ? 'dark' : 'light'
 
-          // Always follow system theme changes and update stored theme preference
-          this.setStoredTheme(newSystemTheme)
-          this.applyTheme(newSystemTheme)
+          // Only follow system theme if user has explicitly chosen system
+          if (this.isUsingSystemTheme()) {
+            this.applyTheme(newSystemTheme)
+          }
         })
 
         this.initialized = true

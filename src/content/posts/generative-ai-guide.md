@@ -3,6 +3,8 @@ title: 'Modern Generative AI Guide'
 pubDate: '2025-09-10'
 ---
 
+**Author**: Aadit Agrawal
+
 ## Why this guide
 
 Modern generative AI moves quickly. Don’t lock yourself into defaults like “BERT + FAISS + all-MiniLM” just because a quick tutorial said so. Learn the landscape, then pick the right tools for your use case. This guide covers Hugging Face (models, datasets, formats), local and server runtimes (llama.cpp, Ollama, vLLM), and multi-provider access via OpenRouter—plus practical patterns for building solid projects.
@@ -288,4 +290,3 @@ print(client.chat.completions.create(model="openai/gpt-4o", messages=[{"role": "
 - Ollama: [ollama.com](https://ollama.com)
 - vLLM: [github.com/vllm-project/vllm](https://github.com/vllm-project/vllm)
 - OpenRouter: [openrouter.ai](https://openrouter.ai)
-
