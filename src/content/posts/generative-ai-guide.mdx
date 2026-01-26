@@ -3,11 +3,13 @@ title: 'Modern Generative AI Guide'
 pubDate: '2025-09-10'
 ---
 
+import EcosystemFlow from '../../components/viz/EcosystemFlow.astro';
+
 **Author**: Aadit Agrawal
 
 ## Why this guide
 
-Modern generative AI moves quickly. Don’t lock yourself into defaults like “BERT + FAISS + all-MiniLM” just because a quick tutorial said so. Learn the landscape, then pick the right tools for your use case. This guide covers Hugging Face (models, datasets, formats), local and server runtimes (llama.cpp, Ollama, vLLM), and multi-provider access via OpenRouter—plus practical patterns for building solid projects.
+Modern generative AI moves quickly. Don't lock yourself into defaults like "BERT + FAISS + all-MiniLM" just because a quick tutorial said so. Learn the landscape, then pick the right tools for your use case. This guide covers Hugging Face (models, datasets, formats), local and server runtimes (llama.cpp, Ollama, vLLM), and multi-provider access via OpenRouter. It also includes practical patterns for building solid projects.
 
 ---
 
@@ -18,9 +20,11 @@ Modern generative AI moves quickly. Don’t lock yourself into defaults like “
 - Tokenization: different families (SentencePiece/BPE) affect token count and latency.
 - Throughput vs latency: batch/continuous batching, quantization, and hardware determine cost/perf.
 
+<EcosystemFlow title="Generative AI Ecosystem" />
+
 ---
 
-## Hugging Face: the ecosystem you’ll actually use
+## Hugging Face: the ecosystem you'll actually use
 
 Hugging Face is a community hub for models, datasets, and apps (Spaces). You’ll use it to:
 
@@ -64,7 +68,7 @@ Datasets support map/filter/shuffle, memory-mapped Arrow, and push/pull for coll
 
 ### Model formats you’ll encounter
 
-- PyTorch weights: `.safetensors` (zero-copy, safe) — the default for Transformers
+- PyTorch weights: `.safetensors` (zero-copy, safe); the default for Transformers
 - GGUF: quantized, CPU/GPU-friendly format for `llama.cpp` and `Ollama`
 - ONNX: graph format for cross-runtime acceleration (ONNX Runtime, DirectML)
 - TensorRT-LLM/MLC/AWQ/GPTQ: specialized compilers/quantization stacks; check model card support
@@ -225,7 +229,7 @@ qvec = model.encode([query], normalize_embeddings=True)[0]
 hits = client.search("docs", query_vector=qvec, limit=3)
 ```
 
-Swap the encoder, add reranking, and evaluate retrieval quality—don’t assume defaults are best.
+Swap the encoder, add reranking, and evaluate retrieval quality. Don't assume defaults are best.
 
 ---
 
@@ -242,9 +246,9 @@ Swap the encoder, add reranking, and evaluate retrieval quality—don’t assume
 
 ## Choosing the right runtime
 
-- Prototyping/offline: `Ollama` (GGUF) or `llama.cpp` — low setup, great UX.
-- Single-node serving: `vLLM` — high throughput, OpenAI-compatible API for apps.
-- Cloud APIs: `OpenRouter` — fast model switching/comparison across providers.
+- Prototyping/offline: `Ollama` (GGUF) or `llama.cpp`; low setup, great UX.
+- Single-node serving: `vLLM`; high throughput, OpenAI-compatible API for apps.
+- Cloud APIs: `OpenRouter`; fast model switching/comparison across providers.
 - Hardware-optimized: `TensorRT-LLM`, `Hugging Face TGI`, or vendor-specific services for maximum perf.
 
 ---

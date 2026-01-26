@@ -1,0 +1,173 @@
+---
+/**
+ * Dual Stream Visualization
+ * For architectures like Moshi that process two parallel streams
+ */
+interface StreamEvent {
+  content: string;
+  type: 'speech' | 'silence';
+}
+
+interface Props {
+  title?: string;
+  topStreamLabel?: string;
+  bottomStreamLabel?: string;
+  topStream: StreamEvent[];
+  bottomStream: StreamEvent[];
+  caption?: string;
+}
+
+const {
+  title = "Full-Duplex Audio Streams",
+  topStreamLabel = "AI",
+  bottomStreamLabel = "User",
+  topStream,
+  bottomStream,
+  caption
+} = Astro.props;
+---
+
+<div class="dual-stream">
+  {title && <div class="stream-title">{title}</div>}
+
+  <div class="streams-container">
+    <div class="time-axis">
+      <span>Time</span>
+      <div class="axis-line"></div>
+      <div class="axis-arrow"></div>
+    </div>
+
+    <div class="stream-row">
+      <div class="stream-label">{topStreamLabel}:</div>
+      <div class="stream-events">
+        {topStream.map((event) => (
+          <div class={`event ${event.type}`}>
+            {event.type === 'speech' ? `"${event.content}"` : `[${event.content}]`}
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div class="stream-row">
+      <div class="stream-label">{bottomStreamLabel}:</div>
+      <div class="stream-events">
+        {bottomStream.map((event) => (
+          <div class={`event ${event.type}`}>
+            {event.type === 'speech' ? `"${event.content}"` : `[${event.content}]`}
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+
+  {caption && <div class="stream-caption">{caption}</div>}
+</div>
+
+<style>
+  .dual-stream {
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+  }
+
+  .stream-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1.5rem;
+  }
+
+  .streams-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .time-axis {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-tertiary);
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .axis-line {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to right, var(--border), var(--text-tertiary));
+  }
+
+  .axis-arrow {
+    width: 0;
+    height: 0;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 6px solid var(--text-tertiary);
+  }
+
+  .stream-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .stream-label {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--text-secondary);
+    min-width: 50px;
+  }
+
+  .stream-events {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    flex: 1;
+  }
+
+  .event {
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 2px;
+  }
+
+  .event.speech {
+    background: var(--selection);
+    color: var(--text-primary);
+    border: 1px solid var(--text-secondary);
+  }
+
+  .event.silence {
+    background: var(--bg);
+    color: var(--text-tertiary);
+    border: 1px dashed var(--border);
+    font-style: italic;
+  }
+
+  .stream-caption {
+    margin-top: 1rem;
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-tertiary);
+    text-align: center;
+    font-style: italic;
+  }
+
+  @media (max-width: 500px) {
+    .stream-row {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .stream-label {
+      margin-bottom: 0.25rem;
+    }
+  }
+</style>

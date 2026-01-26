@@ -1,0 +1,135 @@
+---
+/**
+ * Token Flow Visualization
+ * Shows tokenization/collapse patterns like CTC
+ */
+interface Props {
+  title?: string;
+  inputTokens: string[];
+  outputText: string;
+  collapseLabel?: string;
+  blankToken?: string;
+}
+
+const {
+  title = "Token Collapse",
+  inputTokens,
+  outputText,
+  collapseLabel = "collapse",
+  blankToken = "-"
+} = Astro.props;
+---
+
+<div class="token-flow">
+  {title && <div class="flow-title">{title}</div>}
+
+  <div class="flow-container">
+    <div class="token-row">
+      <span class="row-label">Output:</span>
+      <div class="tokens">
+        {inputTokens.map((token) => (
+          <span class={`token ${token === blankToken ? 'blank' : ''}`}>{token}</span>
+        ))}
+      </div>
+    </div>
+
+    <div class="collapse-indicator">
+      <div class="collapse-arrow"></div>
+      <span class="collapse-label">{collapseLabel}</span>
+    </div>
+
+    <div class="result-row">
+      <span class="row-label">Result:</span>
+      <span class="result-text">"{outputText}"</span>
+    </div>
+  </div>
+</div>
+
+<style>
+  .token-flow {
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+  }
+
+  .flow-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1rem;
+  }
+
+  .flow-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .token-row, .result-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .row-label {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-secondary);
+    min-width: 50px;
+  }
+
+  .tokens {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .token {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    padding: 0.2rem 0.4rem;
+    background: var(--selection);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+  }
+
+  .token.blank {
+    background: var(--bg);
+    color: var(--text-tertiary);
+    border-style: dashed;
+  }
+
+  .collapse-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding-left: 4rem;
+  }
+
+  .collapse-arrow {
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 8px solid var(--text-tertiary);
+  }
+
+  .collapse-label {
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    color: var(--text-tertiary);
+  }
+
+  .result-text {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-primary);
+    font-weight: var(--font-weight-bold);
+    padding: 0.25rem 0.5rem;
+    background: var(--selection);
+    border-left: 3px solid var(--text-secondary);
+  }
+</style>

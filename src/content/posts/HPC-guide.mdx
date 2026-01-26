@@ -3,11 +3,15 @@ title: 'HPC Guide'
 pubDate: '2025-09-08'
 ---
 
+import HPCWorkflow from '../../components/viz/HPCWorkflow.astro';
+
 ## Overview
 
-This guide shows how to use Astral’s `uv` for fast, reproducible Python environments on HPC systems, install PyTorch with CUDA for NVIDIA A100 GPUs, tune performance (data loading, AMP/TF32, memory format, compile, CUDA Graphs, DDP), and monitor with `nvidia-smi`, `nvtop`, and NVIDIA Nsight tools.
+This guide shows how to use Astral's `uv` for fast, reproducible Python environments on HPC systems, install PyTorch with CUDA for NVIDIA A100 GPUs, tune performance (data loading, AMP/TF32, memory format, compile, CUDA Graphs, DDP), and monitor with `nvidia-smi`, `nvtop`, and NVIDIA Nsight tools.
 
-Links you’ll use often:
+<HPCWorkflow title="HPC Development Workflow" />
+
+Links you'll use often:
 
 - uv docs: [docs.astral.sh/uv](https://docs.astral.sh/uv/)
 - PyTorch install matrix: [pytorch.org/get-started/locally](https://pytorch.org/get-started/locally/)

@@ -1,0 +1,1568 @@
+---
+title: 'Advanced Techniques for Local AI Inferencing'
+pubDate: '2026-01-18'
+---
+
+import QuantizationScale from '../../components/viz/QuantizationScale.astro';
+
+**Author**: Aadit Agrawal
+
+## Why local inferencing matters
+
+Running AI models locally instead of through cloud APIs addresses four problems at once: privacy, latency, cost, and availability.
+
+**Privacy**: Cloud-based GenAI tools exposed approximately 3 million sensitive records per organization in the first half of 2025, according to data from Microsoft Copilot deployments [1]. Keeping inference on-device shrinks attack surface and regulatory footprint. For workflows in legal, health, and finance, avoiding data transmission to external servers is often the simplest path to compliance with GDPR and HIPAA.
+
+**Latency**: Local GPU inference delivers sub-50ms latency versus 100-500ms for cloud roundtrips. Cactus, a Y Combinator-backed startup, demonstrated sub-50ms time-to-first-token for on-device inference [2]. TinyML solutions can achieve latencies as low as 0-5ms for inference tasks, compared to 10-500ms for cloud IoT solutions [3].
+
+**Cost**: Local inference eliminates per-token API costs. Once you own the hardware, inference is free. IDC and Gartner predict that by 2027, over 60% of all AI inference processes will happen locally rather than in the cloud [4].
+
+**Offline capability**: Local inference removes network hops and eliminates the need for a constant internet connection. Apps keep working on factory floors, in hospitals, and in low-connectivity environments.
+
+---
+
+## REAP: Router-weighted Expert Activation Pruning
+
+REAP is a one-shot compression method for Mixture-of-Experts (MoE) language models developed by Cerebras Research. It removes up to 50% of experts from models as large as 1 trillion parameters while largely maintaining baseline model quality [5].
+
+### The problem REAP solves
+
+MoE models like Mixtral, DeepSeek, and Qwen achieve high capability by routing tokens to different expert subnetworks. This architecture creates redundancy: not all experts contribute equally to every inference. REAP exploits this by identifying and removing the least important experts.
+
+### How REAP works
+
+REAP selects experts to prune based on a saliency criterion that considers two factors:
+
+1. **Router gate values**: How frequently and strongly the router activates each expert
+2. **Expert activation norms**: The magnitude of each expert's output contributions
+
+By combining these factors, REAP identifies experts that are both rarely used and have little impact when they are used. The method is one-shot, meaning it requires no fine-tuning after pruning.
+
+The key insight from the REAP paper is that expert pruning outperforms expert merging for generative tasks. The researchers proved that merging introduces an irreducible error by causing a "functional subspace collapse" due to the loss of the router's independent, input-dependent control over experts [6].
+
+### Performance results
+
+On the Qwen3-480B-Coder-FP8 model, REAP at 50% pruning retains:
+- 97.6% of baseline non-agentic coding ability
+- 96.7% on the agentic SWE-Bench benchmark
+
+The method achieves near-lossless compression on code generation and tool-calling tasks with Qwen3-Coder-480B and Kimi-K2, even after pruning 50% of experts [5].
+
+### Implementation
+
+The official REAP implementation is available at [github.com/CerebrasResearch/reap](https://github.com/CerebrasResearch/reap). Pruned models are available on HuggingFace in the Cerebras REAP collection, including models like `cerebras/Kimi-Linear-REAP-35B-A3B-Instruct` and `cerebras/MiniMax-M2-REAP-172B-A10B` [7].
+
+---
+
+## Speculative decoding
+
+Speculative decoding accelerates LLM inference by predicting and verifying multiple tokens simultaneously. The technique uses a smaller draft model to propose tokens and a larger target model to verify them in parallel.
+
+### Core mechanism
+
+The draft-target approach works as follows:
+
+1. A small draft model (10-50x smaller than target) generates K candidate tokens autoregressively
+2. The target model verifies those proposals in a single forward pass
+3. Rejection sampling determines which tokens to accept based on probability distributions
+4. The target accepts the longest prefix that matches its own predictions and continues from there
+
+Compared with standard autoregressive decoding, which produces one token per pass, speculative decoding generates multiple tokens at once, cutting latency without any impact on accuracy [8].
+
+### Draft model techniques
+
+**Traditional draft models**: The draft model must be significantly smaller (10-50x) to achieve inference acceleration. The speedup ratio increases as the target model size increases [9].
+
+**EAGLE (Extrapolation Algorithm for Greater Language-model Efficiency)**: EAGLE-3 uses a lightweight autoregressive prediction head attached to the target model's internal layers to generate candidate tokens, eliminating the need for a separate draft model [10].
+
+**N-gram and Suffix Decoding**: Suffix Decoding generates draft tokens by pattern-matching using the last n generated tokens against both the prompt and previous generations, using frequency counts to propose the most likely continuations [10].
+
+### Implementation example
+
+With vLLM, speculative decoding can be enabled via configuration:
+
+```python
+from vllm import LLM, SamplingParams
+
+llm = LLM(
+    model="meta-llama/Meta-Llama-3.1-70B-Instruct",
+    speculative_model="meta-llama/Llama-3.2-1B-Instruct",
+    num_speculative_tokens=5,
+)
+
+sampling_params = SamplingParams(temperature=0.7, max_tokens=256)
+outputs = llm.generate(["Explain transformers:"], sampling_params)
+```
+
+### Performance
+
+SpecForge's Llama 4 Maverick draft model achieves a 2.18x speedup on MT-Bench, while the Scout variant delivers a 2.0x acceleration [11]. Acceptance rate is the critical metric: high acceptance means more tokens accepted per round, fewer target model forward passes, lower latency, and better GPU utilization.
+
+---
+
+## Quantization techniques
+
+Quantization reduces the precision of model weights, trading a small amount of accuracy for large memory and speed gains.
+
+### Post-training quantization vs quantization-aware training
+
+**Post-Training Quantization (PTQ)** applies quantization after training is complete. It's fast to implement but can lose accuracy, especially at low bit-widths.
+
+**Quantization-Aware Training (QAT)** integrates quantization into the training process. The model learns to handle quantization errors during training. PyTorch demonstrated that QAT can recover up to 96% of the accuracy degradation on HellaSwag and 68% of the perplexity degradation on WikiText for Llama3 compared to PTQ [12].
+
+| Aspect | PTQ | QAT |
+|--------|-----|-----|
+| Training required | No | Yes |
+| Compute cost | Low | High |
+| Accuracy at INT8 | Good | Excellent |
+| Accuracy at INT4 | Variable | Good |
+| Time to deploy | Minutes | Hours/Days |
+
+### GGUF quantization levels
+
+GGUF (Georgi Gerganov Universal Format) is designed for efficient CPU-based inference within the llama.cpp ecosystem. The format supports multiple quantization levels [13]:
+
+<QuantizationScale title="GGUF Quantization Levels" baseModel="7B model" />
+
+| Quantization | Size (7B model) | Perplexity increase | Notes |
+|--------------|-----------------|---------------------|-------|
+| Q8_0 | ~7.0 GB | +0.0004 | Highest quality |
+| Q5_K_M | ~5.33 GB | +0.0142 | Higher quality, slightly larger |
+| Q4_K_M | ~4.58 GB | +0.0535 | Recommended default, best balance |
+| Q4_K_S | ~4.37 GB | +0.0992 | Smaller, lower quality |
+| Q3_K_M | ~3.52 GB | +0.2437 | Aggressive compression |
+
+Q4_K_M is the "safe default" for phones and lighter Macs. Q5_K_M improves detail and reasoning stability. Use an importance matrix (`--imatrix`) for optimal results [14].
+
+```bash
+# Quantize with llama.cpp
+./llama-quantize model.gguf model-Q4_K_M.gguf Q4_K_M
+```
+
+### AWQ, GPTQ, and bitsandbytes
+
+**AWQ (Activation-aware Weight Quantization)**: Developed by MIT-HAN lab, AWQ protects salient weights by observing activations rather than weights themselves. It assumes not all weights are equally important and skips quantizing the most critical ones. AWQ achieves 95% quality retention, outperforming GPTQ (90%) in many benchmarks [15].
+
+**GPTQ (Generative Pre-trained Transformer Quantization)**: A layer-wise post-training method that minimizes output error via Hessian-based optimization. Supports 8, 4, 3, or 2-bit quantization. GPTQ tends to overfit on its calibration data, which can hurt out-of-distribution performance [16].
+
+**bitsandbytes**: Provides 8-bit (LLM.int8()) and 4-bit (NF4) quantization for PyTorch. The 4-bit NF4 format is specifically designed for neural network weights, assuming weights follow a normal distribution and placing quantization levels where most weights are concentrated (near zero) [17].
+
+```python
+from transformers import AutoModelForCausalLM, BitsAndBytesConfig
+
+quantization_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.bfloat16,
+    bnb_4bit_use_double_quant=True,  # Quantize the quantization constants
+)
+
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-3.1-8B-Instruct",
+    quantization_config=quantization_config,
+)
+```
+
+### ExLlamaV2 quantization
+
+ExLlamaV2 is an inference library optimized for consumer GPUs. Its EXL2 format supports 2, 3, 4, 5, 6, and 8-bit quantization and can mix different precisions within a model to preserve the most important weights [18].
+
+ExLlamaV2 achieves 56.44 tokens/second on a T4 GPU, providing the highest tokens-per-second compared to GPTQ or llama.cpp. It now supports paged attention via Flash Attention 2.5.7+ and includes dynamic batching with smart prompt caching [18].
+
+| Use Case | Recommended Method |
+|----------|-------------------|
+| GPU inference, high throughput | GPTQ |
+| Quality-critical applications | AWQ |
+| CPU/Apple devices | GGUF |
+| Fine-tuned size control | EXL2 |
+
+---
+
+## KV-cache optimization
+
+The key-value cache stores intermediate attention states during autoregressive generation. Without optimization, KV cache wastes 60-80% of allocated memory through fragmentation and over-allocation [19].
+
+### PagedAttention
+
+PagedAttention, introduced by vLLM, applies virtual memory concepts to KV cache management. Instead of storing each conversation's KV cache as one contiguous block, PagedAttention breaks it into small, fixed-size "blocks" that can be stored anywhere in memory.
+
+The results: PagedAttention slashed KV cache waste to under 4%, enabling 2-4x throughput improvements [19].
+
+```python
+# vLLM automatically uses PagedAttention
+from vllm import LLM
+
+llm = LLM(
+    model="meta-llama/Llama-3.1-8B-Instruct",
+    gpu_memory_utilization=0.90,
+    max_model_len=32768,
+)
+```
+
+### Continuous batching
+
+Continuous batching operates at the token level. Traditional batching processes requests in fixed groups, wasting compute when some sequences finish before others. Continuous batching walks model layers across a rotating set of in-flight sequences, reusing weight loads across heterogeneous sequence lengths [20].
+
+vLLM achieves up to 24x higher throughput than Hugging Face TGI under high-concurrency workloads through continuous batching combined with PagedAttention [21].
+
+### Memory management strategies
+
+**Hierarchical caching**: vLLM takes a hierarchical approach to KV caching. It first checks GPU memory, then CPU memory on cache miss, then retrieves from configured KV connectors (like LMCache for distributed caching) [22].
+
+**FP8 KV cache**: Hopper and Blackwell GPUs support native FP8 KV cache, which halves KV cache memory requirements with minimal accuracy impact [19].
+
+**Prefix caching**: Automatic Prefix Caching (APC) detects common prefixes across requests and shares KV cache blocks automatically. Shared prefixes during beam search reduce KV memory usage by up to 55% [23].
+
+---
+
+## FlashAttention
+
+FlashAttention is an IO-aware attention algorithm that reduces memory bandwidth bottlenecks by computing attention in tiles without materializing the full attention matrix.
+
+### FlashAttention-2
+
+FlashAttention-2 improved on the original by better parallelizing across thread blocks and reducing synchronization. It achieves 35% utilization on H100 GPUs and speeds up training by 3-5x compared to baseline implementations from Hugging Face, reaching up to 225 TFLOPs/sec per A100 [24].
+
+### FlashAttention-3
+
+FlashAttention-3 targets Hopper GPUs with three optimizations [25]:
+
+1. **Asynchronous execution**: Exploits asynchrony between Tensor Cores and TMA to overlap computation and data movement via warp-specialization
+2. **Interleaved operations**: Interleaves block-wise matmul and softmax operations
+3. **FP8 quantization**: Uses block quantization with incoherent processing for FP8 low-precision
+
+Performance on H100:
+- BF16: Up to 840 TFLOPs/s (85% utilization)
+- FP8: Up to 1.3 PFLOPs/s
+
+FlashAttention-3 is up to 2.0x faster than FlashAttention-2. FP8 FlashAttention-3 achieves 2.6x lower numerical error than baseline FP8 attention because intermediate softmax results are kept in FP32 [25].
+
+```python
+# FlashAttention is integrated into transformers
+from transformers import AutoModelForCausalLM
+
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-3.1-8B-Instruct",
+    attn_implementation="flash_attention_2",
+    torch_dtype=torch.bfloat16,
+)
+```
+
+---
+
+## Tensor parallelism and model sharding
+
+When models exceed single-GPU memory, sharding distributes parameters across multiple devices.
+
+### Tensor parallelism
+
+Tensor parallelism shards individual layers horizontally across GPUs. The two primary techniques are [26]:
+
+- **Column parallelism**: Splits weight matrices along columns, concatenates results after computation
+- **Row parallelism**: Splits matrices along rows, sums partial results post-computation
+
+With tensor parallelism across 4 GPUs, a 512 MB weight matrix becomes 128 MB per GPU, a 4x memory reduction for that layer.
+
+```python
+from vllm import LLM
+
+# Tensor parallelism across 4 GPUs on one node
+llm = LLM(
+    model="meta-llama/Meta-Llama-3.1-70B-Instruct",
+    tensor_parallel_size=4,
+)
+```
+
+### Communication overhead
+
+Tensor parallelism has high communication volume and presents a synchronization point in forward pass. Data exchange occurs over high-speed interconnects like NVLink (600 GB/s) or PCIe (32 GB/s). Interconnect speed critically affects overall performance, making tensor parallelism costly to scale beyond 1 node [27].
+
+### Pipeline parallelism
+
+For multi-node inference, combine tensor parallelism with pipeline parallelism:
+
+```python
+from vllm import LLM
+
+# Multi-node: 4 GPUs per node, 2 nodes
+llm = LLM(
+    model="meta-llama/Meta-Llama-3.1-70B-Instruct",
+    tensor_parallel_size=4,
+    pipeline_parallel_size=2,
+)
+```
+
+### Helix Parallelism
+
+Helix Parallelism, introduced in 2025, applies a hybrid execution strategy: KV parallelism during attention to shard KV caches across GPUs, then reuses the same GPUs for tensor parallelism in dense LLMs or TP x Expert Parallel (EP) in MoEs during FFN computation. Compared to conventional approaches, Helix reduces time-to-first-token by up to 1.5x and supports up to 32x larger batches under the same latency budget for DeepSeek-R1 [28].
+
+---
+
+## CPU offloading strategies
+
+When GPU memory is insufficient, offloading parts of the model or KV cache to CPU memory enables inference of larger models.
+
+### NEO: Online LLM inference with CPU offloading
+
+NEO offloads part of attention compute and KV cache states from GPU to local host CPU, increasing effective GPU batch size and inference throughput. It achieves up to 14%-6.6x throughput gains using two techniques [29]:
+
+1. **Asymmetric pipelining**: Fully leverages compute resources of both GPU and CPU without overloading them
+2. **Load-aware scheduling**: Maintains separate prefilling waitqueue, GPU decoding runqueue, and CPU decoding runqueue, making iteration-level adaptive scheduling decisions
+
+### NVIDIA Grace Hopper unified memory
+
+The NVLink-C2C connection and unified memory architecture on Grace Hopper enables models to use CPU memory if GPU memory is insufficient without explicit data transfer. When a model loads onto GH200, it uses 96 GB of HBM and accesses 480 GB of LPDDR memory connected to the CPU [30].
+
+### Trade-offs
+
+CPU offloading helps alleviate GPU memory limitations but shifts workload to CPU and increases data movement between CPU and GPU. For CPU-based attention operations, memory bandwidth, not compute power, determines performance. Overall training/inference speed may decrease due to synchronization overhead [30].
+
+---
+
+## Prompt caching
+
+Prompt caching reuses the model's intermediate state (KV tensors in attention layers) for prefix tokens rather than recomputing them for each request.
+
+### How it works
+
+During prefill, the model builds a KV cache for the entire input. Prompt caching stores this KV cache keyed by the prompt tokens. For subsequent requests sharing the same prefix, the cached KV state is reused, skipping recomputation.
+
+Anthropic Claude Sonnet offers prompt caching with up to 90% cost savings and 85% latency reduction for long prompts. OpenAI provides automatic caching with 50% cost savings [31].
+
+### Best practices
+
+- **Front-load static content**: Place constant information (system messages, context, instructions) at the beginning of prompts
+- **Avoid dynamic elements in prefix**: Don't insert timestamps, request IDs, or per-request variables early in the prompt
+- **Exact prefix matching**: Even tiny differences (whitespace, JSON key order) break cache hits [23]
+
+### vLLM Automatic Prefix Caching
+
+```python
+from vllm import LLM
+
+llm = LLM(
+    model="meta-llama/Llama-3.1-8B-Instruct",
+    enable_prefix_caching=True,
+)
+```
+
+vLLM hashes prompt tokens and looks up cache blocks. SGLang uses Radix attention with a radix-tree for prefix caching [31].
+
+---
+
+## Inference Engines Deep Dive
+
+Inference engines handle the actual execution of LLM forward passes. Each engine makes different trade-offs between ease of use, performance, and hardware support. This section covers four engines in detail: TensorRT-LLM (NVIDIA's production stack), vLLM (the open-source throughput leader), SGLang (structured generation specialist), and llama.cpp (the portable C++ implementation).
+
+---
+
+## TensorRT-LLM
+
+TensorRT-LLM is NVIDIA's open-source library for optimizing LLM inference on NVIDIA GPUs. It builds on TensorRT's graph compilation and kernel optimization capabilities, adding LLM-specific features like in-flight batching, paged KV caching, and multi-GPU parallelism [32].
+
+### How TensorRT compiles graphs
+
+TensorRT-LLM converts model definitions into optimized TensorRT engines through a multi-stage compilation process:
+
+**1. Graph construction**: The Model Definition API assembles a network graph. Each layer maps to TensorRT operations that can later be traversed or transformed [33].
+
+**2. Pattern matching and fusion**: During compilation, TensorRT identifies operation sequences that can be fused into single GPU kernels. For example, a matmul followed by ReLU becomes one kernel without intermediate memory writes. The pattern-matching algorithm identifies fusions automatically, and an advanced kernel compiler converts them to efficient code [34].
+
+**3. Kernel autotuning**: TensorRT automatically selects optimal GPU kernels based on GPU architecture, model configuration, precision, and batch size. The AutoTuner framework (added in 2025) provides custom-op-compatible tuning for operations like fused MoE and NVFP4 linear layers [35].
+
+**4. Plugin support**: Some fusions (like FlashAttention) cannot be discovered automatically because they interleave operations in complex ways. Engineers can explicitly replace graph sections with plugins at compile time [34].
+
+```python
+# Building a TensorRT-LLM engine
+from tensorrt_llm import build
+from tensorrt_llm.models import LLaMAForCausalLM
+
+# Load model configuration
+model = LLaMAForCausalLM.from_hugging_face(
+    "meta-llama/Llama-3.1-8B-Instruct",
+    dtype="float16"
+)
+
+# Build engine with optimizations
+engine = build(
+    model,
+    max_batch_size=64,
+    max_input_len=2048,
+    max_seq_len=4096,
+    use_paged_context_fmha=True,  # Enable paged KV cache
+)
+engine.save("llama-8b-engine")
+```
+
+### INT8/FP8 quantization calibration
+
+TensorRT-LLM supports multiple quantization methods, with FP8 recommended as the default for Hopper and Blackwell GPUs [36].
+
+**FP8 quantization (fp8_pc_pt)**: Weights are quantized to FP8 per-channel. Activation ranges are calibrated and quantized per-token. FP8 preserves accuracy better than INT8 in most cases [37].
+
+**INT8 SmoothQuant (int8_sq)**: Applies smoothing to weights before INT8 channel-wise quantization. Activation ranges are calibrated tensor-wise. Used as a fallback on Ada GPUs [37].
+
+The calibration process:
+1. Load a model checkpoint using the appropriate parallelism strategy
+2. Run calibration data through the model to determine quantization scales
+3. Output a quantized checkpoint with model config (JSON), quantized weights (safetensors), and tokenizer config (YAML) [38]
+
+```python
+from tensorrt_llm.quantization import quantize
+from tensorrt_llm.quantization import CalibConfig
+
+# Configure calibration
+calib_config = CalibConfig(
+    calib_dataset="cnn_dailymail",
+    calib_batch_size=8,
+    calib_max_seq_length=512,
+)
+
+# Quantize to FP8
+quantize(
+    model_dir="meta-llama/Llama-3.1-8B-Instruct",
+    output_dir="llama-8b-fp8",
+    qformat="fp8",
+    calib_config=calib_config,
+)
+```
+
+### In-flight batching implementation
+
+In-flight batching (also called continuous batching) eliminates wait times by dynamically managing request execution. Instead of processing fixed batches, TensorRT-LLM merges incoming requests into existing GPU batches, processing context and generation phases together [39].
+
+The scheduler maintains:
+- **Prefill queue**: New requests waiting for initial context processing
+- **Generation queue**: Active sequences generating tokens
+- **Memory manager**: Tracks KV cache block allocation
+
+When a sequence completes, its slot immediately becomes available for new requests without waiting for other sequences in the batch.
+
+### Paged KV-cache in TensorRT
+
+TensorRT-LLM implements paged KV cache with configurable block sizes [40]:
+
+- KV cache state is stored in blocks, each holding multiple tokens (default: 128 tokens)
+- Only full blocks can be shared by multiple requests
+- Block size is set at engine build time via `trtllm-build` with `--tokens_per_block` (must be power of 2)
+- Larger blocks improve kernel efficiency but reduce cache reuse likelihood
+
+**KV cache reuse**: Pages can be shared by requests with matching prefixes. This reduces time-to-first-token for multi-turn conversations and system prompts. Priority-based eviction (added in 2025) allows specifying priority and duration for token ranges, improving cache hit rates by approximately 20% [41].
+
+```bash
+# Build engine with custom KV cache block size
+trtllm-build \
+    --checkpoint_dir ./llama-checkpoint \
+    --output_dir ./llama-engine \
+    --tokens_per_block 64 \
+    --use_paged_context_fmha enable \
+    --kv_cache_type paged
+```
+
+### Building engines for different GPU architectures
+
+TensorRT engines are architecture-specific. An engine built for H100 will not run on A100 [42].
+
+**Specifying architectures at build time**:
+
+```bash
+# Build for Ada and Hopper only
+make -C docker release_build CUDA_ARCHS="89-real;90-real"
+```
+
+**Using TensorRT Cloud for different GPUs**:
+
+```bash
+# Build for A100
+trt-cloud build llm \
+    --src-hf-repo="meta-llama/Llama-3.1-8B-Instruct" \
+    --dtype="float16" \
+    --gpu="A100" \
+    --os=linux
+
+# Build for RTX 3070 (consumer GPU)
+trt-cloud build llm \
+    --trtllm-checkpoint checkpoint.zip \
+    --gpu RTX3070 \
+    --os windows \
+    --dtype bfloat16
+```
+
+**GPU architecture codes**:
+| GPU Family | Compute Capability | CMake Code |
+|------------|-------------------|------------|
+| Ampere (A100) | 8.0 | 80-real |
+| Ada (RTX 4090, L40) | 8.9 | 89-real |
+| Hopper (H100, H200) | 9.0 | 90-real |
+| Blackwell (B200, GB200) | 10.0 | 100-real |
+
+### Practical code for converting and serving models
+
+**Full conversion and serving workflow**:
+
+```python
+# Step 1: Convert HuggingFace model to TensorRT-LLM checkpoint
+from tensorrt_llm.models import LLaMAForCausalLM
+
+model = LLaMAForCausalLM.from_hugging_face(
+    "meta-llama/Llama-3.1-8B-Instruct",
+    mapping=tensorrt_llm.Mapping(world_size=1, tp_size=1),
+    dtype="bfloat16",
+)
+model.save_checkpoint("./llama-checkpoint")
+```
+
+```bash
+# Step 2: Build the engine
+trtllm-build \
+    --checkpoint_dir ./llama-checkpoint \
+    --output_dir ./llama-engine \
+    --gemm_plugin bfloat16 \
+    --max_batch_size 64 \
+    --max_input_len 2048 \
+    --max_seq_len 4096 \
+    --use_paged_context_fmha enable
+```
+
+```python
+# Step 3: Run inference
+import tensorrt_llm
+from tensorrt_llm.runtime import ModelRunner
+
+runner = ModelRunner.from_dir("./llama-engine")
+
+outputs = runner.generate(
+    batch_input_ids=[[1, 2, 3, 4]],  # Tokenized input
+    max_new_tokens=256,
+    temperature=0.7,
+    top_p=0.9,
+)
+```
+
+**Performance on H100 with FP8**: Over 10,000 output tokens/s at peak throughput for 64 concurrent requests, with approximately 100ms time-to-first-token. H100 FP8 achieves up to 4.6x higher max throughput and 4.4x faster TTFT than A100 [43].
+
+---
+
+## vLLM
+
+vLLM is an open-source inference engine that maximizes throughput through PagedAttention and continuous batching. As of June 2025, it has 49,200 GitHub stars and has become the de facto standard for high-throughput LLM serving [44].
+
+### PagedAttention algorithm in detail
+
+PagedAttention applies virtual memory concepts to KV cache management. Instead of allocating contiguous memory per request, vLLM divides GPU memory into fixed-size pages (blocks) that can be stored anywhere [45].
+
+**Block allocation process**:
+
+1. The KV block manager divides GPU memory (and optionally CPU RAM) into physical KV blocks
+2. Each request maintains a block table mapping logical blocks to physical blocks
+3. Block table entries record physical block addresses and fill counts
+4. Blocks are allocated on demand as tokens are generated
+
+**Step-by-step allocation example**:
+
+```
+Initial state (prompt processed):
+- Logical blocks: [Block 0: 14/16 tokens]
+- Physical mapping: Logical 0 -> Physical 5
+
+After generating 2 tokens:
+- Logical blocks: [Block 0: 16/16 tokens (full)]
+- New allocation needed
+
+After generating 3rd token:
+- Logical blocks: [Block 0: 16/16], [Block 1: 1/16]
+- Physical mapping: Logical 0 -> Physical 5, Logical 1 -> Physical 12
+```
+
+**Block size trade-offs**: The default is 16 tokens per block. Larger blocks increase kernel parallelism but also increase memory fragmentation. The vLLM authors tested many configurations and found 16 tokens to be a good balance [46].
+
+**Memory sharing**: Sequences with shared prefixes point their block tables to the same physical blocks. This enables prefix caching and reduces memory usage by up to 55% during beam search [47].
+
+**Performance impact**: Traditional systems waste 60-80% of KV cache memory. PagedAttention reduces waste to under 4%, enabling 2-4x throughput improvements [45].
+
+```python
+# vLLM automatically uses PagedAttention
+from vllm import LLM, SamplingParams
+
+llm = LLM(
+    model="meta-llama/Llama-3.1-8B-Instruct",
+    gpu_memory_utilization=0.90,  # Use 90% of GPU memory for KV cache
+    block_size=16,  # Tokens per KV block (default)
+    swap_space=4,  # GB of CPU memory for swapping
+)
+
+sampling_params = SamplingParams(temperature=0.7, max_tokens=256)
+outputs = llm.generate(["Write a poem about caching:"], sampling_params)
+```
+
+### Continuous batching scheduler
+
+vLLM schedules work at the iteration level, not the request level. The scheduler assembles batches dynamically at each decoding step [48].
+
+**Request lifecycle**:
+
+1. Request enters the engine and is wrapped in a Request object with status WAITING
+2. Request is added to the scheduler's waiting queue (FCFS or priority-based)
+3. At each step, the scheduler selects requests for the current batch
+4. When a sequence emits EOS, its slot is immediately freed for new requests
+
+**Scheduler architecture**:
+
+```
+                    ┌─────────────────┐
+                    │   API Server    │
+                    └────────┬────────┘
+                             │
+                    ┌────────▼────────┐
+                    │   AsyncLLM      │
+                    └────────┬────────┘
+                             │
+                    ┌────────▼────────┐
+                    │   EngineCore    │
+                    │                 │
+                    │  ┌───────────┐  │
+                    │  │ Scheduler │  │
+                    │  └─────┬─────┘  │
+                    │        │        │
+                    │  ┌─────▼─────┐  │
+                    │  │  Executor │  │
+                    │  └───────────┘  │
+                    └─────────────────┘
+```
+
+**Step-level scheduling**:
+
+1. **Schedule phase**: Select which requests to run (decode and/or chunked prefill)
+2. **Execute phase**: Run one forward pass for all active sequences
+3. **Output phase**: Push results to output queue, free completed sequences
+
+**Chunked prefill**: Long prompts are split into smaller chunks to prevent single requests from monopolizing GPU time. With chunked prefill enabled, decode requests are prioritized over prefill to minimize latency for in-progress generations [49].
+
+```python
+from vllm import LLM
+
+llm = LLM(
+    model="meta-llama/Llama-3.1-8B-Instruct",
+    max_num_seqs=256,  # Max concurrent sequences
+    max_num_batched_tokens=8192,  # Token budget per iteration
+    enable_chunked_prefill=True,  # Enable chunked prefill
+)
+```
+
+### Prefix caching mechanism
+
+vLLM's Automatic Prefix Caching (APC) detects common prefixes and shares KV cache blocks automatically [50].
+
+**How it works**:
+
+1. Prompt tokens are hashed to create a cache key
+2. On cache hit, existing KV blocks are reused
+3. On cache miss, new blocks are computed and cached
+4. LRU eviction removes least-recently-used blocks when memory is full
+
+**Cache hierarchy**: vLLM checks GPU memory first, then CPU memory, then external KV connectors like LMCache for distributed caching [51].
+
+```python
+from vllm import LLM
+
+llm = LLM(
+    model="meta-llama/Llama-3.1-8B-Instruct",
+    enable_prefix_caching=True,  # Enable APC
+)
+
+# First request computes and caches the system prompt
+response1 = llm.generate([
+    "System: You are a helpful assistant.\n\nUser: What is 2+2?"
+])
+
+# Second request reuses cached system prompt KV
+response2 = llm.generate([
+    "System: You are a helpful assistant.\n\nUser: What is 3+3?"
+])
+```
+
+### Speculative decoding integration
+
+vLLM supports multiple speculative decoding methods, with Eagle 3 as the current state-of-the-art [52].
+
+**Supported methods**:
+- **Draft model**: Separate smaller model proposes tokens
+- **Eagle 1/3**: Lightweight prediction head attached to target model
+- **Suffix decoding**: Pattern-matching against previous generations (roadmap item)
+
+**Eagle 3 performance**: Up to 2.5x speedup across diverse scenarios. The Speculators library (v0.3.0, December 2025) provides end-to-end training support for Eagle3 draft models [53].
+
+```python
+from vllm import LLM, SamplingParams
+
+# Using a separate draft model
+llm = LLM(
+    model="meta-llama/Meta-Llama-3.1-70B-Instruct",
+    speculative_model="meta-llama/Llama-3.2-1B-Instruct",
+    num_speculative_tokens=5,
+    speculative_draft_tensor_parallel_size=1,
+)
+
+# Using Eagle 3
+llm = LLM(
+    model="meta-llama/Meta-Llama-3.1-8B-Instruct",
+    speculative_config={
+        "method": "eagle",
+        "model": "yuhuili/EAGLE3-LLaMA3.1-Instruct-8B",
+        "num_speculative_tokens": 5,
+    },
+)
+```
+
+**Arctic Inference**: Snowflake's Arctic Inference integration achieves 4x faster inference for LLM agents on SWE-Bench tasks and up to 2.8x faster decoding for interactive workloads. It reduces MLP-based proposer latency from 1.47ms/token to 0.47ms/token [54].
+
+### Tensor parallelism for multi-GPU
+
+vLLM supports tensor parallelism (TP), pipeline parallelism (PP), data parallelism (DP), and expert parallelism (EP) [55].
+
+**Tensor parallelism**: Shards each layer horizontally across GPUs using column parallelism (split along columns, concatenate results) and row parallelism (split along rows, sum results).
+
+```python
+from vllm import LLM
+
+# Single-node 4-GPU tensor parallelism
+llm = LLM(
+    model="meta-llama/Meta-Llama-3.1-70B-Instruct",
+    tensor_parallel_size=4,
+)
+
+# Multi-node: 4 GPUs per node, 2 nodes
+llm = LLM(
+    model="meta-llama/Meta-Llama-3.1-70B-Instruct",
+    tensor_parallel_size=4,
+    pipeline_parallel_size=2,
+)
+
+# Combined TP + DP (8 GPUs total)
+# Requires data_parallel_size=4, tensor_parallel_size=2
+# via CLI: --data-parallel-size=4 --tensor-parallel-size=2
+```
+
+**Why TP within nodes**: Tensor parallelism has high communication volume but benefits from fast interconnects. Use TP within nodes (NVLink) and PP across nodes (InfiniBand) when interconnects are slow. With NVLink, TP can extend across nodes [56].
+
+**Checking interconnect speed**:
+
+```bash
+nvidia-smi topo -m
+# Look for NVLink vs PIX (PCIe) connections
+```
+
+### OpenAI-compatible API server internals
+
+vLLM's server implements OpenAI's API specification using FastAPI [57].
+
+**Architecture**:
+
+```
+┌─────────────────────────────────────────────────┐
+│              FastAPI Application                │
+│                                                 │
+│  ┌──────────────┐  ┌──────────────────────────┐│
+│  │   /v1/chat   │  │  /v1/completions         ││
+│  │  completions │  │                          ││
+│  └──────┬───────┘  └───────────┬──────────────┘│
+│         │                      │               │
+│  ┌──────▼──────────────────────▼──────┐        │
+│  │        OpenAIServingChat           │        │
+│  │        OpenAIServingCompletion     │        │
+│  │        OpenAIServingTokenization   │        │
+│  └──────────────────┬─────────────────┘        │
+│                     │                          │
+│  ┌──────────────────▼─────────────────┐        │
+│  │            AsyncLLM                │        │
+│  └────────────────────────────────────┘        │
+└─────────────────────────────────────────────────┘
+```
+
+**Request handling**:
+1. FastAPI receives HTTP request with Pydantic validation
+2. Request is converted to internal format and queued
+3. AsyncLLM handles scheduling via EngineCore
+4. Streaming responses use Server-Sent Events (SSE)
+
+```bash
+# Start the OpenAI-compatible server
+vllm serve meta-llama/Llama-3.1-8B-Instruct \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --tensor-parallel-size 2
+
+# Use with OpenAI SDK
+curl http://localhost:8000/v1/chat/completions \
+    -H "Content-Type: application/json" \
+    -d '{
+        "model": "meta-llama/Llama-3.1-8B-Instruct",
+        "messages": [{"role": "user", "content": "Hello!"}]
+    }'
+```
+
+### Performance tuning parameters
+
+Key parameters for optimizing vLLM performance [58]:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_num_seqs` | 256 | Maximum concurrent sequences |
+| `max_num_batched_tokens` | 8192 | Token budget per iteration |
+| `gpu_memory_utilization` | 0.9 | Fraction of GPU memory for KV cache |
+| `block_size` | 16 | Tokens per KV block |
+| `swap_space` | 4 | GB of CPU memory for swapping |
+| `enable_chunked_prefill` | True | Split long prompts into chunks |
+| `max_model_len` | model default | Maximum sequence length |
+
+```python
+from vllm import LLM
+
+llm = LLM(
+    model="meta-llama/Llama-3.1-8B-Instruct",
+    # Memory settings
+    gpu_memory_utilization=0.95,
+    swap_space=8,
+    # Batching settings
+    max_num_seqs=512,
+    max_num_batched_tokens=16384,
+    enable_chunked_prefill=True,
+    # Performance settings
+    enforce_eager=False,  # Use CUDA graphs
+    enable_prefix_caching=True,
+)
+```
+
+---
+
+## SGLang
+
+SGLang is a high-performance serving framework that combines RadixAttention for KV cache reuse with a domain-specific language for structured generation. It achieves up to 6.4x higher throughput than baseline systems on structured workloads [59].
+
+### RadixAttention and how it differs from PagedAttention
+
+While vLLM's PagedAttention optimizes memory within individual requests, RadixAttention focuses on maximizing KV cache reuse across multiple requests using a radix tree (compressed prefix tree) [60].
+
+**PagedAttention**: Divides KV cache into fixed-size blocks. Blocks are allocated on demand and freed when sequences complete. Prefix sharing requires explicit cache lookup.
+
+**RadixAttention**: Stores KV cache in a radix tree structure. The tree enables automatic prefix matching, insertion, and LRU eviction. KV cache persists after request completion for potential reuse.
+
+**Key differences**:
+
+| Aspect | PagedAttention | RadixAttention |
+|--------|---------------|----------------|
+| Data structure | Block tables | Radix tree |
+| Prefix matching | Hash lookup | Tree traversal |
+| Cache persistence | Cleared after request | Retained in LRU cache |
+| Primary optimization | Memory efficiency | KV reuse across calls |
+
+**How RadixAttention works**:
+
+1. After each generation, KV cache is inserted into the radix tree keyed by token sequence
+2. New requests traverse the tree to find the longest matching prefix
+3. Matching prefix KV cache is reused; only new tokens require computation
+4. LRU eviction removes least-recently-used branches when memory is full
+
+```python
+import sglang as sgl
+
+# RadixAttention automatically reuses KV cache
+@sgl.function
+def multi_turn_chat(s, turns):
+    s += sgl.system("You are a helpful assistant.")
+    for user_msg in turns:
+        s += sgl.user(user_msg)
+        s += sgl.assistant(sgl.gen("response", max_tokens=256))
+
+# KV cache for system prompt is computed once and reused
+runtime = sgl.Runtime(model_path="meta-llama/Llama-3.1-8B-Instruct")
+sgl.set_default_backend(runtime)
+
+# These calls reuse cached system prompt
+result1 = multi_turn_chat.run(turns=["What is Python?"])
+result2 = multi_turn_chat.run(turns=["What is Rust?"])
+```
+
+### The SGLang DSL and structured generation
+
+SGLang provides a domain-specific language for defining complex LLM programs with branching, parallelism, and constraints [61].
+
+**Core primitives**:
+
+```python
+import sglang as sgl
+
+@sgl.function
+def analyze_code(s, code):
+    # Sequential generation
+    s += sgl.user(f"Analyze this code:\n{code}")
+    s += sgl.assistant(sgl.gen("analysis", max_tokens=500))
+
+    # Forking for parallel evaluation
+    with s.fork(2) as forks:
+        forks[0] += sgl.user("Rate the code quality (1-10):")
+        forks[0] += sgl.assistant(sgl.gen("quality", max_tokens=10))
+
+        forks[1] += sgl.user("Suggest improvements:")
+        forks[1] += sgl.assistant(sgl.gen("improvements", max_tokens=200))
+
+    # Select best based on criteria
+    s += sgl.select("best_response", forks, criteria="quality")
+```
+
+**Structured output with JSON schema**:
+
+```python
+from pydantic import BaseModel
+import sglang as sgl
+
+class CodeReview(BaseModel):
+    quality_score: int
+    issues: list[str]
+    suggestions: list[str]
+
+@sgl.function
+def structured_review(s, code):
+    s += sgl.user(f"Review this code and provide structured feedback:\n{code}")
+    s += sgl.assistant(
+        sgl.gen("review", max_tokens=500, json_schema=CodeReview.model_json_schema())
+    )
+```
+
+### Constrained decoding with FSM
+
+SGLang implements constrained decoding using compressed finite-state machines (FSM), enabling generation that conforms to regular expressions or JSON schemas [62].
+
+**How FSM decoding works**:
+
+1. The constraint (regex, JSON schema) is converted to a finite-state machine
+2. At each decoding step, invalid tokens are masked based on the current FSM state
+3. Only tokens leading to valid FSM transitions can be sampled
+
+**Compressed FSM optimization**: Standard FSM decoding processes one token at a time even when transitions are deterministic. SGLang's compressed FSM collapses chains of singular transitions into single edges [62].
+
+```python
+import sglang as sgl
+
+@sgl.function
+def extract_email(s, text):
+    s += sgl.user(f"Extract the email address from: {text}")
+    # Constrain output to valid email format
+    s += sgl.assistant(
+        sgl.gen("email", regex=r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
+    )
+
+@sgl.function
+def generate_json(s, prompt):
+    s += sgl.user(prompt)
+    # Constrain to valid JSON object
+    s += sgl.assistant(
+        sgl.gen("data", regex=r'\{[^{}]*\}')
+    )
+```
+
+### Jump-forward decoding
+
+Jump-forward decoding exploits deterministic sections of constrained output to skip unnecessary LLM forward passes [62].
+
+**Example**: When generating JSON, after a key like `"name"`, the next token must be `:`. Instead of running the LLM to generate `:`, SGLang inserts it directly.
+
+**How it works**:
+
+1. The compressed FSM identifies deterministic token sequences
+2. When the FSM has only one valid path, those tokens are inserted without LLM computation
+3. RadixAttention automatically handles KV cache for the inserted tokens
+
+**Performance impact**: For structured formats with fixed elements, jump-forward decoding can skip 30-50% of generation steps. On JSON decoding benchmarks, this optimization alone delivers up to 1.6x throughput improvement [62].
+
+```
+Standard decoding:
+{"name" -> LLM -> ":" -> LLM -> " " -> LLM -> "\"" -> LLM -> "John" ...
+
+Jump-forward decoding:
+{"name" -> INSERT ": \"" -> LLM -> "John" ...
+(Skipped 3 LLM calls)
+```
+
+### How SGLang handles complex prompts
+
+SGLang's runtime optimizes complex multi-call LLM programs through several mechanisms [63]:
+
+**1. Automatic batching**: Multiple `sgl.gen()` calls across forked branches are batched into single LLM forward passes.
+
+**2. KV cache sharing via RadixAttention**: Forks share the KV cache of their common prefix. New branches only compute KV for diverging tokens.
+
+**3. Scheduling optimization**: The runtime schedules calls to maximize GPU utilization, interleaving prefill and decode across requests.
+
+```python
+import sglang as sgl
+
+@sgl.function
+def tree_of_thought(s, problem):
+    s += sgl.user(f"Solve: {problem}")
+
+    # Generate 3 candidate solutions in parallel
+    with s.fork(3) as candidates:
+        for i, c in enumerate(candidates):
+            c += sgl.assistant(sgl.gen(f"solution_{i}", max_tokens=200))
+
+    # Evaluate each solution
+    evaluations = []
+    for i, c in enumerate(candidates):
+        c += sgl.user("Rate this solution 1-10:")
+        c += sgl.assistant(sgl.gen(f"rating_{i}", max_tokens=5))
+        evaluations.append(c)
+
+    # Select best
+    s += sgl.select("best", evaluations, key=lambda x: int(x["rating"]))
+```
+
+**Server deployment**:
+
+```bash
+# Start SGLang server
+python -m sglang.launch_server \
+    --model-path meta-llama/Llama-3.1-8B-Instruct \
+    --port 30000 \
+    --tp 2
+
+# OpenAI-compatible endpoint
+curl http://localhost:30000/v1/chat/completions \
+    -H "Content-Type: application/json" \
+    -d '{"model": "default", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+---
+
+## llama.cpp Deep Dive
+
+llama.cpp is a C/C++ inference engine that prioritizes portability and minimal dependencies. It runs on CPUs, Apple Silicon, NVIDIA GPUs, AMD GPUs, and various accelerators. As of August 2025, it has over 85,000 GitHub stars and 1,200 contributors [64].
+
+### GGML tensor library internals
+
+GGML (Georgi Gerganov Machine Learning) is the tensor library underlying llama.cpp. It provides a portable foundation for neural network operations [65].
+
+**Core design principles**:
+
+1. **No external dependencies**: GGML is self-contained C code
+2. **Static memory allocation**: Tensor sizes are known at graph construction time
+3. **Pluggable backends**: CPU, Metal, CUDA, Vulkan, SYCL, etc.
+
+**Tensor representation**:
+
+```c
+struct ggml_tensor {
+    enum ggml_type type;      // Data type (F32, F16, Q4_K, etc.)
+    int n_dims;               // Number of dimensions
+    int64_t ne[4];            // Number of elements per dimension
+    size_t nb[4];             // Stride in bytes per dimension
+    void * data;              // Pointer to data
+    struct ggml_tensor * src[2];  // Source tensors (for operations)
+    // ...
+};
+```
+
+**Computation graph**:
+
+```c
+// Create context
+struct ggml_context * ctx = ggml_init(params);
+
+// Define tensors
+struct ggml_tensor * a = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, 768, 768);
+struct ggml_tensor * b = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, 768, 768);
+
+// Define operation (creates graph node)
+struct ggml_tensor * c = ggml_mul_mat(ctx, a, b);
+
+// Build computation graph
+struct ggml_cgraph * graph = ggml_new_graph(ctx);
+ggml_build_forward_expand(graph, c);
+
+// Execute on backend
+ggml_backend_graph_compute(backend, graph);
+```
+
+**Backend architecture**: GGML's pluggable backend system enables the same graph to execute on different hardware. Each backend implements a standard interface for memory allocation, data transfer, and kernel execution [66].
+
+### Metal backend implementation
+
+The Metal backend provides GPU acceleration on Apple Silicon through hand-optimized compute shaders [67].
+
+**Key features**:
+
+- Optimized matrix multiplication kernels for M1/M2/M3 chips
+- Unified memory eliminates CPU-GPU data transfers
+- Flash attention implementation for memory-efficient attention
+- Support for all GGML quantization types
+
+**Memory management**: Metal uses shared buffers that both CPU and GPU can access directly. This is a significant advantage over discrete GPUs that require explicit data transfers.
+
+```bash
+# Build llama.cpp with Metal (default on macOS)
+cmake -B build
+cmake --build build --config Release
+
+# Run with Metal acceleration
+./build/bin/llama-cli \
+    -m llama-3.1-8b-instruct-q4_k_m.gguf \
+    -ngl 99 \  # Offload all layers to GPU
+    -p "Hello, world!"
+```
+
+**Metal performance tuning**:
+
+```bash
+# Use flash attention (reduces memory bandwidth)
+./build/bin/llama-cli -m model.gguf -fa
+
+# Adjust batch size for throughput
+./build/bin/llama-cli -m model.gguf -b 512
+```
+
+### CUDA backend and kernel optimizations
+
+The CUDA backend provides GPU acceleration on NVIDIA hardware with hand-tuned kernels [68].
+
+**Recent optimizations (2025)**:
+
+- **FlashAttention**: Memory-efficient attention with tiling and kernel fusion
+- **Split-K optimization**: Divides KV sequence across workgroups for increased parallelism
+- **Wavefront tuning**: Optimizations for NVIDIA's 32-thread warps
+- **NVFP4 support**: Native 4-bit floating point on Blackwell GPUs (25% faster prompt processing)
+
+**CUDA kernel micro-optimizations**:
+
+- Memory coalescing in `mul_mat_id` function
+- fastdiv and fastmodulo optimizations for Ada and Blackwell
+- PAD_REFLECT_1D kernel optimization (1-11% memory bandwidth improvement)
+
+```bash
+# Build with CUDA support
+cmake -B build -DGGML_CUDA=ON
+cmake --build build --config Release
+
+# Enable unified memory for larger models
+export GGML_CUDA_ENABLE_UNIFIED_MEMORY=1
+
+./build/bin/llama-cli \
+    -m llama-3.1-70b-instruct-q4_k_m.gguf \
+    -ngl 99 \
+    -fa  # Flash attention
+```
+
+**Multi-GPU with ik_llama.cpp**: The ik_llama.cpp fork implements tensor parallelism at the GGML graph level (Split Mode Graph). This distributes compute graph nodes across GPUs rather than just assigning layers, achieving 3-4x performance gains over standard multi-GPU methods [69].
+
+### Quantization kernel implementations
+
+llama.cpp supports various quantization types with specialized dequantization kernels [70].
+
+**Quantization type families**:
+
+| Family | Types | Description |
+|--------|-------|-------------|
+| Type-0 | Q4_0, Q5_0, Q8_0 | Global scale: `w = d * q` |
+| Type-1 | Q4_1, Q5_1 | Scale + minimum: `w = d * q + m` |
+| K-quants | Q4_K, Q5_K, Q6_K | Block-wise with super-blocks of 256 |
+| I-quants | IQ4_XS, IQ3_XXS | Importance-based with lookup tables |
+
+**K-quant implementation details**:
+
+K-quants use super-blocks of 256 quantized values, subdivided into blocks of 16 or 32. Each super-block stores:
+- Scale factors for each sub-block
+- Minimum values (for some types)
+- Quantized weights
+
+**Q4_K_M and Q5_K_M** implement mixed precision: most weights use the base precision, but half of `attention.wv` and `feed_forward.w2` tensors use higher precision for better accuracy [71].
+
+```bash
+# Quantize a model
+./build/bin/llama-quantize \
+    model-f16.gguf \
+    model-q4_k_m.gguf \
+    Q4_K_M
+
+# Quantize with importance matrix for better quality
+./build/bin/llama-quantize \
+    model-f16.gguf \
+    model-q4_k_m.gguf \
+    Q4_K_M \
+    --imatrix imatrix.dat
+```
+
+**Advanced quantization options**:
+
+```bash
+# Mix quantization types for different tensors
+./build/bin/llama-quantize \
+    model-f16.gguf \
+    model-mixed.gguf \
+    Q4_K_M \
+    --output-tensor-type Q8_0 \
+    --token-embedding-type Q8_0
+```
+
+### Memory layout for different quant types
+
+Each quantization type has a specific memory layout optimized for efficient dequantization [72].
+
+**Q4_0 layout** (block of 32 weights):
+```
+[scale: fp16 (2 bytes)] [quants: 16 bytes (32 x 4-bit)]
+Total: 18 bytes for 32 weights = 4.5 bits/weight
+```
+
+**Q4_K layout** (super-block of 256 weights):
+```
+[d: fp16] [dmin: fp16] [scales: 12 bytes] [quants: 128 bytes]
+- 8 sub-blocks of 32 weights each
+- Each sub-block has its own 6-bit scale
+Total: 144 bytes for 256 weights = 4.5 bits/weight
+```
+
+**Q5_K layout**:
+```
+[d: fp16] [dmin: fp16] [scales: 12 bytes] [qh: 32 bytes] [ql: 128 bytes]
+- qh contains the 5th bit for each weight
+- ql contains lower 4 bits
+Total: 176 bytes for 256 weights = 5.5 bits/weight
+```
+
+**Dequantization kernels**: Each quantization type has optimized dequantization code for each backend. The CUDA kernels use warp-level primitives for efficient parallel dequantization:
+
+```c
+// Simplified Q4_K dequantization (CUDA)
+__global__ void dequantize_q4_k(const void * src, float * dst) {
+    const block_q4_k * block = (const block_q4_k *)src + blockIdx.x;
+
+    const float d = __half2float(block->d);
+    const float dmin = __half2float(block->dmin);
+
+    // Parallel dequantization across warp
+    int lane = threadIdx.x % 32;
+    uint8_t q = block->qs[lane];
+    float scale = d * (block->scales[lane / 32] & 0x3F);
+    float min = dmin * (block->scales[lane / 32] >> 4);
+
+    dst[lane * 2] = scale * (q & 0xF) - min;
+    dst[lane * 2 + 1] = scale * (q >> 4) - min;
+}
+```
+
+---
+
+## Inference Engine Comparison
+
+### Latency vs throughput trade-offs
+
+Each engine optimizes for different points on the latency-throughput curve [73].
+
+**Benchmark results** (Llama 3.1 8B, H100, 1000 ShareGPT prompts):
+
+| Engine | Throughput (tok/s) | TTFT (ms) | Per-token latency (ms) |
+|--------|-------------------|-----------|----------------------|
+| SGLang | 16,215 | 156 | 4-21 |
+| LMDeploy | 16,132 | 142 | 12-35 |
+| vLLM | 12,553 | 123 | 8-42 |
+| TensorRT-LLM | 10,847 | 187 | 15-28 |
+
+**Key observations**:
+
+- **vLLM**: Fastest time-to-first-token (TTFT), best scaling at high concurrency
+- **SGLang**: Highest raw throughput, most stable per-token latency
+- **TensorRT-LLM**: Lower throughput in benchmarks but excels on B200/Blackwell GPUs
+- **llama.cpp**: Not designed for high-throughput serving but offers best portability
+
+**At different concurrency levels** (GPT-OSS-120B):
+
+| Concurrency | vLLM (tok/s) | SGLang (tok/s) | TensorRT-LLM (tok/s) |
+|-------------|--------------|----------------|---------------------|
+| 1 | 892 | 756 | 1,024 |
+| 10 | 2,341 | 2,567 | 2,189 |
+| 100 | 4,741 | 4,523 | 3,892 |
+
+### Memory efficiency comparison
+
+| Engine | KV Cache Approach | Memory Waste | Max Context (8B model, 24GB) |
+|--------|------------------|--------------|------------------------------|
+| vLLM | PagedAttention | \<4% | 128K tokens |
+| SGLang | RadixAttention | \<4% | 128K tokens |
+| TensorRT-LLM | Paged + Priority eviction | \<5% | 128K tokens |
+| llama.cpp | Contiguous | 10-20% | 32K tokens |
+
+**KV cache quantization support**:
+
+| Engine | FP8 KV | INT8 KV | NVFP4 KV |
+|--------|--------|---------|----------|
+| TensorRT-LLM | Yes | Yes | Yes (Blackwell) |
+| vLLM | Yes | Yes | No |
+| SGLang | Yes | Yes | No |
+| llama.cpp | Q8_0, Q4_0 | Via type | No |
+
+### Feature matrix
+
+| Feature | TensorRT-LLM | vLLM | SGLang | llama.cpp |
+|---------|--------------|------|--------|-----------|
+| **Quantization** |
+| FP8 | Yes (Hopper+) | Yes | Yes | No |
+| INT8 | Yes | Yes | Yes | Yes (Q8_0) |
+| INT4 | Yes (AWQ) | Yes (AWQ/GPTQ) | Yes | Yes (Q4_K) |
+| 2-bit | No | No | No | Yes (Q2_K) |
+| **Parallelism** |
+| Tensor parallel | Yes | Yes | Yes | Limited |
+| Pipeline parallel | Yes | Yes | Yes | No |
+| Expert parallel | Yes | Yes | Yes | No |
+| **Features** |
+| Speculative decoding | Yes | Yes (Eagle3) | Yes | Yes |
+| Prefix caching | Yes | Yes (APC) | Yes (Radix) | Yes |
+| Constrained decoding | No | Yes | Yes (FSM) | Yes (grammar) |
+| Multi-LoRA | Yes | Yes | Yes | Yes |
+| Vision models | Yes | Yes | Yes | Yes (LLaVA) |
+| **Deployment** |
+| OpenAI API | Via Triton | Yes | Yes | Yes (server) |
+| NVIDIA GPUs | Yes | Yes | Yes | Yes |
+| AMD GPUs | No | Yes (ROCm) | Yes (ROCm) | Yes (HIP) |
+| Apple Silicon | No | No | No | Yes (Metal) |
+| CPU only | No | No | No | Yes |
+
+### When to use each engine
+
+**TensorRT-LLM**:
+- Production deployments on NVIDIA GPUs
+- Maximum throughput on H100/B200
+- When using NVIDIA's full stack (Triton, NIM)
+- Willing to invest in engine building and tuning
+
+**vLLM**:
+- High-concurrency API serving
+- Fast time-to-first-token requirements
+- OpenAI API compatibility
+- General-purpose GPU inference with good defaults
+
+**SGLang**:
+- Structured output generation (JSON, code)
+- Complex multi-turn or branching LLM programs
+- Maximum KV cache reuse across requests
+- Constrained decoding with FSM
+
+**llama.cpp**:
+- Local deployment on consumer hardware
+- Apple Silicon (M1/M2/M3/M4)
+- CPU-only environments
+- Edge devices and mobile
+- Maximum quantization flexibility
+
+### Practical deployment recommendations
+
+**For startup API products**:
+```
+vLLM + OpenAI-compatible server
+- Fast setup, good defaults
+- Scale with tensor parallelism
+- Add prefix caching for repeated prompts
+```
+
+**For enterprise on NVIDIA**:
+```
+TensorRT-LLM + Triton Inference Server
+- Maximum throughput per GPU dollar
+- Production-grade monitoring
+- Integration with NVIDIA enterprise support
+```
+
+**For structured outputs**:
+```
+SGLang
+- Native JSON schema support
+- Jump-forward decoding for speed
+- RadixAttention for multi-turn efficiency
+```
+
+**For local/edge deployment**:
+```
+llama.cpp
+- Q4_K_M for balance of quality and size
+- Metal for Apple, CUDA for NVIDIA
+- Works offline with no cloud dependency
+```
+
+---
+
+## Practical considerations
+
+### When to use each technique
+
+| Technique | Best for | Hardware requirements |
+|-----------|----------|----------------------|
+| REAP | MoE models (Mixtral, DeepSeek, Qwen) | Same as original model |
+| Speculative decoding | High-latency applications, large target models | GPU memory for both draft and target |
+| Q4_K_M quantization | CPU/Apple devices, limited RAM | 4GB+ RAM for 7B models |
+| AWQ/GPTQ | GPU inference, quality-sensitive tasks | CUDA GPU |
+| PagedAttention | High-concurrency serving | vLLM-compatible GPU |
+| FlashAttention-3 | H100/H200 deployments | Hopper architecture |
+| Tensor parallelism | Models exceeding single GPU memory | Multiple GPUs with NVLink |
+| CPU offloading | Memory-constrained setups | High CPU memory bandwidth |
+| Prompt caching | Repeated prompts, RAG, chat systems | Sufficient memory for cache |
+
+### Combining techniques
+
+These techniques are not mutually exclusive. A production deployment might use:
+
+1. **REAP** to prune an MoE model to 50% experts
+2. **AWQ quantization** to reduce memory footprint further
+3. **FlashAttention-3** for efficient attention computation
+4. **PagedAttention + continuous batching** for high-throughput serving
+5. **Prefix caching** to avoid redundant computation for common prefixes
+6. **Speculative decoding** to reduce latency for interactive applications
+
+The optimal combination depends on your specific constraints: available hardware, latency requirements, throughput targets, and accuracy tolerances.
+
+---
+
+## References
+
+[1] InfoQ - Cactus v1: Cross-Platform LLM Inference on Mobile with Zero Latency and Full Privacy. https://www.infoq.com/news/2025/12/cactus-on-device-inference/
+
+[2] InfoQ - Cactus v1: Cross-Platform LLM Inference on Mobile. https://www.infoq.com/news/2025/12/cactus-on-device-inference/
+
+[3] PMC - Tiny Machine Learning and On-Device Inference: A Survey. https://pmc.ncbi.nlm.nih.gov/articles/PMC12115890/
+
+[4] Novus - The Rise of Local AI Models: Going Small to Go Big. https://www.novusasi.com/blog/the-rise-of-local-ai-models-going-small-to-go-big
+
+[5] Cerebras - REAP: One-Shot Pruning for Trillion-Parameter MoE Models. https://www.cerebras.ai/blog/reap
+
+[6] arXiv - REAP the Experts: Why Pruning Prevails for One-Shot MoE compression. https://arxiv.org/abs/2510.13999
+
+[7] HuggingFace - Cerebras REAP Collection. https://huggingface.co/collections/cerebras/cerebras-reap
+
+[8] NVIDIA Technical Blog - An Introduction to Speculative Decoding. https://developer.nvidia.com/blog/an-introduction-to-speculative-decoding-for-reducing-latency-in-ai-inference/
+
+[9] BentoML - Speculative Decoding. https://bentoml.com/llm/inference-optimization/speculative-decoding
+
+[10] vLLM Documentation - Speculative Decoding. https://docs.vllm.ai/en/latest/features/spec_decode/
+
+[11] LMSYS - SpecForge: Accelerating Speculative Decoding Training for SGLang. https://lmsys.org/blog/2025-07-25-spec-forge/
+
+[12] PyTorch Blog - Quantization-Aware Training for Large Language Models. https://pytorch.org/blog/quantization-aware-training/
+
+[13] llama.cpp GitHub - Quantize README. https://github.com/ggml-org/llama.cpp/blob/master/tools/quantize/README.md
+
+[14] Local AI Zone - AI Model Quantization 2025 Guide. https://local-ai-zone.github.io/guides/what-is-ai-quantization-q4-k-m-q8-gguf-guide-2025.html
+
+[15] Local AI Master - AWQ vs GPTQ vs GGUF Comparison. https://localaimaster.com/blog/quantization-explained
+
+[16] Maarten Grootendorst - Which Quantization Method is Right for You? https://newsletter.maartengrootendorst.com/p/which-quantization-method-is-right
+
+[17] HuggingFace - Making LLMs even more accessible with bitsandbytes. https://huggingface.co/blog/4bit-transformers-bitsandbytes
+
+[18] GitHub - ExLlamaV2. https://github.com/turboderp-org/exllamav2
+
+[19] arXiv - Efficient Memory Management for LLM Serving with PagedAttention. https://arxiv.org/abs/2309.06180
+
+[20] HuggingFace Blog - Continuous batching from first principles. https://huggingface.co/blog/continuous_batching
+
+[21] arXiv - Comparative Analysis of LLM Inference Serving Systems. https://arxiv.org/html/2511.17593v1
+
+[22] Ceph.io - KV Caching with vLLM, LMCache, and Ceph. https://ceph.io/en/news/blog/2025/vllm-kv-caching/
+
+[23] vLLM Documentation - Automatic Prefix Caching. https://docs.vllm.ai/en/stable/design/prefix_caching/
+
+[24] GitHub - Dao-AILab/flash-attention. https://github.com/Dao-AILab/flash-attention
+
+[25] PyTorch Blog - FlashAttention-3: Fast and Accurate Attention. https://pytorch.org/blog/flashattention-3/
+
+[26] Meta Engineering - Scaling LLM Inference: Innovations in Parallelism. https://engineering.fb.com/2025/10/17/ai-research/scaling-llm-inference-innovations-tensor-parallelism-context-parallelism-expert-parallelism/
+
+[27] AWS Neuron Documentation - Parallelism Techniques for LLM Inference. https://awsdocs-neuron.readthedocs-hosted.com/en/latest/libraries/nxd-inference/app-notes/parallelism.html
+
+[28] arXiv - Helix Parallelism: Rethinking Sharding Strategies. https://arxiv.org/html/2507.07120v1
+
+[29] arXiv - NEO: Saving GPU Memory Crisis with CPU Offloading. https://arxiv.org/abs/2411.01142
+
+[30] NVIDIA Technical Blog - Accelerate Large-Scale LLM Inference with CPU-GPU Memory Sharing. https://developer.nvidia.com/blog/accelerate-large-scale-llm-inference-and-kv-cache-offload-with-cpu-gpu-memory-sharing/
+
+[31] ngrok Blog - Prompt caching: 10x cheaper LLM tokens, but how? https://ngrok.com/blog/prompt-caching/
+
+[32] NVIDIA TensorRT-LLM Documentation - Overview. https://nvidia.github.io/TensorRT-LLM/overview.html
+
+[33] NVIDIA TensorRT-LLM - Model Definition. https://nvidia.github.io/TensorRT-LLM/architecture/core-concepts.html
+
+[34] NVIDIA Technical Blog - Optimizing Inference on LLMs with TensorRT-LLM. https://developer.nvidia.com/blog/optimizing-inference-on-llms-with-tensorrt-llm-now-publicly-available/
+
+[35] NVIDIA TensorRT-LLM - Release Notes. https://nvidia.github.io/TensorRT-LLM/release-notes.html
+
+[36] NVIDIA Technical Blog - Optimizing LLMs for Performance and Accuracy with Post-Training Quantization. https://developer.nvidia.com/blog/optimizing-llms-for-performance-and-accuracy-with-post-training-quantization/
+
+[37] NVIDIA TensorRT-LLM - Numerical Precision. https://nvidia.github.io/TensorRT-LLM/reference/precision.html
+
+[38] NVIDIA NeMo Framework - Quantization. https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/nlp/quantization.html
+
+[39] MarkTechPost - vLLM vs TensorRT-LLM vs HF TGI vs LMDeploy Technical Comparison. https://www.marktechpost.com/2025/11/19/vllm-vs-tensorrt-llm-vs-hf-tgi-vs-lmdeploy-a-deep-technical-comparison-for-production-llm-inference/
+
+[40] NVIDIA TensorRT-LLM - KV Cache Reuse. https://nvidia.github.io/TensorRT-LLM/advanced/kv-cache-reuse.html
+
+[41] NVIDIA Technical Blog - KV Cache Reuse Optimizations in TensorRT-LLM. https://developer.nvidia.com/blog/introducing-new-kv-cache-reuse-optimizations-in-nvidia-tensorrt-llm/
+
+[42] NVIDIA TensorRT-LLM - Building from Source. https://nvidia.github.io/TensorRT-LLM/installation/build-from-source-linux.html
+
+[43] BentoML - Best Practices for Tuning TensorRT-LLM. https://www.bentoml.com/blog/tuning-tensor-rt-llm-for-optimal-serving-with-bentoml
+
+[44] vLLM Blog - Inside vLLM: Anatomy of a High-Throughput LLM Inference System. https://blog.vllm.ai/2025/09/05/anatomy-of-vllm.html
+
+[45] vLLM Documentation - Paged Attention. https://docs.vllm.ai/en/stable/design/paged_attention/
+
+[46] Red Hat Developer - How PagedAttention resolves memory waste of LLM systems. https://developers.redhat.com/articles/2025/07/24/how-pagedattention-resolves-memory-waste-llm-systems
+
+[47] arXiv - Efficient Memory Management for LLM Serving with PagedAttention. https://arxiv.org/abs/2309.06180
+
+[48] Ubicloud Blog - Life of an inference request (vLLM V1). https://www.ubicloud.com/blog/life-of-an-inference-request-vllm-v1
+
+[49] vLLM Documentation - Scheduler. https://docs.vllm.ai/en/stable/api/vllm/v1/core/sched/scheduler/
+
+[50] vLLM Documentation - Automatic Prefix Caching. https://docs.vllm.ai/en/stable/design/prefix_caching/
+
+[51] Ceph.io - KV Caching with vLLM and LMCache. https://ceph.io/en/news/blog/2025/vllm-kv-caching/
+
+[52] vLLM Documentation - Speculative Decoding. https://docs.vllm.ai/en/latest/features/spec_decode/
+
+[53] vLLM Blog - Speculators v0.3.0. https://blog.vllm.ai/2025/12/13/speculators-v030.html
+
+[54] Snowflake Engineering Blog - Fastest Speculative Decoding with Arctic Inference. https://www.snowflake.com/en/engineering-blog/fast-speculative-decoding-vllm-arctic/
+
+[55] vLLM Documentation - Parallelism and Scaling. https://docs.vllm.ai/en/stable/serving/parallelism_scaling/
+
+[56] Red Hat Developer - Distributed Inference with vLLM. https://developers.redhat.com/articles/2025/02/06/distributed-inference-with-vllm
+
+[57] vLLM Documentation - OpenAI-Compatible Server. https://docs.vllm.ai/en/stable/serving/openai_compatible_server/
+
+[58] Java Code Geeks - Under the Hood of vLLM: Memory, Scheduling & Batching Strategies. https://www.javacodegeeks.com/2025/10/under-the-hood-of-vllm-memory-scheduling-batching-strategies.html
+
+[59] LMSYS Blog - Fast and Expressive LLM Inference with RadixAttention and SGLang. https://lmsys.org/blog/2024-01-17-sglang/
+
+[60] SugiV Blog - SGLang Deep Dive: Inside SGLang. https://blog.sugiv.fyi/sglang-deep-dive-inside-sglang
+
+[61] SGLang Paper - Efficient Execution of Structured Language Model Programs. https://proceedings.neurips.cc/paper_files/paper/2024/file/724be4472168f31ba1c9ac630f15dec8-Paper-Conference.pdf
+
+[62] LMSYS Blog - Fast JSON Decoding with Compressed Finite State Machine. https://lmsys.org/blog/2024-02-05-compressed-fsm/
+
+[63] ROCm Blogs - SGLang: Fast Serving Framework on AMD Instinct GPUs. https://rocm.blogs.amd.com/artificial-intelligence/sglang/README.html
+
+[64] llama.cpp Wikipedia. https://en.wikipedia.org/wiki/Llama.cpp
+
+[65] DeepWiki - ggml-org/llama.cpp. https://deepwiki.com/ggml-org/llama.cpp
+
+[66] DeepWiki - Backend Architecture and Registration. https://deepwiki.com/ggml-org/llama.cpp/4.1-cpu-backend
+
+[67] DeepWiki - Metal Backend. https://deepwiki.com/ggml-org/llama.cpp/4.5-sycl-backend
+
+[68] DeepWiki - Flash Attention and Optimizations. https://deepwiki.com/ggml-org/llama.cpp/7.4-flash-attention-and-optimizations
+
+[69] Medium - llama.cpp performance breakthrough for multi-GPU setups. https://medium.com/@jagusztinl/llama-cpp-performance-breakthrough-for-multi-gpu-setups-04c83a66feb2
+
+[70] llama.cpp GitHub - Quantize README. https://github.com/ggml-org/llama.cpp/blob/master/tools/quantize/README.md
+
+[71] Enclave AI - The Practical Quantization Guide for iPhone and Mac. https://enclaveai.app/blog/2025/11/12/practical-quantization-guide-iphone-mac-gguf/
+
+[72] llama.cpp GitHub Discussion - Difference in quantization methods. https://github.com/ggml-org/llama.cpp/discussions/2094
+
+[73] AIMultiple Research - LLM Inference Engines: vLLM vs LMDeploy vs SGLang. https://research.aimultiple.com/inference-engines/

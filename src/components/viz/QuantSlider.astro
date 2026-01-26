@@ -1,0 +1,283 @@
+---
+/**
+ * Interactive slider showing quantization/parameter trade-offs
+ * Client-side JavaScript handles the interactivity
+ */
+interface DataPoint {
+  label: string;
+  size: string;
+  quality: number; // 0-100
+  speed: number; // relative, higher is faster
+  description?: string;
+}
+
+interface Props {
+  title?: string;
+  dataPoints: DataPoint[];
+  xLabel?: string;
+  yLabel?: string;
+}
+
+const { title, dataPoints, xLabel = 'Model Size', yLabel = 'Quality' } = Astro.props;
+---
+
+<div class="quant-slider">
+  {title && <div class="slider-title">{title}</div>}
+
+  <div class="slider-content">
+    <div class="slider-labels">
+      <span class="label-y">{yLabel}</span>
+      <span class="label-x">{xLabel}</span>
+    </div>
+
+    <div class="slider-track">
+      {dataPoints.map((point, index) => (
+        <button
+          class="slider-point"
+          data-index={index}
+          data-quality={point.quality}
+          data-speed={point.speed}
+          style={`left: ${(index / (dataPoints.length - 1)) * 100}%`}
+          aria-label={`${point.label}: ${point.size}`}
+        >
+          <span class="point-dot"></span>
+          <span class="point-label">{point.label}</span>
+        </button>
+      ))}
+      <div class="slider-line"></div>
+    </div>
+
+    <div class="slider-info">
+      <div class="info-card" id="slider-info-display">
+        <div class="info-row">
+          <span class="info-label">Quantization</span>
+          <span class="info-value" data-field="label">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Size</span>
+          <span class="info-value" data-field="size">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Quality</span>
+          <div class="info-bar-container">
+            <div class="info-bar quality-bar" data-field="quality-bar"></div>
+          </div>
+          <span class="info-value" data-field="quality">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Speed</span>
+          <div class="info-bar-container">
+            <div class="info-bar speed-bar" data-field="speed-bar"></div>
+          </div>
+          <span class="info-value" data-field="speed">—</span>
+        </div>
+        <div class="info-description" data-field="description"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script define:vars={{ dataPoints }}>
+  function initQuantSlider() {
+    document.querySelectorAll('.quant-slider').forEach((slider) => {
+      const points = slider.querySelectorAll('.slider-point');
+      const infoDisplay = slider.querySelector('#slider-info-display');
+
+      if (!infoDisplay) return;
+
+      const updateDisplay = (index) => {
+        const data = dataPoints[index];
+        if (!data) return;
+
+        infoDisplay.querySelector('[data-field="label"]').textContent = data.label;
+        infoDisplay.querySelector('[data-field="size"]').textContent = data.size;
+        infoDisplay.querySelector('[data-field="quality"]').textContent = `${data.quality}%`;
+        infoDisplay.querySelector('[data-field="speed"]').textContent = `${data.speed}x`;
+        infoDisplay.querySelector('[data-field="quality-bar"]').style.width = `${data.quality}%`;
+        infoDisplay.querySelector('[data-field="speed-bar"]').style.width = `${Math.min(data.speed * 20, 100)}%`;
+
+        const descEl = infoDisplay.querySelector('[data-field="description"]');
+        if (data.description) {
+          descEl.textContent = data.description;
+          descEl.style.display = 'block';
+        } else {
+          descEl.style.display = 'none';
+        }
+
+        points.forEach((p, i) => {
+          p.classList.toggle('active', i === index);
+        });
+      };
+
+      points.forEach((point, index) => {
+        point.addEventListener('click', () => updateDisplay(index));
+        point.addEventListener('mouseenter', () => updateDisplay(index));
+      });
+
+      // Initialize with middle point
+      updateDisplay(Math.floor(dataPoints.length / 2));
+    });
+  }
+
+  initQuantSlider();
+  document.addEventListener('astro:after-swap', initQuantSlider);
+</script>
+
+<style>
+  .quant-slider {
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  .slider-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .slider-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .slider-labels {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .slider-track {
+    position: relative;
+    height: 60px;
+    margin: 0 1rem;
+  }
+
+  .slider-line {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--border);
+    transform: translateY(-50%);
+  }
+
+  .slider-point {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .point-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 2px solid var(--border);
+    transition: all 0.15s ease-out;
+  }
+
+  .slider-point:hover .point-dot,
+  .slider-point.active .point-dot {
+    border-color: var(--text-secondary);
+    background: var(--text-secondary);
+    transform: scale(1.2);
+  }
+
+  .point-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+    transition: color 0.15s ease-out;
+    white-space: nowrap;
+  }
+
+  .slider-point:hover .point-label,
+  .slider-point.active .point-label {
+    color: var(--text-primary);
+  }
+
+  .slider-info {
+    margin-top: 0.5rem;
+  }
+
+  .info-card {
+    padding: 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  .info-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.375rem 0;
+  }
+
+  .info-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    min-width: 80px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .info-value {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-primary);
+    min-width: 50px;
+  }
+
+  .info-bar-container {
+    flex: 1;
+    height: 6px;
+    background: var(--code-bg);
+    border-radius: 0;
+    overflow: hidden;
+  }
+
+  .info-bar {
+    height: 100%;
+    border-radius: 0;
+    transition: width 0.3s ease-out;
+  }
+
+  .quality-bar {
+    background: var(--text-secondary);
+  }
+
+  .speed-bar {
+    background: var(--text-tertiary);
+  }
+
+  .info-description {
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+    display: none;
+  }
+</style>

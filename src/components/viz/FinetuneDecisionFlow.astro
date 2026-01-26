@@ -1,0 +1,36 @@
+---
+/**
+ * Decision flowchart for LLM fine-tuning
+ * Uses Mermaid for clean, maintainable flowcharts
+ */
+import MermaidDiagram from './MermaidDiagram.astro';
+
+interface Props {
+  title?: string;
+}
+
+const { title = 'When to Fine-Tune' } = Astro.props;
+
+const diagram = `
+flowchart TD
+    A[Your Use Case] --> B{Prompt engineering<br/>enough?}
+    B -->|Yes| C[Use Prompting]
+    B -->|No| D{Need external<br/>knowledge?}
+    D -->|Yes| E[RAG]
+    D -->|No| F{Need behavioral<br/>changes?}
+    F -->|Yes| G[Fine-tune]
+    F -->|No| H[Reconsider<br/>requirements]
+
+    C:::done
+    E:::rag
+    G:::finetune
+    H:::reconsider
+
+    classDef done stroke-width:2px
+    classDef rag stroke-width:2px
+    classDef finetune stroke-width:2px
+    classDef reconsider stroke-dasharray:3 3
+`;
+---
+
+<MermaidDiagram title={title} diagram={diagram} />

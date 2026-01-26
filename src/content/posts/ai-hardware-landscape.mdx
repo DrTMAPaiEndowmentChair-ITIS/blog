@@ -1,0 +1,555 @@
+---
+title: "The Diversification of AI Hardware: Beyond NVIDIA's Dominance"
+pubDate: 2026-01-26
+---
+
+import SystolicArray from '../../components/viz/SystolicArray.astro';
+
+**Author**: Aadit Agrawal
+
+The AI hardware landscape is undergoing a transformation. While NVIDIA maintains its grip on approximately 86-92% of the AI accelerator market, a constellation of alternatives has emerged, each with distinct architectural philosophies and target workloads. This diversification matters for engineers who need to optimize for cost, latency, throughput, or specific model architectures.
+
+## Why Hardware Diversification Matters
+
+NVIDIA's dominance in AI accelerators stems from a decade of CUDA ecosystem development and first-mover advantage in deep learning. The company's H100 and newer Blackwell GPUs remain the default choice for most organizations. However, several factors are driving diversification:
+
+**Supply constraints**: Morgan Stanley analysts reported in November 2024 that all of NVIDIA's 2025 chip production was already sold out. Organizations unable to secure H100/H200 allocations must look elsewhere.
+
+**Cost pressure**: Inference costs can exceed training costs by 15x over a model's lifetime, according to OpenAI's 2024 figures. At $6.98-7.57 per H100 GPU-hour on major cloud providers, inference-heavy workloads demand alternatives.
+
+**Architectural mismatch**: GPUs are general-purpose parallel processors. Workloads with predictable memory access patterns or specific numerical precision requirements can benefit from purpose-built silicon.
+
+**Vendor lock-in concerns**: Major cloud providers and AI labs are developing custom chips. JPMorgan projects that custom chips from Google, Amazon, Meta, and OpenAI will account for 45% of the AI chip market by 2028, up from 37% in 2024.
+
+The result is a market where engineers can choose hardware optimized for their specific constraints rather than defaulting to NVIDIA.
+
+## Google TPUs
+
+Google's Tensor Processing Units represent the most mature alternative to NVIDIA GPUs for large-scale AI workloads. Unlike GPUs, TPUs are application-specific integrated circuits built around systolic arrays optimized for matrix multiplication.
+
+### Systolic Array Architecture
+
+At the core of every TPU sits a Matrix Multiply Unit (MXU) composed of multiply-accumulate units arranged in a systolic array. The term "systolic" refers to the rhythmic data flow through the structure, analogous to blood pumping through the heart. This architecture exploits a fundamental property of matrix multiplication: it requires O(n^3) compute for O(n^2) bytes of data, making it compute-bound rather than memory-bound when hardware is designed correctly.
+
+<SystolicArray size={4} title="Weight-Stationary Systolic Array" />
+
+The weight-stationary dataflow pattern works as follows: engineers preload the weights of matrix B into the individual multiply-accumulate units arranged in a grid. Matrix A's activation values enter from the left edge and flow horizontally across the array. Each MAC unit multiplies its stored weight by the incoming activation, adds the result to a partial sum arriving from above, and passes both the activation (horizontally) and updated partial sum (vertically) to neighboring units. This arrangement eliminates intermediate memory writes for the entire matrix multiplication.
+
+The original TPU v1 contained a 256x256 array of 8-bit multiply-accumulate units, yielding 65,536 MACs. Because a TPU runs at 700MHz, a TPU can compute 92 TOPS in the matrix unit. During execution of this massive matrix multiply, all intermediate results pass directly between 64K ALUs without any memory access, reducing power consumption substantially compared to architectures that require memory round-trips.
+
+The pipelining characteristics matter for understanding performance. Systolic arrays are heavily pipelined: given that the array is 256 units wide, it takes 256 cycles from when the first element enters until it exits. Twice that many cycles for all data to flow through. However, at peak utilization, all 65,536 processors operate simultaneously.
+
+The systolic array's weakness emerges with dynamic or irregular computation patterns. Because data flows through the grid on a fixed schedule, the architecture struggles with conditional execution, sparse matrices (unless using SparseCore), and operations that require random access patterns. This inflexibility trades generality for extreme efficiency on its target workload: dense matrix multiplication with predictable access patterns.
+
+### XLA Compilation and Hardware Mapping
+
+TPUs were codesigned with the XLA (Accelerated Linear Algebra) compiler to achieve their performance characteristics. The compilation process involves several stages:
+
+1. **Lazy Evaluation and Graph Tracing**: Operations are not executed immediately. Instead, PyTorch/XLA or JAX records operations in an intermediate representation (IR) graph. This process is called "tracing."
+
+2. **HLO Generation**: When results are needed (printing a tensor, saving a checkpoint, or at an explicit synchronization point), the accumulated IR graph converts into HLO (High-Level Opcodes), a representation specific to the XLA compiler.
+
+3. **XLA Optimization**: The XLA compiler performs operator fusion, memory layout optimization, and parallelization, then compiles to machine code for the target device. Compiled graphs are cached, so subsequent executions with the same computation graph and input shapes reuse the optimized binary.
+
+For multi-chip scaling, Google's answer is to make the XLA compiler responsible for coordinating communication between chips. With parallelism dimensions specified by researchers (DP, FSDP, TP, number of slices), the XLA compiler inserts the appropriate hierarchical collectives for the TPU topology. The GSPMD system ([Xu et al., 2021](https://arxiv.org/abs/2105.04663)) enables large-scale training with minimal code changes.
+
+A simple JAX example demonstrates the programming model:
+
+```python
+import jax
+import jax.numpy as jnp
+
+def multiply(x, y):
+    return jnp.einsum('bf,fd->db', x, y)
+
+# XLA compiles this function and caches the result
+y = jax.jit(multiply)(jnp.ones((128, 256)), jnp.ones((256, 16), dtype=jnp.bfloat16))
+```
+
+By default, matrix multiplication in JAX on TPUs uses bfloat16 with float32 accumulation. This can be controlled with the `precision` argument on relevant functions (matmul, dot, einsum).
+
+### Interconnect Topology: 2D vs 3D Torus
+
+TPU interconnect topology directly impacts collective operation performance.
+
+**2D Torus** (TPU v2, v3, v5e, v6e): Each chip connects to its four nearest neighbors (north, south, east, west). The links wrap around at boundaries, creating a donut-shaped logical topology that eliminates edge chips with fewer connections. A 16x16 grid of 256 TPUs provides uniform bandwidth and latency regardless of which two chips communicate.
+
+**3D Torus** (TPU v4, v5p, v7): Each chip connects to six neighbors along three axes. A TPU rack consists of 64 TPUs connected in a 4x4x4 configuration. The composition resembles a Rubik's Cube, with each TPU chip having 6 ICI (Inter-Chip Interconnect) links in ±X, ±Y, ±Z directions. TPU v5p achieved approximately 4.45 exaflops across 8,960-chip pods using 16x20x28 superpod configurations.
+
+The 3D torus increases bisection bandwidth compared to 2D, which matters for all-to-all communication patterns. Google's Optical Circuit Switches (OCS) enable flexible topology configuration, including twisted torus variants with better bisection properties. Twisting the torus brings the largest benefit for tensor parallel (TP) operations since there are multiple all-gather and reduce-scatter operations per layer.
+
+Unlike all-reduce used in backpropagation, which maps well to 2D and 3D tori, all-to-all patterns strain bisection bandwidth. The twisted torus can reduce the worst-case number of hops, improving all-to-all collective throughput.
+
+### BF16 Accumulation and Numerical Precision
+
+Inside the MXU, multiplications occur in bfloat16 format while accumulations use full FP32 precision. This design choice has significant implications.
+
+Bfloat16 uses one sign bit, eight exponent bits, and seven mantissa bits. Because it has the same exponent size as float32, it exhibits identical behavior for underflows, overflows, and other numeric instabilities during training. Unlike FP16, which typically requires loss scaling, BF16 comes close to being a drop-in replacement for FP32.
+
+The wide dynamic range makes BF16 highly resistant to overflow and underflow, at the cost of reduced precision from the 7-bit mantissa. This tradeoff works well for neural network training where the exact value matters less than staying within a reasonable range.
+
+One caveat: while BF16's stability helps pre-training, its low precision can cause rounding errors that accumulate. Modern RL frameworks using different engines for training and inference may see subtle differences in their implementation lead to different rounding errors, creating training-inference mismatch ([arXiv:2510.26788](https://arxiv.org/abs/2510.26788)).
+
+Checkpoints from TPU training can be deployed on other hardware platforms (CPU or GPU inference) without extensive manual conversions.
+
+### TPU Generations
+
+**TPU v5e** targets cost-sensitive inference and smaller training workloads:
+- 128x128 MXU array, 16,384 MACs per cycle
+- 197 BF16 TFLOPS peak
+- 16 GB HBM2e with 819 GB/s bandwidth
+- Supports training on up to 256 chips
+- 2D torus interconnect topology
+
+**TPU v5p** is designed for large-scale training:
+- 128x128 MXU array, 459 BF16 TFLOPS peak
+- 95 GB HBM2e with 2,765 GB/s bandwidth
+- 3D torus topology connecting up to 8,960 chips per pod
+- Single slice training for up to 6,144 chips; multislice scaling to 18,432 chips
+
+**Trillium (TPU v6e)**, generally available since late 2024, represents an architectural inflection point:
+- 256x256 MXU array, quadrupling FLOPs per cycle
+- 918 BF16 TFLOPS peak (4.7x improvement over v5e)
+- 32 GB HBM with 1,600 GB/s bandwidth
+- 67% more energy-efficient than v5e
+- Third-generation SparseCore for ultra-large embedding tables
+
+**Ironwood (TPU v7)** reached general availability in Q4 2025 with 4,614 TFLOPS peak performance.
+
+### Benchmark Results
+
+MLPerf 4.1 training benchmarks show Trillium delivers up to 1.8x better performance-per-dollar compared to TPU v5p and 99% scaling efficiency across data-center networks using Cloud TPU multislice technology, outperforming the 94% scaling efficiency of v5p clusters within a single ICI domain.
+
+BERT training completes 2.8x faster on TPUs than on A100 GPUs, while T5-3B model training finishes in 12 hours versus 31 hours on comparable GPU infrastructure. MLPerf results show TPU v5e leading in 8 of 9 training categories.
+
+For inference, MLPerf 5.0 shows Trillium delivering 3.5x throughput improvement for queries/second on Stable Diffusion XL compared to TPU v5e. The cost to generate 1000 images is 22 cents on Trillium, 35% less than v5e.
+
+Google's TPU v5e reaches similar throughput to H100 by using more chips at lower per-chip speed. Eight TPU v5e chips generate approximately 2,175 tokens/sec on Llama2-70B at a cost of $11/hour, whereas 8 H100 GPUs cost an order of magnitude more.
+
+One computer vision startup reported switching from 128 H100s to TPU v6e and reducing their monthly inference bill from $340K to $89K. Midjourney reportedly moved from NVIDIA A100/H100 clusters to TPU v6e pods, dropping monthly spend from approximately $2.1 million to under $700K.
+
+## Cerebras: Wafer-Scale Integration
+
+Cerebras takes the opposite approach from multi-chip systems: instead of connecting many small chips, they build single chips the size of entire silicon wafers.
+
+### The Wafer-Scale Engine
+
+The WSE-3, powering the CS-3 system, occupies 46,225 mm^2 of silicon, roughly 57 times larger than NVIDIA's H100 (826 mm^2). Built on TSMC 5nm, it contains:
+
+- 4 trillion transistors
+- 900,000 AI-optimized compute cores
+- 125 petaflops peak AI performance
+- 44 GB on-chip SRAM
+- 21 PB/s memory bandwidth (7,000x more than H100)
+- 214 Pb/s fabric bandwidth
+
+### Yield Management and Interconnect Redundancy
+
+Building a wafer-scale chip requires solving the yield problem that killed previous attempts at wafer-scale integration. The WSE-3 has a die area of 462 cm^2, resulting in higher defect probability than smaller dies where yields typically exceed 90%.
+
+Cerebras addresses this through several mechanisms:
+
+**Fine-grained cores**: Each WSE-3 core occupies 0.05mm^2, while an H100 SM core is 6mm^2. The smaller the core, the better fault tolerance becomes.
+
+**Redundant mesh routing**: A mesh topology improves resilience against manufacturing defects. Cerebras includes redundant links and cores across the wafer. When defective regions are detected, the hardware driver performs a remapping process, reconfiguring the interconnect to bypass faulty areas and preserve a virtually intact two-dimensional mesh topology. This process hides defects from developers, who program the system as if it were built on an ideal mesh network.
+
+**Intelligent sparing**: Unlike previous approaches requiring massive redundancy overhead, the architecture achieves high yield with approximately 1% spare cores through intelligent routing that leverages nearby cores to replace defective units.
+
+**Distributed power delivery**: The system incorporates over 300 voltage regulation modules distributed across the wafer's surface, providing redundancy in power delivery and allowing independent regulation for each reticle.
+
+In April 2021, Cerebras announced 100% claimed yield for the WSE-2, achieved by designing a system where any manufacturing defect can be bypassed.
+
+### Dataflow Architecture and the Memory Wall
+
+The Cerebras architecture uses fine-grained dataflow compute cores where all computation is triggered by data arrival. The fabric transports both data and associative control directly in hardware. Once cores receive data, the hardware triggers a lookup of instructions to execute.
+
+This addresses the memory wall problem endemic to traditional GPU clusters. The WSE keeps 44 GB of memory directly on the same die as compute cores, eliminating the bottleneck of shuttling data between HBM and compute units. At the system level, bandwidth reaches 20 PB/s.
+
+### Weight Streaming for Large Models
+
+For models exceeding on-chip capacity, Cerebras developed weight streaming execution. Rather than fitting the entire model on-chip, this mode loads the neural network one layer at a time.
+
+Cerebras stores all model weights externally in MemoryX units and streams weights onto the CS-3 as needed to compute each layer. The weights are never stored on the system, not even temporarily. As weights stream through, the CS-3 performs computation using the underlying dataflow mechanisms. Each individual weight triggers computation as an AXPY operation. Once complete, the weight is discarded and hardware moves to the next element.
+
+MemoryX configurations scale from 24TB and 36TB for enterprise customers to 120TB and 1,200TB for hyperscalers. This allows a single CS-3 system to train models up to 24 trillion parameters.
+
+### Compiler Technology
+
+The Cerebras compiler extracts the operation graph from code and aligns operations with compatible kernels in the Cerebras Software Platform. Each matched kernel corresponds to a layer in the network's dataflow graph.
+
+Cerebras developed MACH (Multiple-Architecture Compiler for Advanced Computing Hardware) specifically for massively-parallel, spatial, dataflow architectures. Additionally, research has introduced SPADA, a spatial dataflow architecture programming language with a rigorous dataflow semantics framework defining routing correctness, data races, and deadlocks. SPADA enables developers to express complex parallel patterns in 6-8x less code than CSL with near-ideal weak scaling.
+
+### Benchmark Results
+
+Cerebras reports inference performance of 2,100 tokens/second on Llama 3.2 70B, 16x faster than GPU solutions and 68x faster than hyperscale clouds as measured by Artificial Analysis. For Llama 3.1-405B, Cerebras Inference generates 969 output tokens per second at 128K full context length and 16-bit precision.
+
+For Llama 4 Scout, Cerebras achieves over 2,600 tokens per second, 19x faster than the fastest GPU solutions per Artificial Analysis verification.
+
+Cerebras benchmarked the CS-3 at over 21x faster inference than NVIDIA's Blackwell B200 GPU running Llama 3 70B with 1024 input and 4096 output segment lengths. Using SemiAnalysis benchmarks, CS-3 is 32% lower cost than B200 while delivering results 21x faster, accounting for both capex and opex including energy costs.
+
+A full cluster of 2048 CS-3s delivers 256 exaflops of AI compute and can train Llama2-70B from scratch in less than a day.
+
+### Use Cases
+
+Wafer-scale architecture excels when model weights fit in on-chip memory and memory bandwidth dominates performance. Large language model inference, where the same weights are reused across many tokens, is a natural fit. The WSE-3 was recognized by TIME Magazine as a Best Invention of 2024.
+
+The tradeoff is flexibility. You cannot incrementally add compute; you either use the full wafer or you do not.
+
+## Groq: Deterministic Inference at Scale
+
+Groq builds hardware specifically for inference, not training. Their Language Processing Unit (LPU) takes a fundamentally different architectural approach from both GPUs and other accelerators.
+
+### The Architectural Bet: Determinism Over Flexibility
+
+Groq's LPU architecture is built on a central premise: deterministic execution enables optimizations impossible on dynamically scheduled systems. The LPU can achieve deterministic execution by avoiding traditional reactive hardware components (branch predictors, arbiters, reordering buffers, caches) and having all execution explicitly controlled by the compiler.
+
+The LPU is a VLIW-like (Very Long Instruction Word) pipeline that processes one instruction stream at a time. Unlike GPUs with many cores and thread contexts, Groq feeds AI model tokens through a single, wide pipeline of functional units, executing all operations in lock-step with no kernel switching. Every clock cycle performs useful work.
+
+The compiler pre-computes the entire execution graph, including inter-chip communication patterns, down to individual clock cycles. This static scheduling eliminates non-determinism. If Groq's compiler says a task will take 28.5 milliseconds, it takes exactly 28.5 milliseconds, every time. This predictability is valuable for real-time systems where tail latency is a critical metric.
+
+### Tensor Streaming Processors vs Systolic Arrays
+
+Groq's initial name for their ASIC was the Tensor Streaming Processor (TSP), later rebranded as the LPU. The TSP features a functionally sliced microarchitecture where memory units are interleaved with vector and matrix computation units.
+
+Unlike systolic arrays where data flows through a fixed grid, tensor streaming processors use a "data-stream" design where tensors flow through functional units in a more flexible pattern. This enables tensor parallelism where individual operations distribute across multiple LPUs so single forward passes complete faster, rather than processing more requests in parallel.
+
+The first-generation TSP yields computational density exceeding 1 TeraOp/s per square mm of silicon for its 25x29mm 14nm chip operating at 900 MHz nominal clock frequency. The second-generation LPU v2 will use Samsung's 4nm process node.
+
+### SRAM-Only Architecture
+
+The LPU uses SRAM as primary weight storage, not cache, with approximately 230 MB per chip. This is fundamentally different from GPU architectures that use HBM.
+
+SRAM is up to 100x faster than the HBM found in GPUs. This direct access allows compute units to pull in weights at full speed. There are no caches to miss, no external memory delays to manage. The Groq compiler can plan the exact execution path of every instruction before the chip runs.
+
+The tradeoff: no useful models fit on a single chip. Groq systems connect hundreds of LPUs with tensor parallelism. For the Mixtral model, Groq connects 8 racks of 9 servers each with 8 chips per server, totaling 576 chips to serve one model instance. The significant cost of SRAM and its lower capacity compared to DRAM present obstacles.
+
+### Batch Size 1: The Sweet Spot
+
+Groq's architecture is optimized for "Batch Size 1." Because memory bandwidth is so high and overhead so low, the LPU processes a single user's request with maximum efficiency without waiting for other requests.
+
+On GPUs, achieving ultra-low latency requires batch size 1, which makes the GPU expensive per token because most processing power sits idle waiting for memory. The LPU achieves 300-500 tokens per second while keeping its internal pipeline nearly 100% full at batch size 1.
+
+This design choice means Groq is not competitive architecturally for throughput-optimized scenarios where batching many requests together amortizes memory access costs. Groq targets latency-critical applications.
+
+### Inference Performance
+
+Artificial Analysis independently benchmarked Groq serving Llama 3.3 70B at 1,665 output tokens per second using speculative decoding, a 6x improvement over their previous 250 T/s endpoint without speculative decoding.
+
+Speculative decoding uses a smaller "draft model" (e.g., Llama 8B) to rapidly guess subsequent tokens, which the primary model then verifies. Verification is faster than generation. Groq implemented this without compromising response quality per independent evaluations.
+
+Other benchmarks:
+- Gemma 7B: 814 tokens per second (Artificial Analysis)
+- LLaMA 3: over 800 tokens per second
+- Llama 2 Chat 70B: 241 tokens per second, more than double other providers (ArtificialAnalysis.ai)
+- LLMPerf Leaderboard: 185 tokens/s average, 3-18x faster than other cloud inference providers
+
+Groq offers Llama-3.3-70B-Specdec at $0.59 per million input tokens and $0.99 per million output tokens.
+
+### Limitations
+
+Groq is inference-only. You cannot train or fine-tune models on LPUs. The initial capital expenditure for a Groq rack is high due to requiring hundreds of chips per model instance. However, the company claims near-100% compute utilization during inference results in lower energy cost per token than GPUs.
+
+In December 2025, NVIDIA agreed to purchase assets from Groq for approximately $20 billion in what Groq described as a non-exclusive licensing deal.
+
+## Apple Silicon for AI
+
+Apple's M-series chips offer a different value proposition: running AI workloads on hardware that millions of people already own.
+
+### Neural Engine Architecture
+
+Each M-series chip includes a dedicated Neural Engine for accelerating machine learning operations. The M4 Neural Engine performs 38 trillion operations per second (TOPS), 60x faster than the first Neural Engine in A11 Bionic. For comparison, M1's Neural Engine achieved 11 TOPS, while M2 and M3 reached 15.8 TOPS.
+
+The Neural Engine's design favors specialized convolutional and quantized operations. Large transformer-based LLMs depend heavily on dense matrix multiplications more efficiently handled by GPUs or CPUs, which is why full LLM execution solely on the Neural Engine remains aspirational in 2025, with current deployments relying on hybrid CPU/GPU/ANE orchestration.
+
+Apple's AMX (Advanced Matrix Extensions) supports fixed matrix dimensions (e.g., 4x4 or 8x8) for operations. The M4 standardized ARM SME (Scalable Matrix Extension). Core ML blends CPU, GPU, and ANE to create hybrid execution plans exploiting all available engines on a given device.
+
+Unlike GPUs, there is no public framework for directly programming the Neural Engine. Developers use Core ML, which handles hardware scheduling transparently.
+
+### Unified Memory Architecture
+
+M-series processors use unified memory where CPU, GPU, and Neural Engine share the same pool of high-bandwidth memory. There is no separate "system RAM" and "GPU VRAM." This eliminates the PCIe bottleneck that limits GPU memory capacity in traditional systems.
+
+Graphics resources, textures, images, and geometry data can be shared between CPU and GPU with no overhead since there's no need to copy data across a PCIe bus. Every component in the SoC has direct access to RAM: Media Engine, Neural Engine, video encode/decode units. Code passes a pointer to data in memory and the hardware unit processes data in place.
+
+The M4 Max provides up to 128 GB of unified memory with 546 GB/s bandwidth. The M3 Ultra in Mac Studio configurations offers up to 192 GB. This enables running models that would require multiple GPUs on conventional hardware:
+
+- Llama 70B runs on Mac Studio M2 Ultra (192 GB) at 8-12 tokens per second
+- DeepSeek's 671B model can run on 512 GB Mac Studio configurations
+- Models up to 30B parameters run locally on M4 Max or M3 Ultra
+
+### MLX vs MPS: How They Exploit Unified Memory Differently
+
+MPS (Metal Performance Shaders) is an abstraction layer translating standard GPU operations into optimized Metal instructions. It enables frameworks like PyTorch and JAX to run on Apple Silicon with minimal code changes.
+
+MLX, Apple's machine learning framework, was designed specifically for Apple Silicon. The key difference is how they handle memory:
+
+**MPS**: Treats the GPU as a separate device following the traditional CUDA model. While it benefits from unified memory eliminating physical data copies, the programming model still conceptually separates CPU and GPU memory spaces.
+
+**MLX**: Natively exploits unified memory at the framework level. Operations can run on CPU or GPU without data movement between memory pools. The framework exposes this capability directly in its API design.
+
+Benchmarks show MLX achieves the highest sustained generation throughput for LLM inference on Apple Silicon. In comparative testing, MLX was found to be 3x faster than PyTorch MPS on the same M1-Pro GPU.
+
+The M5 chip (October 2025) provides 19-27% performance improvement over M4 due to increased memory bandwidth (153 GB/s versus 120 GB/s). MLX now takes advantage of Neural Accelerators in M5, which provide dedicated matrix-multiplication operations yielding up to 4x speedup compared to M4 baseline for time-to-first-token.
+
+### Power Efficiency Analysis
+
+Power consumption provides Apple Silicon's clearest advantage:
+
+- M3/M4 Max: 40-80W under load during LLM inference
+- RTX 4090: up to 450W for the same task
+- M3 Max generating from Llama 7B: approximately 50W
+- Projected M4 Max: 96-100 tokens/s on 8B Q4_K_M model at similar power
+
+Research introducing "intelligence per watt" as a metric shows 5.3x improvement from 2023-2025, driven by both algorithmic advances and accelerator improvements. Benchmarks show ResNet-50 runs about 3x slower on Apple Silicon than RTX 4090, but with over 80% lower energy consumption.
+
+The M3 Max can generate 30-40 tokens per second with quantized Llama 7B while remaining silent and energy efficient.
+
+### Use Cases
+
+For edge deployment, mobile inference, or power-constrained environments, Apple Silicon efficiency matters. The tradeoff is absolute performance: NVIDIA cards remain faster for raw throughput. But for engineers who need local, private inference without dedicated GPU hardware, Apple Silicon provides an accessible path.
+
+## AMD GPUs and ROCm
+
+AMD's Instinct accelerators offer the most direct competition to NVIDIA in the data center GPU market, though with a significant software ecosystem gap.
+
+### CDNA vs RDNA: Two Architectures, Two Markets
+
+AMD maintains two distinct GPU architectures:
+
+**CDNA (Compute DNA)**: Designed for datacenters, AI, and HPC. Compared to its predecessor GCN, CDNA removed all hardware related to graphics acceleration (graphics caches, tessellation hardware, ROPs, display engine) and added dedicated matrix compute hardware. CDNA has had tensor-like functional units since 2020, with increased throughput and number format support added in CDNA 2 (2021) and CDNA 3 (2023).
+
+**RDNA (Radeon DNA)**: Consumer and workstation GPUs with some AI acceleration. RDNA 3 includes Wave MMA (matrix multiply-accumulate) instructions supporting FP16, BF16, INT8, and INT4 data types, improving inference performance compared to RDNA 2. However, RDNA's AI acceleration is limited compared to CDNA's dedicated matrix cores.
+
+The CDNA 4 architecture (MI350 series, 2025) adds native FP6 and FP4 support. AMD doubled FP8/BF16 throughput and fine-tuned chiplet designs for larger GPU clusters. FP6 processes at twice the rate of FP8 on AMD architecture, unlike NVIDIA where FP6 processes at the same rate as FP8. MI350 offers up to 288 GB HBM3e memory per GPU.
+
+AMD announced UDNA, which will unify RDNA and CDNA into one microarchitecture, ending the split that began in 2019.
+
+### Matrix Cores vs Tensor Cores
+
+**AMD MI300X (CDNA 3)**:
+- 4 Matrix Cores per Compute Unit, 304 CUs per GPU
+- Multi-chip module design: 8 accelerator complex dies (XCD) on TSMC 5nm
+- Each compute die: 38 Compute Units, 4MB L2 cache
+- 192 GB HBM3 memory, 5.3 TB/s bandwidth
+- 1.31 petaflops peak at FP16
+
+**NVIDIA H100 (Hopper)**:
+- 4 Tensor Cores per SM, 132 SMs per GPU
+- Tensor Cores support FP8, FP16, BF16, TF32, FP64, INT8 for A/B matrices
+- 80 GB HBM2e memory, 3.35 TB/s bandwidth
+- Fourth-generation Tensor Cores work up to 6x faster between chips compared to A100
+
+Raw instruction throughput significantly favors MI300X: at times 5x faster than H100, at worst roughly 40% faster for INT32, FP32, FP16, and INT8 compute.
+
+However, real-world training shows different results. For BF16, H100 and H200 achieve roughly 720 TFLOP/s against their marketed 989.5 TFLOP/s, while MI300X reaches only 620 TFLOP/s compared to marketed 1,307 TFLOP/s. Despite higher marketed specs, MI300X is 14% slower than H100/H200 in practice for training workloads (SemiAnalysis benchmark, December 2024).
+
+MI300X has better memory bandwidth (5.3 TB/s vs 3.35 TB/s for H100) and 192 GB vs 80 GB capacity, but H100 exhibits 57% lower memory latency.
+
+For inference, MI300X delivers 40% lower latency for memory-bound Llama2-70B inference and 2.7x faster time to first token for Qwen models. MI300X performs better than H100 SXM at small and large batch sizes (1, 2, 4, 256, 512, 1024) but worse at medium batch sizes.
+
+Cost comparison: MI300X processes 1 million tokens at $11.11 with batch size 4, versus H100's $14.06, creating a 21% cost advantage for AMD.
+
+### ROCm and HIP: The CUDA Compatibility Layer
+
+ROCm (Radeon Open Compute) is AMD's answer to CUDA. HIP (Heterogeneous-compute Interface for Portability) is a C++ runtime API and kernel language enabling platform-independent GPU programs that run on both AMD and NVIDIA GPUs.
+
+HIP intentionally reuses existing `torch.cuda` interfaces:
+
+```python
+cuda = torch.device('cuda')     # Default HIP device
+cuda0 = torch.device('cuda:0')  # 'rocm' or 'hip' are not valid, use 'cuda'
+
+# Detecting HIP vs CUDA at runtime
+if torch.cuda.is_available() and torch.version.hip:
+    # HIP-specific code
+elif torch.cuda.is_available() and torch.version.cuda:
+    # CUDA-specific code
+```
+
+AMD provides HIPIFY tools for translating CUDA code:
+- **hipify-clang**: Parses CUDA code into an AST, traverses it with transformation matchers, and produces HIP source
+- **hipify-perl**: Uses pattern matching for simpler translations
+
+On NVIDIA GPUs, HIP is a thin layer over CUDA, so the two code types interoperate on nvcc platforms. Setting `HIP_PLATFORM=amd` makes hipcc call the clang compiler and ROCclr runtime; `HIP_PLATFORM=nvidia` makes hipcc call nvcc.
+
+HIP 7.0 (second half of 2025) will align HIP C++ more closely with CUDA semantics, refine error handling, and streamline header structures to reduce effort maintaining portable codebases.
+
+Performance benchmarks in 2025 show CUDA typically outperforms ROCm by 10-30% in compute-intensive workloads, though ROCm has narrowed the gap.
+
+### Infinity Fabric Interconnect
+
+Each MI300X has up to seven Infinity Fabric links, each with 16 lanes. Fourth-generation Infinity Fabric supports up to 32 Gbps per lane, yielding 128 GB/s bidirectional bandwidth per link.
+
+The ThinkSystem SR685a V3 includes 8x MI300X GPUs fully interconnected using Infinity Fabric, providing 128 GB/s bandwidth between each of the 8 GPUs for a total of 896 GB/s. Aggregated theoretical bandwidth per GPU reaches 336 GB/s; practical execution yields 310-330 GB/s.
+
+xGMI (External Global Memory Interconnect) enables efficient peer-to-peer GPU communication. AMD's Infinity Fabric links up to eight MI300X or MI355X GPUs in a fully connected mesh.
+
+For cluster scaling, AMD's high-speed accelerator network consists of GPUs connected via Infinity Fabric mesh for low-latency inter-GPU communication. The backend scale-out network uses PCIe 5.0 NICs with RoCEv2, scaling clusters while minimizing congestion. ND MI300X v5 deployments on Azure scale to thousands of GPUs with 3.2 Tb/s interconnect bandwidth per VM.
+
+Fifth-generation Infinity Fabric will connect CPUs, GPUs, and accelerators from node to rack scale, forming the backbone of "Helios" rack deployments.
+
+### Roadmap
+
+- **MI325X** (October 2024): 256 GB HBM3E, 6 TB/s bandwidth
+- **MI350** (2025): CDNA 4 architecture with FP4/FP6 precision formats
+- **MI355X** (late 2025): Projected 2.7x tokens per second versus MI325X
+
+AMD holds approximately 7% of the AI GPU market.
+
+## Intel: Gaudi and Arc
+
+Intel pursues AI acceleration through two product lines: Gaudi for data center training and inference, and Arc for workstation and consumer applications.
+
+### Gaudi 3 Accelerator
+
+The Gaudi 3, manufactured on TSMC 5nm, uses a different architecture from GPUs:
+
+- 64 tensor processor cores (256x256 MAC structure)
+- 8 matrix multiplication engines (256-bit vector processors)
+- 128 GB HBM2e with 3.7 TB/s bandwidth
+- 96 MB on-die SRAM cache with 19.2 TB/s bandwidth
+- 1,835 BF16/FP8 TFLOPS at 600W TDP
+- 24 integrated 200 GbE networking interfaces
+
+Intel claims Gaudi 3 delivers 50% better average inference performance and 40% better power efficiency than NVIDIA H100 at lower cost. Dell's AI platform with Gaudi 3 reports 70% better price-performance for Llama 3 80B inference throughput versus H100.
+
+Gaudi 3 entered volume production in Q3 2024 and is available through OEM systems and IBM Cloud.
+
+### Arc GPUs and oneAPI
+
+Intel's Arc GPUs target workstation AI inference rather than data center training. The Arc Pro B-Series, launched in May 2025:
+
+- **Arc Pro B60**: 24 GB memory, up to 2.7x faster than NVIDIA RTX A2000 Ada on LLM workloads
+- **Arc Pro B50**: 16 GB memory
+
+The oneAPI programming model provides a unified interface across Intel CPUs, GPUs, and accelerators. The oneDNN library and PyTorch 2.7 optimizations support inference on Intel Core Ultra processors and Arc GPUs. The Arc A770 (16 GB) can run Llama2 7B and Llama3 models locally.
+
+## Other Players
+
+Several companies are developing alternative AI accelerator architectures.
+
+### SambaNova Systems
+
+SambaNova's Reconfigurable Dataflow Processing Unit (RDPU) emphasizes software-defined hardware. Their SN40L RDU supports up to 5 trillion parameters in a single system node. The company achieved 129 tokens/second on 405B-parameter models and was named "Most Respected Private Semiconductor Company" at the 2024 GSA Awards.
+
+### Graphcore
+
+Graphcore's Intelligence Processing Unit (IPU) emphasizes fine-grained parallelism and in-processor memory. The architecture keeps more of the model on-chip to reduce memory bottlenecks. SoftBank acquired Graphcore in July 2024.
+
+### Tenstorrent
+
+Led by chip architect Jim Keller, Tenstorrent designs RISC-V based AI chips. The company raised over $693 million in December 2024 at a $2.6+ billion valuation, with investors including Samsung, Bezos Expeditions, LG Electronics, Hyundai, and Fidelity. Tenstorrent plans to release a new AI processor every two years and has launched Grayskull and Wormhole chips.
+
+## What This Means for Engineers
+
+Hardware selection depends on workload characteristics, scale, and constraints.
+
+### Training Workloads
+
+**Large-scale training (100B+ parameters)**: Google TPUs or NVIDIA H100/H200 remain the practical choices. TPUs offer cost advantages for organizations willing to adopt JAX; NVIDIA provides the most mature ecosystem.
+
+**Medium-scale training**: AMD MI300X provides a cost-effective alternative if your workloads align with ROCm's supported configurations. Intel Gaudi 3 offers competitive price-performance for supported model architectures.
+
+**Experimentation and research**: Cloud TPU access through Google Cloud, or NVIDIA GPUs through various providers, offer flexibility without capital commitment.
+
+### Inference Workloads
+
+**Latency-critical inference**: Groq's LPU delivers unmatched speed for supported models. Cerebras CS-3 offers 21x faster inference than Blackwell B200. If your application requires sub-second response times at scale, evaluate both.
+
+**Cost-optimized inference**: TPU v5e and Trillium provide strong price-performance for batch inference. Organizations report 60-70% cost reductions migrating from NVIDIA to TPUs.
+
+**Large model inference**: Cerebras CS-3 handles models that exceed typical GPU memory. The MI300X's 192 GB HBM enables single-GPU deployment of 70B parameter models.
+
+**Edge and local inference**: Apple Silicon with MLX provides the most accessible path for on-device inference. Intel Arc and Gaudi enable Windows-based local deployment.
+
+### Targeting Different Hardware: Code Examples
+
+**JAX/TPU**:
+```python
+import jax
+import jax.numpy as jnp
+
+@jax.jit
+def matmul(x, y):
+    return jnp.matmul(x, y)
+
+# Runs on TPU if available, compiles via XLA
+result = matmul(jnp.ones((1024, 1024)), jnp.ones((1024, 1024)))
+```
+
+**PyTorch/ROCm (AMD)**:
+```python
+import torch
+
+# Same code as CUDA, HIP translates automatically
+device = torch.device('cuda')  # Not 'rocm' or 'hip'
+x = torch.randn(1024, 1024, device=device)
+y = torch.randn(1024, 1024, device=device)
+result = torch.matmul(x, y)
+
+# Check which backend at runtime
+if torch.version.hip:
+    print("Running on AMD via HIP")
+```
+
+**MLX (Apple Silicon)**:
+```python
+import mlx.core as mx
+
+# Operations seamlessly use CPU or GPU via unified memory
+x = mx.random.normal((1024, 1024))
+y = mx.random.normal((1024, 1024))
+result = mx.matmul(x, y)
+mx.eval(result)  # Explicit evaluation
+```
+
+### Cost Considerations
+
+GPU cloud pricing in 2025:
+- H100: $2.10-7.57 per GPU-hour depending on provider and commitment
+- H200: From $2.14-2.50 per GPU-hour
+- TPU v5e: Competitive with H100 at large scale
+- MI300X: $3.99 per GPU-hour (RunPod)
+
+For most organizations, rental makes more sense than purchase given hardware obsolescence risk and 6-12 month procurement timelines. Hidden costs include data egress fees, storage, and idle time; many teams waste 30-50% of budget on provisioned but unused capacity.
+
+The AI hardware market is fragmenting. NVIDIA's dominance will likely persist for training workloads requiring maximum flexibility, but specialized inference hardware, cloud TPUs, and alternative architectures are capturing significant workloads. Engineers who understand these options can optimize for their specific constraints rather than defaulting to the most expensive general-purpose solution.
+
+## References
+
+1. [Google Cloud Blog: Introducing Trillium](https://cloud.google.com/blog/products/compute/introducing-trillium-6th-gen-tpus)
+2. [Google Cloud TPU v5p Documentation](https://docs.cloud.google.com/tpu/docs/v5p)
+3. [Google Cloud TPU v5e Documentation](https://docs.cloud.google.com/tpu/docs/v5e)
+4. [Google Cloud TPU Architecture](https://docs.cloud.google.com/tpu/docs/system-architecture-tpu-vm)
+5. [Google Cloud Blog: BFloat16 on Cloud TPUs](https://cloud.google.com/blog/products/ai-machine-learning/bfloat16-the-secret-to-high-performance-on-cloud-tpus)
+6. [Google Cloud Blog: Trillium MLPerf 4.1 Training Benchmarks](https://cloud.google.com/blog/products/compute/trillium-mlperf-41-training-benchmarks)
+7. [Cerebras CS-3 Announcement](https://www.cerebras.ai/blog/cerebras-cs3)
+8. [Cerebras: 100x Defect Tolerance](https://www.cerebras.ai/blog/100x-defect-tolerance-how-cerebras-solved-the-yield-problem)
+9. [Cerebras Weight Streaming Documentation](https://docs.cerebras.net/en/2.0.3/wsc/cerebras-basics/cerebras-execution-modes.html)
+10. [Cerebras Llama 3.1 405B Performance](https://www.cerebras.ai/press-release/cerebras-inference-llama-405b)
+11. [Cerebras CS-3 vs NVIDIA DGX B200](https://www.cerebras.ai/blog/cerebras-cs-3-vs-nvidia-dgx-b200-blackwell)
+12. [Groq LPU Architecture](https://groq.com/lpu-architecture)
+13. [Groq: Inside the LPU](https://groq.com/blog/inside-the-lpu-deconstructing-groq-speed)
+14. [Groq Speculative Decoding Launch](https://groq.com/blog/groq-first-generation-14nm-chip-just-got-a-6x-speed-boost-introducing-llama-3-1-70b-speculative-decoding-on-groqcloud)
+15. [SemiAnalysis: Groq Inference Tokenomics](https://newsletter.semianalysis.com/p/groq-inference-tokenomics-speed-but)
+16. [Apple M4 Introduction](https://www.apple.com/newsroom/2024/05/apple-introduces-m4-chip/)
+17. [Apple M5 Announcement](https://www.apple.com/newsroom/2025/10/apple-unleashes-m5-the-next-big-leap-in-ai-performance-for-apple-silicon/)
+18. [Apple MLX Research on M5](https://machinelearning.apple.com/research/exploring-llms-mlx-m5)
+19. [MLX vs MPS vs CUDA Benchmark](https://towardsdatascience.com/mlx-vs-mps-vs-cuda-a-benchmark-c5737ca6efc9/)
+20. [AMD MI300X Specifications](https://rocm.docs.amd.com/en/latest/conceptual/gpu-arch/mi300.html)
+21. [SemiAnalysis MI300X vs H100 Benchmark](https://newsletter.semianalysis.com/p/mi300x-vs-h100-vs-h200-benchmark-part-1-training)
+22. [AMD MLPerf Results](https://www.amd.com/en/blogs/2024/engineering-insights-unveiling-mlperf-results-on.html)
+23. [PyTorch HIP Semantics](https://docs.pytorch.org/docs/stable/notes/hip.html)
+24. [ROCm HIP Porting Guide](https://rocm.docs.amd.com/projects/HIP/en/latest/how-to/hip_porting_guide.html)
+25. [AMD Infinity Fabric Interconnect](https://rocm.blogs.amd.com/software-tools-optimization/mi300x-rccl-xgmi/README.html)
+26. [Intel Gaudi 3 White Paper](https://www.intel.com/content/www/us/en/content-details/817486/intel-gaudi-3-ai-accelerator-white-paper.html)
+27. [Intel Arc Pro B-Series Launch](https://www.intc.com/news-events/press-releases/detail/1741/computex-2025-intel-unveils-new-gpus-for-ai-and)
+28. [NVIDIA Market Share Analysis](https://carboncredits.com/nvidia-controls-92-of-the-gpu-market-in-2025-and-reveals-next-gen-ai-supercomputer/)
+29. [JPMorgan Custom Chip Projections](https://finance.yahoo.com/news/nvidias-big-tech-customers-might-also-be-its-biggest-competitive-threat-153032596.html)
+30. [Tenstorrent Funding](https://pitchbook.com/profiles/company/171627-13)
+31. [GPU Cloud Pricing Comparison 2025](https://www.gmicloud.ai/blog/a-guide-to-2025-gpu-cloud-pricing-comparison)
+32. [JAX Framework Documentation](https://jax-ml.github.io/scaling-book/tpus/)
+33. [JAX Matrix Multiplication on TPU](https://docs.jax.dev/en/latest/pallas/tpu/matmul.html)
+34. [TPU Deep Dive](https://henryhmko.github.io/posts/tpu/tpu.html)
+35. [GSPMD Paper (Xu et al., 2021)](https://arxiv.org/abs/2105.04663)
+36. [BF16 Training-Inference Mismatch (arXiv:2510.26788)](https://arxiv.org/abs/2510.26788)

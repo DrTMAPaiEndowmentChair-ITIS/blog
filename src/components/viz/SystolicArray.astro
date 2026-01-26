@@ -1,0 +1,1074 @@
+---
+/**
+ * Interactive Systolic Array Visualization
+ * Shows weight-stationary dataflow with animated data propagation
+ * Visualizes actual binary values flowing through MAC units
+ */
+interface Props {
+  size?: number;
+  title?: string;
+  showLabels?: boolean;
+}
+
+const { size = 4, title = 'Weight-Stationary Systolic Array', showLabels = true } = Astro.props;
+
+// Sample weight matrix (scaled integers for visualization)
+const weights = [
+  [3, 1, 4, 1],
+  [5, 9, 2, 6],
+  [5, 3, 5, 8],
+  [9, 7, 9, 3]
+];
+
+// Input activations
+const activations = [2, 7, 1, 8];
+---
+
+<div class="systolic-viz" data-size={size}>
+  {title && <div class="viz-title">{title}</div>}
+
+  <div class="viz-container">
+    <!-- Controls -->
+    <div class="viz-controls">
+      <button class="ctrl-btn play-btn" aria-label="Play/Pause">
+        <svg class="icon-play" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M4 2l10 6-10 6V2z"/>
+        </svg>
+        <svg class="icon-pause" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M4 2h3v12H4V2zm5 0h3v12H9V2z"/>
+        </svg>
+      </button>
+      <button class="ctrl-btn reset-btn" aria-label="Reset">
+        <svg viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 1a7 7 0 0 0-7 7h2a5 5 0 0 1 8.5-3.5L9.5 6.5H14V2l-1.5 1.5A7 7 0 0 0 8 1z"/>
+        </svg>
+      </button>
+      <button class="ctrl-btn step-btn" aria-label="Step forward">
+        <svg viewBox="0 0 16 16" fill="currentColor">
+          <path d="M4 2l6 6-6 6V2zm6 0h2v12h-2V2z"/>
+        </svg>
+      </button>
+      <div class="step-counter">
+        <span class="step-label">Cycle</span>
+        <span class="step-value">0</span>
+      </div>
+    </div>
+
+    <!-- Main Array Visualization -->
+    <div class="array-grid-container">
+      <!-- Activation Inputs (Left) -->
+      <div class="input-activations">
+        <div class="input-header">Input A</div>
+        {activations.map((a, i) => (
+          <div class="activation-cell" data-row={i} data-value={a}>
+            <div class="cell-value">{a}</div>
+            <div class="cell-binary">
+              {a.toString(2).padStart(4, '0').split('').map((bit, _bi) => (
+                <span class="bit-cell" data-bit={bit}>{bit}</span>
+              ))}
+            </div>
+            <div class="flow-arrow right">
+              <svg viewBox="0 0 20 8" fill="none">
+                <path d="M0 4h16M12 0l4 4-4 4" stroke="currentColor" stroke-width="1.5"/>
+              </svg>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <!-- Main Grid Area -->
+      <div class="grid-main">
+        <!-- Partial Sum Inputs (Top) -->
+        <div class="psum-inputs">
+          <div class="psum-header">Init = 0</div>
+          {Array.from({ length: size }).map((_, i) => (
+            <div class="psum-in-cell" data-col={i}>
+              <span class="psum-val">0</span>
+              <div class="flow-arrow down">
+                <svg viewBox="0 0 8 16" fill="none">
+                  <path d="M4 0v12M0 8l4 4 4-4" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <!-- MAC Unit Grid -->
+        <div class="mac-grid" style={`--cols: ${size}`}>
+          {weights.flatMap((row, r) =>
+            row.map((w, c) => (
+              <div class="mac-unit" data-row={r} data-col={c} data-weight={w}>
+                <div class="mac-inner">
+                  <!-- Weight display -->
+                  <div class="mac-weight">
+                    <span class="weight-label">W</span>
+                    <span class="weight-value">{w}</span>
+                  </div>
+
+                  <!-- Operation indicator -->
+                  <div class="mac-op">
+                    <span class="op-symbol multiply">×</span>
+                    <span class="op-symbol plus">+</span>
+                  </div>
+
+                  <!-- Data slots -->
+                  <div class="mac-data">
+                    <div class="data-slot activation-slot">
+                      <span class="slot-label">a</span>
+                      <span class="slot-value">-</span>
+                    </div>
+                    <div class="data-slot psum-slot">
+                      <span class="slot-label">p</span>
+                      <span class="slot-value">-</span>
+                    </div>
+                  </div>
+
+                  <!-- Result display -->
+                  <div class="mac-result">
+                    <span class="result-value">-</span>
+                  </div>
+                </div>
+
+                <!-- Flow lines -->
+                <div class="flow-line h-flow"></div>
+                <div class="flow-line v-flow"></div>
+
+                <!-- Data pulse indicators -->
+                <div class="pulse-dot h-pulse"></div>
+                <div class="pulse-dot v-pulse"></div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <!-- Partial Sum Outputs (Bottom) -->
+        <div class="psum-outputs">
+          {Array.from({ length: size }).map((_, i) => (
+            <div class="psum-out-cell" data-col={i}>
+              <div class="output-label">C{i}</div>
+              <div class="output-value">-</div>
+              <div class="output-binary">
+                <span class="bit-cell">-</span>
+                <span class="bit-cell">-</span>
+                <span class="bit-cell">-</span>
+                <span class="bit-cell">-</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <!-- Flow Exit (Right) -->
+      <div class="flow-exit">
+        <div class="exit-header">Out</div>
+        {Array.from({ length: size }).map((_, i) => (
+          <div class="exit-cell" data-row={i}>
+            <div class="exit-arrow">
+              <svg viewBox="0 0 12 8" fill="none">
+                <path d="M0 4h8M4 0l4 4-4 4" stroke="currentColor" stroke-width="1"/>
+              </svg>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <!-- Legend & Info -->
+    {showLabels && (
+      <div class="viz-legend">
+        <div class="legend-group">
+          <span class="legend-title">Data Flow</span>
+          <div class="legend-items">
+            <div class="legend-item">
+              <span class="legend-arrow h"></span>
+              <span>Activations (A) flow right</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-arrow v"></span>
+              <span>Partial sums (P) flow down</span>
+            </div>
+          </div>
+        </div>
+        <div class="legend-group">
+          <span class="legend-title">MAC Operation</span>
+          <div class="legend-formula">
+            <code>P<sub>out</sub> = W × A + P<sub>in</sub></code>
+          </div>
+        </div>
+      </div>
+    )}
+
+    <!-- Description -->
+    <div class="viz-description">
+      <p>Each processing element (PE) holds a stationary weight. Activations propagate horizontally while partial sums accumulate vertically. After <code>2n-1</code> cycles, all outputs are computed.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  function initSystolicViz() {
+    document.querySelectorAll('.systolic-viz').forEach((viz) => {
+      const playBtn = viz.querySelector('.play-btn');
+      const resetBtn = viz.querySelector('.reset-btn');
+      const stepBtn = viz.querySelector('.step-btn');
+      const stepDisplay = viz.querySelector('.step-value');
+      const macUnits = viz.querySelectorAll('.mac-unit');
+      const activationCells = viz.querySelectorAll('.activation-cell');
+      const psumOutputs = viz.querySelectorAll('.psum-out-cell');
+
+      const size = parseInt(viz.dataset.size || '4', 10);
+      const weights = [
+        [3, 1, 4, 1],
+        [5, 9, 2, 6],
+        [5, 3, 5, 8],
+        [9, 7, 9, 3]
+      ];
+      const activations = [2, 7, 1, 8];
+
+      let isPlaying = false;
+      let cycle = 0;
+      let animationTimer: number | null = null;
+      const maxCycles = size * 2 + 2;
+
+      // Track partial sums for each column
+      const partialSums: number[][] = Array.from({ length: size }, () =>
+        Array.from({ length: size }, () => 0)
+      );
+
+      // Track current data at each MAC unit
+      const currentActivations: (number | null)[][] = Array.from({ length: size }, () =>
+        Array.from({ length: size }, () => null)
+      );
+
+      const reset = () => {
+        cycle = 0;
+        if (stepDisplay) stepDisplay.textContent = '0';
+
+        // Reset MAC units
+        macUnits.forEach((unit) => {
+          unit.classList.remove('active', 'computing', 'has-data');
+          const aSlot = unit.querySelector('.activation-slot .slot-value');
+          const pSlot = unit.querySelector('.psum-slot .slot-value');
+          const result = unit.querySelector('.result-value');
+          if (aSlot) aSlot.textContent = '-';
+          if (pSlot) pSlot.textContent = '-';
+          if (result) result.textContent = '-';
+
+          const hPulse = unit.querySelector('.h-pulse');
+          const vPulse = unit.querySelector('.v-pulse');
+          hPulse?.classList.remove('active');
+          vPulse?.classList.remove('active');
+        });
+
+        // Reset activation inputs
+        activationCells.forEach((cell) => {
+          cell.classList.remove('sent', 'sending');
+        });
+
+        // Reset outputs
+        psumOutputs.forEach((output) => {
+          output.classList.remove('has-value');
+          const val = output.querySelector('.output-value');
+          const bits = output.querySelectorAll('.output-binary .bit-cell');
+          if (val) val.textContent = '-';
+          bits.forEach(b => b.textContent = '-');
+        });
+
+        // Reset tracking arrays
+        for (let r = 0; r < size; r++) {
+          for (let c = 0; c < size; c++) {
+            partialSums[r][c] = 0;
+            currentActivations[r][c] = null;
+          }
+        }
+      };
+
+      const step = () => {
+        cycle++;
+        if (stepDisplay) stepDisplay.textContent = cycle.toString();
+
+        // Process each MAC unit
+        // Activation at row r enters at cycle (r + 1)
+        // It reaches column c at cycle (r + c + 1)
+
+        macUnits.forEach((unit) => {
+          const r = parseInt(unit.dataset.row || '0', 10);
+          const c = parseInt(unit.dataset.col || '0', 10);
+          const w = weights[r][c];
+          const arrivalCycle = r + c + 1;
+
+          const aSlot = unit.querySelector('.activation-slot .slot-value');
+          const pSlot = unit.querySelector('.psum-slot .slot-value');
+          const resultEl = unit.querySelector('.result-value');
+          const hPulse = unit.querySelector('.h-pulse');
+          const vPulse = unit.querySelector('.v-pulse');
+
+          if (cycle === arrivalCycle) {
+            // Activation arrives
+            const a = activations[r];
+            currentActivations[r][c] = a;
+            unit.classList.add('has-data');
+            if (aSlot) aSlot.textContent = a.toString();
+            hPulse?.classList.add('active');
+
+            // Get partial sum from above (or 0 if top row)
+            const pIn = r > 0 ? partialSums[r - 1][c] : 0;
+            if (pSlot) pSlot.textContent = pIn.toString();
+
+            // Mark input activation as sending
+            if (c === 0) {
+              const input = viz.querySelector(`.activation-cell[data-row="${r}"]`);
+              input?.classList.add('sending');
+            }
+          }
+
+          if (cycle === arrivalCycle + 1) {
+            // Computing - show result
+            unit.classList.add('computing');
+            const a = currentActivations[r][c];
+            const pIn = r > 0 ? partialSums[r - 1][c] : 0;
+            if (a !== null) {
+              const result = w * a + pIn;
+              partialSums[r][c] = result;
+              if (resultEl) resultEl.textContent = result.toString();
+            }
+            vPulse?.classList.add('active');
+
+            // Mark input as fully sent
+            if (c === 0) {
+              const input = viz.querySelector(`.activation-cell[data-row="${r}"]`);
+              input?.classList.remove('sending');
+              input?.classList.add('sent');
+            }
+          }
+
+          if (cycle === arrivalCycle + 2) {
+            // Data leaves
+            unit.classList.remove('computing');
+            hPulse?.classList.remove('active');
+
+            // If last row, update output
+            if (r === size - 1) {
+              const output = viz.querySelector(`.psum-out-cell[data-col="${c}"]`);
+              if (output) {
+                output.classList.add('has-value');
+                const valEl = output.querySelector('.output-value');
+                const bits = output.querySelectorAll('.output-binary .bit-cell');
+                const finalVal = partialSums[r][c];
+                if (valEl) valEl.textContent = finalVal.toString();
+
+                // Show binary representation (8 bits, showing last 4)
+                const binary = finalVal.toString(2).padStart(8, '0').slice(-4);
+                bits.forEach((b, i) => {
+                  b.textContent = binary[i] || '0';
+                  b.dataset.bit = binary[i] || '0';
+                });
+              }
+            }
+          }
+
+          if (cycle > arrivalCycle + 2) {
+            // Clear old data
+            unit.classList.remove('has-data');
+            vPulse?.classList.remove('active');
+            if (aSlot) aSlot.textContent = '-';
+            if (pSlot) pSlot.textContent = '-';
+          }
+        });
+
+        // Loop if playing
+        if (cycle >= maxCycles) {
+          if (isPlaying) {
+            setTimeout(() => {
+              reset();
+              step();
+            }, 800);
+          }
+        }
+      };
+
+      const animate = () => {
+        if (!isPlaying) return;
+        step();
+        if (cycle < maxCycles) {
+          animationTimer = window.setTimeout(animate, 700);
+        } else if (isPlaying) {
+          animationTimer = window.setTimeout(() => {
+            reset();
+            animate();
+          }, 1200);
+        }
+      };
+
+      const togglePlay = () => {
+        isPlaying = !isPlaying;
+        viz.classList.toggle('playing', isPlaying);
+
+        if (isPlaying) {
+          if (cycle >= maxCycles) reset();
+          animate();
+        } else if (animationTimer) {
+          clearTimeout(animationTimer);
+        }
+      };
+
+      playBtn?.addEventListener('click', togglePlay);
+
+      resetBtn?.addEventListener('click', () => {
+        isPlaying = false;
+        viz.classList.remove('playing');
+        if (animationTimer) clearTimeout(animationTimer);
+        reset();
+      });
+
+      stepBtn?.addEventListener('click', () => {
+        if (isPlaying) {
+          isPlaying = false;
+          viz.classList.remove('playing');
+          if (animationTimer) clearTimeout(animationTimer);
+        }
+        if (cycle >= maxCycles) reset();
+        step();
+      });
+
+      // Cleanup
+      document.addEventListener('astro:before-swap', () => {
+        isPlaying = false;
+        if (animationTimer) clearTimeout(animationTimer);
+      }, { once: true });
+    });
+  }
+
+  initSystolicViz();
+  document.addEventListener('astro:after-swap', initSystolicViz);
+</script>
+
+<style>
+  .systolic-viz {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+  }
+
+  .viz-title {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 1.5rem;
+  }
+
+  .viz-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  /* Controls */
+  .viz-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    width: fit-content;
+  }
+
+  .ctrl-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 0;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-tertiary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+  }
+
+  .ctrl-btn svg {
+    width: 10px;
+    height: 10px;
+  }
+
+  .ctrl-btn:hover {
+    border-color: var(--text-secondary);
+    color: var(--text-secondary);
+    background: var(--selection);
+  }
+
+  .play-btn .icon-pause { display: none; }
+
+  .systolic-viz.playing .play-btn {
+    background: var(--text-secondary);
+    border-color: var(--text-secondary);
+    color: var(--bg);
+  }
+
+  .systolic-viz.playing .play-btn .icon-play { display: none; }
+  .systolic-viz.playing .play-btn .icon-pause { display: block; }
+
+  .step-counter {
+    margin-left: 0.5rem;
+    padding-left: 0.75rem;
+    border-left: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 0.35rem;
+  }
+
+  .step-label {
+    font-family: var(--mono);
+    font-size: 0.5rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .step-value {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+    min-width: 1.5ch;
+  }
+
+  /* Grid Container */
+  .array-grid-container {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.25rem;
+    overflow-x: auto;
+    padding: 0.5rem 0;
+  }
+
+  /* Activation Inputs */
+  .input-activations {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding-top: 2.5rem;
+  }
+
+  .input-header,
+  .exit-header,
+  .psum-header {
+    font-family: var(--mono);
+    font-size: 0.5rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
+    white-space: nowrap;
+  }
+
+  .activation-cell {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.4rem 0.5rem;
+    background: var(--selection);
+    border: 1px solid var(--text-tertiary);
+    min-width: 50px;
+    transition: all 0.3s ease;
+  }
+
+  .activation-cell.sending {
+    border-color: var(--text-secondary);
+    box-shadow: 0 0 0 2px var(--selection);
+  }
+
+  .activation-cell.sent {
+    opacity: 0.4;
+  }
+
+  .cell-value {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+  }
+
+  .cell-binary {
+    display: flex;
+    gap: 1px;
+  }
+
+  .bit-cell {
+    font-family: var(--mono);
+    font-size: 0.5rem;
+    width: 0.8rem;
+    height: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+  }
+
+  .bit-cell[data-bit="1"] {
+    background: var(--text-secondary);
+    color: var(--bg);
+  }
+
+  .flow-arrow {
+    position: absolute;
+    color: var(--text-tertiary);
+  }
+
+  .flow-arrow.right {
+    right: -16px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .flow-arrow.right svg {
+    width: 16px;
+    height: 8px;
+  }
+
+  .flow-arrow.down {
+    bottom: -14px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .flow-arrow.down svg {
+    width: 8px;
+    height: 12px;
+  }
+
+  /* Main Grid */
+  .grid-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .psum-inputs {
+    display: flex;
+    gap: 0.25rem;
+    padding-left: 0;
+    align-items: flex-end;
+  }
+
+  .psum-header {
+    width: 0;
+    overflow: visible;
+    white-space: nowrap;
+    position: relative;
+    left: -3rem;
+  }
+
+  .psum-in-cell {
+    position: relative;
+    width: 52px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+  }
+
+  .psum-in-cell .flow-arrow.down {
+    bottom: -12px;
+  }
+
+  .mac-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--cols), 52px);
+    gap: 0.25rem;
+  }
+
+  /* MAC Unit */
+  .mac-unit {
+    position: relative;
+    width: 52px;
+    height: 52px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    transition: all 0.2s ease;
+  }
+
+  .mac-unit.has-data {
+    border-color: var(--text-tertiary);
+    background: var(--bg);
+  }
+
+  .mac-unit.computing {
+    border-color: var(--text-secondary);
+    background: var(--selection);
+  }
+
+  .mac-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.1rem;
+    padding: 0.2rem;
+  }
+
+  .mac-weight {
+    display: flex;
+    align-items: baseline;
+    gap: 0.1rem;
+  }
+
+  .weight-label {
+    font-family: var(--mono);
+    font-size: 0.45rem;
+    color: var(--text-tertiary);
+  }
+
+  .weight-value {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+  }
+
+  .mac-op {
+    display: flex;
+    gap: 0.2rem;
+    font-family: var(--mono);
+    font-size: 0.5rem;
+    color: var(--text-tertiary);
+  }
+
+  .mac-unit.computing .mac-op {
+    color: var(--text-secondary);
+  }
+
+  .mac-data {
+    display: flex;
+    gap: 0.35rem;
+    font-family: var(--mono);
+    font-size: 0.45rem;
+  }
+
+  .data-slot {
+    display: flex;
+    gap: 0.1rem;
+  }
+
+  .slot-label {
+    color: var(--text-tertiary);
+  }
+
+  .slot-value {
+    color: var(--text-secondary);
+    min-width: 1ch;
+  }
+
+  .mac-result {
+    position: absolute;
+    bottom: 2px;
+    right: 3px;
+  }
+
+  .result-value {
+    font-family: var(--mono);
+    font-size: 0.5rem;
+    color: var(--text-primary);
+    opacity: 0.7;
+  }
+
+  .mac-unit.computing .result-value {
+    opacity: 1;
+    font-weight: var(--font-weight-bold);
+  }
+
+  /* Flow Lines */
+  .flow-line {
+    position: absolute;
+    background: var(--border);
+    opacity: 0.4;
+  }
+
+  .h-flow {
+    left: -0.25rem;
+    right: -0.25rem;
+    top: 50%;
+    height: 1px;
+    transform: translateY(-50%);
+  }
+
+  .v-flow {
+    top: -0.25rem;
+    bottom: -0.25rem;
+    left: 50%;
+    width: 1px;
+    transform: translateX(-50%);
+  }
+
+  .mac-unit:first-child .h-flow { left: 50%; }
+  .mac-unit:nth-child(4n) .h-flow { right: 50%; }
+  .mac-unit:nth-child(-n+4) .v-flow { top: 50%; }
+  .mac-unit:nth-last-child(-n+4) .v-flow { bottom: 50%; }
+
+  /* Pulse Dots */
+  .pulse-dot {
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--text-secondary);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  .h-pulse {
+    left: -2px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .v-pulse {
+    top: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .pulse-dot.active {
+    opacity: 1;
+    animation: pulse-move 0.5s ease-out;
+  }
+
+  @keyframes pulse-move {
+    0% { transform: translateY(-50%) scale(1.5); opacity: 0.5; }
+    100% { transform: translateY(-50%) scale(1); opacity: 1; }
+  }
+
+  /* Outputs */
+  .psum-outputs {
+    display: flex;
+    gap: 0.25rem;
+    margin-top: 0.25rem;
+  }
+
+  .psum-out-cell {
+    width: 52px;
+    padding: 0.4rem 0.25rem;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    transition: all 0.3s ease;
+  }
+
+  .psum-out-cell.has-value {
+    border-color: var(--text-tertiary);
+    background: var(--bg);
+  }
+
+  .output-label {
+    font-family: var(--mono);
+    font-size: 0.5rem;
+    color: var(--text-tertiary);
+  }
+
+  .output-value {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+  }
+
+  .output-binary {
+    display: flex;
+    gap: 1px;
+  }
+
+  .output-binary .bit-cell {
+    font-size: 0.45rem;
+    width: 0.7rem;
+    height: 0.7rem;
+  }
+
+  /* Flow Exit */
+  .flow-exit {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding-top: 2.5rem;
+  }
+
+  .exit-cell {
+    height: 52px;
+    display: flex;
+    align-items: center;
+    padding-left: 0.25rem;
+  }
+
+  .exit-arrow {
+    color: var(--border);
+  }
+
+  .exit-arrow svg {
+    width: 12px;
+    height: 8px;
+  }
+
+  /* Legend */
+  .viz-legend {
+    display: flex;
+    gap: 2rem;
+    padding: 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+
+  .legend-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .legend-title {
+    font-family: var(--mono);
+    font-size: 0.5rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .legend-items {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .legend-item span:last-child {
+    font-family: var(--mono);
+    font-size: 0.5rem;
+    color: var(--text-tertiary);
+  }
+
+  .legend-arrow {
+    width: 14px;
+    height: 1px;
+    background: var(--text-secondary);
+    position: relative;
+  }
+
+  .legend-arrow.h::after {
+    content: '';
+    position: absolute;
+    right: -1px;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 2px solid transparent;
+    border-left: 3px solid var(--text-secondary);
+  }
+
+  .legend-arrow.v {
+    width: 1px;
+    height: 12px;
+    background: var(--text-tertiary);
+  }
+
+  .legend-arrow.v::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 2px solid transparent;
+    border-top: 3px solid var(--text-tertiary);
+  }
+
+  .legend-formula {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-secondary);
+  }
+
+  .legend-formula code {
+    background: var(--selection);
+    padding: 0.2rem 0.4rem;
+    border: 1px solid var(--border);
+  }
+
+  .legend-formula sub {
+    font-size: 0.45rem;
+  }
+
+  /* Description */
+  .viz-description {
+    font-size: 0.55rem;
+    color: var(--text-tertiary);
+    line-height: 1.6;
+    font-family: var(--mono);
+  }
+
+  .viz-description p {
+    margin: 0;
+  }
+
+  .viz-description code {
+    background: var(--selection);
+    padding: 0.1rem 0.25rem;
+    border: 1px solid var(--border);
+    font-size: 0.5rem;
+  }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .systolic-viz {
+      padding: 1rem;
+    }
+
+    .array-grid-container {
+      justify-content: flex-start;
+    }
+
+    .mac-grid {
+      grid-template-columns: repeat(var(--cols), 44px);
+    }
+
+    .mac-unit {
+      width: 44px;
+      height: 44px;
+    }
+
+    .psum-in-cell,
+    .psum-out-cell {
+      width: 44px;
+    }
+
+    .activation-cell {
+      min-width: 44px;
+      padding: 0.3rem;
+    }
+
+    .viz-legend {
+      flex-direction: column;
+      gap: 1rem;
+    }
+  }
+</style>

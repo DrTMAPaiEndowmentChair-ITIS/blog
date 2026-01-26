@@ -1,0 +1,343 @@
+---
+/**
+ * Interactive CPU vs GPU comparison visualization
+ * Shows visual comparison of few powerful CPU cores vs many simple GPU cores
+ * Animates on hover to demonstrate serial vs parallel execution
+ */
+interface Props {
+  title?: string;
+  cpuCores?: number;
+  gpuCores?: number;
+}
+
+const { title = "CPU vs GPU Architecture", cpuCores = 4, gpuCores = 64 } = Astro.props;
+
+// Generate grid dimensions for GPU cores (aim for roughly square)
+const gpuCols = Math.ceil(Math.sqrt(gpuCores));
+const gpuRows = Math.ceil(gpuCores / gpuCols);
+---
+
+<div class="parallel-compare" data-component="parallel-compare">
+  {title && <div class="compare-title">{title}</div>}
+
+  <div class="compare-container">
+    <!-- CPU Section -->
+    <div class="processor-section cpu-section">
+      <div class="processor-header">
+        <span class="processor-label">CPU</span>
+        <span class="processor-subtitle">Few Powerful Cores</span>
+      </div>
+      <div class="core-grid cpu-grid" data-cores="cpu">
+        {Array.from({ length: cpuCores }).map((_, i) => (
+          <div class="core cpu-core" data-core-index={i}>
+            <div class="core-inner">
+              <span class="core-number">{i + 1}</span>
+            </div>
+            <div class="core-activity"></div>
+          </div>
+        ))}
+      </div>
+      <div class="execution-label">
+        <span class="label-text">Serial Execution</span>
+        <span class="label-detail">One task at a time</span>
+      </div>
+    </div>
+
+    <!-- Divider -->
+    <div class="section-divider">
+      <div class="divider-line"></div>
+      <span class="divider-text">vs</span>
+      <div class="divider-line"></div>
+    </div>
+
+    <!-- GPU Section -->
+    <div class="processor-section gpu-section">
+      <div class="processor-header">
+        <span class="processor-label">GPU</span>
+        <span class="processor-subtitle">Many Simple Cores</span>
+      </div>
+      <div
+        class="core-grid gpu-grid"
+        data-cores="gpu"
+        style={`--gpu-cols: ${gpuCols}; --gpu-rows: ${gpuRows};`}
+      >
+        {Array.from({ length: gpuCores }).map((_, i) => (
+          <div class="core gpu-core" data-core-index={i}>
+            <div class="core-activity"></div>
+          </div>
+        ))}
+      </div>
+      <div class="execution-label">
+        <span class="label-text">Parallel Execution</span>
+        <span class="label-detail">Many tasks simultaneously</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="interaction-hint">
+    <span>Hover to see execution pattern</span>
+  </div>
+</div>
+
+<style>
+  .parallel-compare {
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  .compare-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .compare-container {
+    display: flex;
+    align-items: stretch;
+    gap: 1.5rem;
+  }
+
+  .processor-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    transition: border-color 0.2s ease-out;
+  }
+
+  .processor-section:hover {
+    border-color: var(--text-secondary);
+  }
+
+  .processor-header {
+    text-align: center;
+    margin-bottom: 1rem;
+  }
+
+  .processor-label {
+    display: block;
+    font-weight: var(--font-weight-bold);
+    font-size: 1rem;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+  }
+
+  .processor-subtitle {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+  }
+
+  /* Core Grids */
+  .core-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    min-height: 100px;
+  }
+
+  .cpu-grid {
+    gap: 0.75rem;
+  }
+
+  .gpu-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--gpu-cols, 8), 1fr);
+    gap: 3px;
+  }
+
+  /* Core Styles */
+  .core {
+    position: relative;
+    border-radius: 0;
+    transition: all 0.15s ease-out;
+  }
+
+  .cpu-core {
+    width: 48px;
+    height: 48px;
+    background: var(--selection);
+    border: 2px solid var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cpu-core .core-inner {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cpu-core .core-number {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--text-secondary);
+  }
+
+  .gpu-core {
+    width: 10px;
+    height: 10px;
+    background: var(--code-bg);
+    border: 1px solid var(--text-tertiary);
+  }
+
+  .core-activity {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: transparent;
+    transition: background 0.1s ease-out;
+    pointer-events: none;
+  }
+
+  /* Serial Animation (CPU) - Sequential activation */
+  .cpu-section:hover .cpu-core {
+    animation: cpu-pulse 1.6s infinite;
+  }
+
+  .cpu-section:hover .cpu-core:nth-child(1) { animation-delay: 0s; }
+  .cpu-section:hover .cpu-core:nth-child(2) { animation-delay: 0.4s; }
+  .cpu-section:hover .cpu-core:nth-child(3) { animation-delay: 0.8s; }
+  .cpu-section:hover .cpu-core:nth-child(4) { animation-delay: 1.2s; }
+  .cpu-section:hover .cpu-core:nth-child(5) { animation-delay: 0.2s; }
+  .cpu-section:hover .cpu-core:nth-child(6) { animation-delay: 0.6s; }
+  .cpu-section:hover .cpu-core:nth-child(7) { animation-delay: 1.0s; }
+  .cpu-section:hover .cpu-core:nth-child(8) { animation-delay: 1.4s; }
+
+  @keyframes cpu-pulse {
+    0%, 20% {
+      background: var(--text-secondary);
+      transform: scale(1.05);
+      box-shadow: 0 0 12px var(--text-tertiary);
+    }
+    25%, 100% {
+      background: var(--selection);
+      transform: scale(1);
+      box-shadow: none;
+    }
+  }
+
+  /* Parallel Animation (GPU) - All cores activate together */
+  .gpu-section:hover .gpu-core {
+    animation: gpu-pulse 0.8s infinite;
+  }
+
+  @keyframes gpu-pulse {
+    0%, 50% {
+      background: var(--text-tertiary);
+      box-shadow: 0 0 4px var(--text-tertiary);
+    }
+    51%, 100% {
+      background: var(--code-bg);
+      box-shadow: none;
+    }
+  }
+
+  /* Execution Labels */
+  .execution-label {
+    margin-top: 1rem;
+    text-align: center;
+  }
+
+  .label-text {
+    display: block;
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+  }
+
+  .label-detail {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-top: 0.125rem;
+  }
+
+  /* Divider */
+  .section-divider {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.5rem;
+  }
+
+  .divider-line {
+    width: 1px;
+    flex: 1;
+    background: var(--border);
+    min-height: 20px;
+  }
+
+  .divider-text {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    padding: 0.5rem 0;
+    text-transform: uppercase;
+  }
+
+  /* Interaction Hint */
+  .interaction-hint {
+    text-align: center;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .interaction-hint span {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+  }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .compare-container {
+      flex-direction: column;
+    }
+
+    .section-divider {
+      flex-direction: row;
+      padding: 0.5rem 0;
+    }
+
+    .divider-line {
+      width: auto;
+      height: 1px;
+      flex: 1;
+      min-height: auto;
+    }
+
+    .divider-text {
+      padding: 0 0.75rem;
+    }
+
+    .cpu-core {
+      width: 40px;
+      height: 40px;
+    }
+
+    .gpu-core {
+      width: 8px;
+      height: 8px;
+    }
+  }
+</style>

@@ -1,0 +1,634 @@
+---
+title: "Fine-Tuning LLMs: A Practical Guide to Tools, Techniques, and Best Practices"
+pubDate: 2026-01-09
+author: "Aadit Agrawal"
+---
+
+import FinetuneDecisionFlow from '../../components/viz/FinetuneDecisionFlow.astro';
+
+Fine-tuning large language models has become accessible to individual developers and small teams. What once required clusters of expensive GPUs can now run on consumer hardware with the right techniques and tools. This guide covers the practical aspects of fine-tuning: when to do it, how to do it efficiently, and which tools to use.
+
+## When Fine-Tuning Makes Sense
+
+<FinetuneDecisionFlow />
+
+Before investing in fine-tuning, consider whether simpler approaches will work. The decision framework looks like this:
+
+**Start with prompt engineering.** If you can solve your problem by crafting better prompts, do that. Prompt engineering takes hours to days and requires no infrastructure changes. It works well for prototypes, MVPs, and cases where the base model's capabilities are sufficient.
+
+**Use RAG when you need external knowledge.** If your model hallucinates or lacks company-specific information, Retrieval-Augmented Generation is the answer. RAG connects the model to a knowledge base and retrieves relevant context before generating responses. Customer service chatbots and documentation assistants benefit from this approach.[^1]
+
+**Fine-tune when you need behavioral changes.** If your system fails on reasoning, planning, or strict policies even with good prompts and retrieval, fine-tuning makes the difference. Use cases include:
+
+- Interpreting clinical notes or legal documents
+- Enforcing a specific output format consistently
+- Teaching domain-specific terminology and relationships
+- Matching a particular writing style or tone
+
+Fine-tuning is also appropriate when you want to distill capabilities from a larger model into a smaller one for faster inference or reduced costs.[^2]
+
+The tradeoff is clear: prompt engineering is a sprint, RAG is a marathon with hydration stations, and fine-tuning is building a Formula 1 car from scratch. Each serves different purposes.
+
+## Types of Fine-Tuning
+
+### Full Fine-Tuning
+
+Full fine-tuning updates every parameter in the model. For a 7B parameter model, this requires over 28GB of GPU memory just for the weights in full precision. Training consumes additional memory for gradients and optimizer states.
+
+The results can be excellent. Full fine-tuning gives the model maximum flexibility to adapt to new tasks. But the costs are significant:
+
+- High compute requirements (multiple high-end GPUs)
+- Risk of catastrophic forgetting (the model forgets pre-trained knowledge)
+- One full-size checkpoint per task[^3]
+
+### Parameter-Efficient Fine-Tuning
+
+PEFT methods update only a fraction of parameters while keeping the base model frozen. The Hugging Face PEFT library demonstrates this: training bigscience/mt0-large with PEFT touches just 2,359,296 parameters out of 1,231,940,608 total. That is 0.19% of the model.[^4]
+
+Performance remains competitive. With just 200 parameters projected into a space of millions of dimensions, you can achieve 90% of full fine-tuning performance. Some studies show PEFT techniques outperforming full fine-tuning on certain code intelligence tasks.[^5]
+
+### LoRA
+
+Low-Rank Adaptation, introduced by Microsoft Research in 2021, freezes the pre-trained weights and injects trainable low-rank decomposition matrices into transformer layers. Instead of updating billions of parameters, you train small adapter matrices amounting to 1-5% of the original parameters.[^6]
+
+The key insight: weight updates during fine-tuning have low intrinsic rank. You can represent them as the product of two smaller matrices (A and B) without losing much information.
+
+LoRA has virtually no downsides for most use cases: memory usage is minimal, training is fast, and quality is high. The adapter weights can merge into the base model for inference, eliminating latency overhead.
+
+### QLoRA
+
+QLoRA extends LoRA by adding 4-bit quantization of the base model. The frozen weights are stored in 4-bit precision while LoRA adapters train in higher precision. Gradients backpropagate through the quantized model.[^7]
+
+Three innovations make QLoRA work:
+
+1. **NF4 quantization**: Uses the known distribution of neural network weights (zero-centered normal) to quantize effectively
+2. **Double quantization**: Quantizes the quantization constants themselves to reduce memory overhead
+3. **Paged optimizers**: Manages memory spikes during training
+
+QLoRA enables fine-tuning 70B parameter models on hardware that would struggle with 7B models using full fine-tuning. A single A100 80GB handles models that would otherwise require 4-8 GPUs.[^8]
+
+The tradeoff: QLoRA achieves 80-90% of full fine-tuning quality compared to LoRA's 90-95%. For many applications, this is acceptable given the massive resource savings.
+
+### Adapters
+
+Adapters are small neural networks inserted into transformer layers, typically after attention or feed-forward sublayers. They have a bottleneck architecture similar to autoencoders: the input is projected down to a smaller dimension, transformed, then projected back up.[^9]
+
+The original adapter paper showed BERT trained with adapters reached performance comparable to full fine-tuning while training only 3.6% of parameters. More recent work demonstrates that adapter-based PEFT in 7B parameter models can match or exceed the zero-shot performance of 175B parameter models on reasoning tasks.[^10]
+
+## Unsloth
+
+[Unsloth](https://unsloth.ai/) is an open-source library that accelerates LLM fine-tuning. The claims are substantial: 2x faster training with 70% less VRAM compared to standard Hugging Face methods.[^11]
+
+### Why Unsloth is Fast
+
+The speed comes from several optimizations:
+
+- Custom Triton kernels for RoPE embeddings and MLP layers
+- Fused operations that reduce memory transfers
+- "Uncontaminated sequence packing" that combines sequences efficiently
+- Chunked cross-entropy loss computation
+
+A December 2025 update combined these optimizations to achieve up to 3x faster training throughput with 60% lower VRAM usage.[^12]
+
+### Supported Models
+
+Unsloth supports the models people actually use:
+
+- Llama 3.x and Llama 4 (including multimodal variants)
+- Qwen 2.5 and Qwen 3
+- Mistral and Mixtral
+- Gemma 2 and Gemma 3
+- DeepSeek models
+- Phi-3 and Phi-4
+- Vision models: Llama 3.2 Vision, Qwen 2.5 VL, Pixtral
+
+The library also supports NVIDIA GPUs from Tesla T4 to H100, with portability to AMD and Intel GPUs.[^13]
+
+### Memory Requirements
+
+VRAM requirements depend on model size and quantization:
+
+| Model | QLoRA 4-bit | LoRA 16-bit |
+|-------|-------------|-------------|
+| 7-9B parameters | 6.5GB | 24GB |
+| 20B parameters | 14GB | - |
+| 70B parameters | 48GB | - |
+| 120B parameters | 65GB | - |
+
+These numbers make consumer GPU fine-tuning realistic. A 24GB RTX 4090 handles most 7-9B parameter models with LoRA.
+
+### Installation
+
+```bash
+pip install unsloth
+```
+
+For Conda environments:
+
+```bash
+conda create --name unsloth python=3.11 pytorch-cuda=12.1 pytorch cudatoolkit xformers -c pytorch -c nvidia -c xformers -y
+conda activate unsloth
+pip install unsloth
+```
+
+### Code Example
+
+Here is a complete example fine-tuning Llama 3.2 3B with QLoRA:
+
+```python
+from unsloth import FastLanguageModel
+from trl import SFTTrainer
+from transformers import TrainingArguments
+from datasets import load_dataset
+
+# Load model with 4-bit quantization
+model, tokenizer = FastLanguageModel.from_pretrained(
+    model_name="unsloth/Llama-3.2-3B-Instruct-bnb-4bit",
+    max_seq_length=2048,
+    load_in_4bit=True,
+)
+
+# Add LoRA adapters
+model = FastLanguageModel.get_peft_model(
+    model,
+    r=16,  # LoRA rank
+    target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
+                    "gate_proj", "up_proj", "down_proj"],
+    lora_alpha=16,
+    lora_dropout=0,
+    bias="none",
+    use_gradient_checkpointing="unsloth",
+)
+
+# Load and format dataset
+dataset = load_dataset("yahma/alpaca-cleaned", split="train")
+
+def format_prompt(example):
+    instruction = example["instruction"]
+    input_text = example["input"]
+    output = example["output"]
+
+    if input_text:
+        text = f"""### Instruction:
+{instruction}
+
+### Input:
+{input_text}
+
+### Response:
+{output}"""
+    else:
+        text = f"""### Instruction:
+{instruction}
+
+### Response:
+{output}"""
+    return {"text": text}
+
+dataset = dataset.map(format_prompt)
+
+# Configure training
+trainer = SFTTrainer(
+    model=model,
+    tokenizer=tokenizer,
+    train_dataset=dataset,
+    dataset_text_field="text",
+    max_seq_length=2048,
+    args=TrainingArguments(
+        per_device_train_batch_size=4,
+        gradient_accumulation_steps=4,
+        warmup_steps=10,
+        max_steps=100,
+        learning_rate=2e-4,
+        fp16=True,
+        logging_steps=10,
+        output_dir="outputs",
+    ),
+)
+
+# Train
+trainer.train()
+
+# Save adapter weights
+model.save_pretrained("lora_model")
+
+# For inference
+FastLanguageModel.for_inference(model)
+inputs = tokenizer("### Instruction:\nWrite a haiku about coding.\n\n### Response:\n",
+                   return_tensors="pt").to("cuda")
+outputs = model.generate(**inputs, max_new_tokens=64)
+print(tokenizer.decode(outputs[0], skip_special_tokens=True))
+```
+
+The `FastLanguageModel.for_inference()` call enables Unsloth's optimized inference mode, providing 2x speedup over standard generation.[^14]
+
+## Thinking Machines' Tinker
+
+[Tinker](https://thinkingmachines.ai/) is a training API from Mira Murati's Thinking Machines Lab, released in October 2025. The premise is handling infrastructure complexity while giving you control over algorithms and data.[^15]
+
+### How Tinker Works
+
+You write simple Python scripts with four core functions, and Tinker runs them across distributed GPUs. The platform handles:
+
+- Multi-GPU and multi-node distribution
+- Checkpoint management
+- Memory optimization
+- Gradient synchronization
+
+Research teams at Princeton, Stanford, and Berkeley use Tinker for their work. The platform supports models up to 1 trillion parameters, including Kimi K2.[^16]
+
+### Supported Training Approaches
+
+Tinker supports the full range of post-training methods:
+
+**Supervised fine-tuning** for instruction following and task adaptation
+
+**Preference learning** with a three-stage RLHF pipeline:
+1. Supervised fine-tuning on demonstrations
+2. Training a reward model on preferences
+3. RL optimization against the reward model
+
+**Prompt distillation** for internalizing long instructions into model weights
+
+**Multi-agent optimization** for training models to interact with other models or themselves
+
+The [Tinker cookbook](https://github.com/thinking-machines-lab/tinker-cookbook) on GitHub contains examples for these approaches.[^17]
+
+### LoRA Research
+
+Thinking Machines published research on LoRA hyperparameters. Key finding: when picking optimal learning rates for each setting, training progresses almost identically for LoRAs with different sizes and full fine-tuning. Similar results appeared on AIME 2024 and AIME 2025 evaluations.[^18]
+
+## Other Fine-Tuning Tools
+
+### Hugging Face TRL
+
+TRL (Transformer Reinforcement Learning) is Hugging Face's library for post-training foundation models. It supports supervised fine-tuning, GRPO (Group Relative Policy Optimization), DPO (Direct Preference Optimization), and PPO.[^19]
+
+Key features:
+
+- Built on the Transformers ecosystem
+- Native support for distributed training (DDP, DeepSpeed, FSDP)
+- Integration with PEFT for memory-efficient training
+- OpenEnv integration for RL and agentic workflows
+
+The GRPOTrainer implements the algorithm used to train DeepSeek's R1. It is more memory-efficient than PPO.[^20]
+
+```python
+from trl import SFTTrainer, DPOTrainer, GRPOTrainer
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+# Basic SFT example
+model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.2-3B")
+tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-3B")
+
+trainer = SFTTrainer(
+    model=model,
+    train_dataset=dataset,
+    tokenizer=tokenizer,
+)
+trainer.train()
+```
+
+The combination of TRL and PEFT enables fine-tuning gpt-neo-x 20B (40GB in bfloat16) on a 24GB consumer GPU.[^21]
+
+### Axolotl
+
+[Axolotl](https://github.com/axolotl-ai-cloud/axolotl) is Modal's recommended framework for beginners. It offers flexibility, ease of use, and rapid adoption of new models and techniques.[^22]
+
+2025 brought significant updates:
+
+- February: LoRA optimizations for memory and speed, GRPO support
+- May: Quantization Aware Training (QAT)
+- August: NVFP4 support, GPT-OSS model support
+- ND Parallelism combining Context Parallelism, Tensor Parallelism, and FSDP
+
+Axolotl supports multi-GPU training, unlike Unsloth. If you have a large GPU cluster, Axolotl is the better choice.[^23]
+
+Configuration uses YAML files that span the full pipeline: dataset preprocessing, training, evaluation, quantization, and inference.
+
+```yaml
+base_model: meta-llama/Llama-3.2-3B-Instruct
+model_type: AutoModelForCausalLM
+tokenizer_type: AutoTokenizer
+
+load_in_4bit: true
+adapter: qlora
+lora_r: 32
+lora_alpha: 16
+lora_dropout: 0.05
+lora_target_modules:
+  - q_proj
+  - v_proj
+  - k_proj
+  - o_proj
+  - gate_proj
+  - down_proj
+  - up_proj
+
+datasets:
+  - path: yahma/alpaca-cleaned
+    type: alpaca
+
+sequence_len: 4096
+micro_batch_size: 2
+gradient_accumulation_steps: 4
+num_epochs: 3
+learning_rate: 2e-4
+optimizer: adamw_torch
+lr_scheduler: cosine
+
+output_dir: ./outputs
+```
+
+### LLaMA-Factory
+
+[LLaMA-Factory](https://github.com/hiyouga/LlamaFactory) provides a WebUI for fine-tuning, making it accessible to non-technical users. The toolkit supports over 100 models and received the ACL 2024 best paper award.[^24]
+
+2025 additions include:
+
+- Orthogonal Finetuning (OFT and OFTv2) in August
+- GPT-OSS and Intern-S1-mini support
+- GLM-4.1V, Qwen3, InternVL3, Llama 4, Qwen2.5-Omni
+
+Training approaches span supervised fine-tuning, continuous pre-training, and preference tuning (PPO, DPO, KTO, ORPO). The toolkit integrates FlashAttention-2, DeepSpeed, GaLore, and BAdam optimization.[^25]
+
+Inference uses OpenAI-style API, Gradio UI, or CLI with vLLM or SGLang workers.
+
+### torchtune
+
+[torchtune](https://github.com/meta-pytorch/torchtune) is PyTorch's native post-training library. It offers composable building blocks without framework abstractions.[^26]
+
+If you prefer working directly with PyTorch, torchtune is the choice. The library is designed with memory efficiency in mind, with recipes tested on consumer GPUs with 24GB VRAM.
+
+Features include:
+
+- LoRA fine-tuning on single device
+- Knowledge distillation
+- DPO training
+- Multi-node training (added February 2025)
+- Export to ExecuTorch for mobile and edge inference
+
+```bash
+# Single-device LoRA fine-tuning
+tune run lora_finetune_single_device --config llama3_2/3B_lora_single_device
+
+# Knowledge distillation
+tune run knowledge_distillation_distributed --config qwen2/1.5B_to_0.5B_KD_lora_distributed
+```
+
+## Data Preparation
+
+### Dataset Formats
+
+Two formats dominate: Alpaca and ShareGPT.
+
+**Alpaca format** suits instruction-following tasks. Each example has three fields:
+
+```json
+{
+  "instruction": "Write a function to calculate factorial",
+  "input": "5",
+  "output": "def factorial(n):\n    if n <= 1:\n        return 1\n    return n * factorial(n-1)\n\nprint(factorial(5))  # 120"
+}
+```
+
+The original Alpaca dataset contains 52,000 instruction-output pairs generated by GPT-4 from 175 seed instructions.[^27]
+
+**ShareGPT format** handles multi-turn conversations:
+
+```json
+{
+  "conversations": [
+    {"role": "user", "content": "What is the capital of France?"},
+    {"role": "assistant", "content": "Paris is the capital of France."},
+    {"role": "user", "content": "What is its population?"},
+    {"role": "assistant", "content": "Paris has a population of about 2.1 million in the city proper, and over 12 million in the metropolitan area."}
+  ]
+}
+```
+
+ShareGPT supports additional roles: human, GPT, observation, and function. Human and observation entries appear in odd positions; GPT and function in even positions.[^28]
+
+Use Alpaca for single-turn question-and-answer tasks. Use ShareGPT for conversational chatbots, especially those with function calling.
+
+### Data Quality
+
+Quality matters more than quantity. A few thousand well-curated examples often outperform hundreds of thousands of noisy ones.
+
+Check for:
+
+- Correct answers (verify factual claims)
+- Consistent formatting
+- Diverse task coverage
+- Balanced class distribution
+- No personally identifiable information
+
+Clean datasets exist for common starting points. [AlpacaDataCleaned](https://github.com/gururise/AlpacaDataCleaned) removes problematic examples from the original Alpaca dataset.[^29]
+
+### Synthetic Data Generation
+
+When human-labeled data is scarce, synthetic data fills the gap. Teacher-student distillation uses a larger model (like GPT-4) to generate training examples for a smaller model.[^30]
+
+Strategies for synthetic data:
+
+**Question-answer generation**: Use retrieval-augmented pipelines to generate QA pairs from documents. A multi-stage framework with retriever, generator, and refinement model produces higher quality than single-pass generation.
+
+**Active synthetic data generation**: Generate data iteratively based on the current model's weaknesses. Simple selection criteria from active learning perform well.
+
+**Rephrasing**: Augment existing questions with paraphrased versions. This is robust even with weaker augmentation models.
+
+Challenges exist. LLMs can hallucinate, producing incorrect labels or logically inconsistent examples. Validate synthetic data before training, either through automated checks or sampling for human review.[^31]
+
+Red Hat's [SDG Hub](https://developers.redhat.com/articles/2025/11/25/building-domain-specific-llms-synthetic-data-and-sdg-hub) provides an open-source toolkit for synthetic data workflows.
+
+## Training Configurations
+
+### Learning Rate
+
+The learning rate is the most important hyperparameter. For LoRA and QLoRA fine-tuning:
+
+- Start with 2e-4 for small models (7B)
+- Scale down to 2e-5 for larger models (70B+)
+- If training is unstable, reduce to 1e-4 or 3e-5
+
+Learning rate of 1e-4 has become standard for LoRA fine-tuning. Reducing it further helps with occasional training loss instabilities.[^32]
+
+Use warmup steps (5-10% of total steps) and a scheduler. Cosine annealing works well for most cases.
+
+### Batch Size
+
+Maximize tokens-per-second without running out of memory. Use gradient accumulation to achieve larger effective batch sizes.
+
+A common configuration:
+
+```python
+per_device_train_batch_size = 4
+gradient_accumulation_steps = 4
+# Effective batch size = 16
+```
+
+Larger batch sizes provide more stable gradients but require more memory. If you hit OOM errors, reduce per-device batch size and increase gradient accumulation.
+
+### LoRA Rank and Alpha
+
+**Rank (r)**: Controls the capacity of the adapter. Common values are 8, 16, 32, or 64.
+
+- Higher rank = more parameters = more capacity for diverse tasks
+- Lower rank = fewer parameters = faster training, less overfitting risk
+- Research suggests the most critical factor is applying LoRA to all linear transformer layers, not the specific rank value[^33]
+
+**Alpha**: Scaling factor for LoRA weights. Recommendations vary:
+
+- Set alpha equal to rank (alpha/rank = 1)
+- Set alpha to 2x rank (alpha/rank = 2), as Microsoft does in their examples
+- The original LoRA paper suggests fixing alpha at 16
+
+If rank is 16, start with alpha of 16 or 32. Adjust based on results.
+
+**Target modules**: Apply LoRA to both attention and MLP layers for best results. The minimal set is attention projections (q, k, v, o). Adding gate_proj, up_proj, and down_proj improves performance.
+
+### Number of Epochs
+
+For instruction-based datasets, 1-3 epochs work well. Training beyond 3 epochs offers diminishing returns and increases overfitting risk.[^34]
+
+Monitor validation loss. If it starts increasing while training loss continues decreasing, you are overfitting.
+
+## Evaluation and Deployment
+
+### Benchmarks
+
+No single benchmark suffices. Select benchmarks relevant to your use case:
+
+**Instruction following**: MT-Bench, AlpacaEval, LMSYS Chatbot Arena
+
+**Reasoning**: GSM8K (math), MATH (competition math), BBH (Big Bench Hard), DROP
+
+**Knowledge**: MMLU (15,000+ multiple-choice questions across 57 subjects)
+
+**Truthfulness**: TruthfulQA (800+ questions across 38 subjects)
+
+**Domain-specific**: Build custom evaluation sets matching your deployment scenario[^35]
+
+### LLM-as-Judge
+
+MT-Bench introduced using LLMs to evaluate other LLMs. GPT-4 serves as a judge to score response quality. This scales better than human evaluation for rapid iteration.[^36]
+
+Open-source alternatives exist. Prometheus is a Llama-2-Chat model fine-tuned on 100K GPT-4 feedback examples. It achieves comparable evaluation capabilities when given appropriate reference materials.[^37]
+
+### Tracking Progress
+
+Use AlpacaEval to compute win-rate deltas before and after fine-tuning. Track metrics on held-out validation sets throughout training.
+
+Tools for experiment tracking:
+
+- Weights & Biases
+- MLflow
+- TensorBoard
+- LlamaBoard (LLaMA-Factory specific)
+
+### Deployment
+
+After fine-tuning, merge LoRA weights into the base model for inference:
+
+```python
+# With Unsloth
+model.save_pretrained_merged("merged_model", tokenizer, save_method="merged_16bit")
+
+# Or save as GGUF for llama.cpp
+model.save_pretrained_gguf("model_gguf", tokenizer, quantization_method="q4_k_m")
+```
+
+Quantization reduces model size for deployment. Common options:
+
+- GGUF format for llama.cpp and Ollama
+- AWQ for vLLM
+- GPTQ for text-generation-inference
+
+For production inference, use vLLM, SGLang, or TGI rather than Hugging Face Transformers directly.
+
+### Continuous Monitoring
+
+Static benchmarks alone will not catch performance drift. Monitor in production:
+
+- Response latency
+- User feedback signals (thumbs up/down, regeneration requests)
+- Domain-specific quality metrics
+- Hallucination rates on known-answer queries
+
+Retrain periodically as your data distribution shifts.
+
+## References
+
+[^1]: [RAG vs. Fine-tuning vs. Prompt Engineering: The Complete Guide to AI Optimization](https://www.news.aakashg.com/p/rag-vs-fine-tuning-vs-prompt-engineering)
+
+[^2]: [Fine-Tuning, RAG, or Prompt Engineering? LLM Decision Guide - Moveo.AI](https://moveo.ai/blog/fine-tuning-rag-or-prompt-engineering)
+
+[^3]: [PEFT vs Full Fine-Tuning Comparison - APXML](https://apxml.com/courses/introduction-to-llm-fine-tuning/chapter-4-parameter-efficient-fine-tuning-peft/comparing-peft-full-fine-tuning)
+
+[^4]: [Parameter-Efficient Fine-Tuning using PEFT - Hugging Face](https://huggingface.co/blog/peft)
+
+[^5]: [Exploring Parameter-Efficient Fine-Tuning Techniques for Code Generation - ACM](https://dl.acm.org/doi/10.1145/3714461)
+
+[^6]: [Parameter-Efficient Fine-Tuning of Large Language Models with LoRA and QLoRA - Analytics Vidhya](https://www.analyticsvidhya.com/blog/2023/08/lora-and-qlora/)
+
+[^7]: [Fine-Tuning Infrastructure: LoRA, QLoRA, and PEFT at Scale - Introl](https://introl.com/blog/fine-tuning-infrastructure-lora-qlora-peft-scale-guide-2025)
+
+[^8]: [Best GenAI Fine-Tuning Tools for 2025 - LoRA vs QLoRA - Index.dev](https://www.index.dev/blog/top-ai-fine-tuning-tools-lora-vs-qlora-vs-full)
+
+[^9]: [Finetuning LLMs with Adapters - Sebastian Raschka](https://magazine.sebastianraschka.com/p/finetuning-llms-with-adapters)
+
+[^10]: [LLM-Adapters: An Adapter Family for Parameter-Efficient Fine-Tuning - ACL Anthology](https://aclanthology.org/2023.emnlp-main.319/)
+
+[^11]: [Unsloth GitHub Repository](https://github.com/unslothai/unsloth)
+
+[^12]: [Unsloth AI Makes LLM Fine-Tuning 3x Faster and 90% Cheaper - Medium](https://medium.com/coding-nexus/unsloth-ai-makes-llm-fine-tuning-3-faster-and-90-cheaper-love-you-0f32eb3d7b98)
+
+[^13]: [Unsloth AI - Open Source Fine-tuning & RL for LLMs](https://unsloth.ai/)
+
+[^14]: [QLoRA Fine-Tuning with Unsloth: A Complete Guide - Medium](https://medium.com/@matteo28/qlora-fine-tuning-with-unsloth-a-complete-guide-8652c9c7edb3)
+
+[^15]: [Thinking Machines makes its Tinker AI fine-tuning service generally available - SiliconANGLE](https://siliconangle.com/2025/12/12/thinking-machines-makes-tinker-ai-fine-tuning-service-generally-available/)
+
+[^16]: [Thinking Machines' New Tinker API Makes It Easier To Fine-Tune Models On Many GPUs - DeepLearning.AI](https://www.deeplearning.ai/the-batch/thinking-machines-new-tinker-api-makes-it-easier-to-fine-tune-models-on-many-gpus/)
+
+[^17]: [Tinker Cookbook - GitHub](https://github.com/thinking-machines-lab/tinker-cookbook)
+
+[^18]: [LoRA Without Regret - Thinking Machines Lab](https://thinkingmachines.ai/blog/lora/)
+
+[^19]: [TRL - Transformer Reinforcement Learning - Hugging Face](https://huggingface.co/docs/trl/en/index)
+
+[^20]: [TRL GitHub Repository](https://github.com/huggingface/trl)
+
+[^21]: [Fine-tuning 20B LLMs with RLHF on a 24GB consumer GPU - Hugging Face](https://huggingface.co/blog/trl-peft)
+
+[^22]: [Best frameworks for fine-tuning LLMs in 2025 - Modal](https://modal.com/blog/fine-tuning-llms)
+
+[^23]: [Axolotl GitHub Repository](https://github.com/axolotl-ai-cloud/axolotl)
+
+[^24]: [LLaMA-Factory GitHub Repository](https://github.com/hiyouga/LlamaFactory)
+
+[^25]: [LLaMA-Factory Documentation](https://llamafactory.readthedocs.io/en/latest/)
+
+[^26]: [torchtune: Easily fine-tune LLMs using PyTorch - PyTorch](https://pytorch.org/blog/torchtune-fine-tune-llms/)
+
+[^27]: [Datasets Guide - Unsloth Documentation](https://unsloth.ai/docs/get-started/fine-tuning-llms-guide/datasets-guide)
+
+[^28]: [Fine-Tuning LLMs with LLaMA-Factory: Guidance and Insights - Usee.ai](https://blog.usee.ai/fine-tuning-llms-with-llama-factory-guidance-and-insights-5cc619f56a7f)
+
+[^29]: [AlpacaDataCleaned - GitHub](https://github.com/gururise/AlpacaDataCleaned)
+
+[^30]: [Synthetic Data Generation Strategies for Fine-Tuning LLMs - Scale](https://scale.com/blog/synthetic-data-fine-tuning-llms)
+
+[^31]: [Synthetic Data: Benefits and Techniques for LLM Fine-Tuning in 2025 - Label Your Data](https://labelyourdata.com/articles/llm-fine-tuning/synthetic-data)
+
+[^32]: [Practical Tips for Finetuning LLMs Using LoRA - Sebastian Raschka](https://magazine.sebastianraschka.com/p/practical-tips-for-finetuning-llms)
+
+[^33]: [LoRA fine-tuning Hyperparameters Guide - Unsloth Documentation](https://unsloth.ai/docs/get-started/fine-tuning-llms-guide/lora-hyperparameters-guide)
+
+[^34]: [Fine-Tuning LLMs with LoRA: 2025 Guide - Amir Teymoori](https://amirteymoori.com/fine-tuning-llms-with-lora-a-practical-guide-for-2025/)
+
+[^35]: [LLM Evaluation: Benchmarks to Test Model Quality in 2025 - Label Your Data](https://labelyourdata.com/articles/llm-fine-tuning/llm-evaluation)
+
+[^36]: [30 LLM evaluation benchmarks and how they work - Evidently AI](https://www.evidentlyai.com/llm-guide/llm-benchmarks)
+
+[^37]: [Awesome LLM Evaluation - GitHub](https://alopatenko.github.io/LLMEvaluation/)

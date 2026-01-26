@@ -1,0 +1,1485 @@
+---
+title: 'Voice and Audio AI Models: Architecture, Training, and Deployment'
+pubDate: '2026-01-26'
+---
+
+import AudioPipeline from '../../components/viz/AudioPipeline.astro';
+import ConformerBlock from '../../components/viz/ConformerBlock.astro';
+import TTSPipeline from '../../components/viz/TTSPipeline.astro';
+import BranchingFlow from '../../components/viz/BranchingFlow.astro';
+import DualStream from '../../components/viz/DualStream.astro';
+import HierarchicalFlow from '../../components/viz/HierarchicalFlow.astro';
+import TokenFlow from '../../components/viz/TokenFlow.astro';
+import ChunkedAttention from '../../components/viz/ChunkedAttention.astro';
+
+**Author**: Aadit Agrawal
+
+Voice and audio AI has advanced rapidly, with models now capable of real-time transcription, natural speech synthesis, voice cloning from seconds of audio, and full-duplex conversational interactions. This article provides a technical survey of the architectures behind speech-to-text, text-to-speech, voice conversion, and audio language models. We cover the mathematical foundations, practical training considerations, and deployment strategies for building production systems.
+
+---
+
+## Speech-to-Text Models
+
+Automatic speech recognition (ASR) converts audio waveforms into text. Modern ASR systems have moved from traditional hidden Markov models with hand-crafted acoustic features to end-to-end neural networks trained on massive datasets.
+
+### Whisper Architecture
+
+[Whisper](https://github.com/openai/whisper), released by OpenAI in September 2022, is a Transformer-based encoder-decoder model trained on 680,000 hours of multilingual and multitask supervised data collected from the web [1].
+
+**Input Processing**
+
+Audio is resampled to 16 kHz and converted to an 80-channel log-magnitude Mel spectrogram using 25ms windows with 10ms stride. The spectrogram is normalized to a [-1, 1] range with near-zero mean. For the large-v3 model, this was increased to 128 Mel frequency bins [2].
+
+**Encoder**
+
+The encoder processes the Mel spectrogram through:
+
+1. Two convolutional layers for initial downsampling
+2. Sinusoidal positional embeddings added to the sequence
+3. A stack of Transformer encoder blocks with pre-activation residual connections
+4. Layer normalization on the final output
+
+<AudioPipeline
+  title="Whisper Encoder Architecture"
+  subtitle="Audio to encoded representation pipeline"
+  stages={[
+    {
+      id: "input",
+      label: "Audio Input",
+      sublabel: "16 kHz waveform",
+      icon: "waveform",
+      color: "muted",
+      details: ["Raw audio resampled to 16 kHz", "30 seconds maximum duration"]
+    },
+    {
+      id: "mel",
+      label: "Mel Spectrogram",
+      sublabel: "80-128 channels",
+      icon: "spectrogram",
+      color: "accent",
+      details: ["25ms window, 10ms stride", "Log-magnitude normalized to [-1, 1]", "80 channels (128 for large-v3)"]
+    },
+    {
+      id: "conv",
+      label: "Conv Layers",
+      sublabel: "2x downsample",
+      icon: "conv",
+      color: "accent",
+      details: ["Conv1D (3x3, stride 1) + GELU", "Conv1D (3x3, stride 2) + GELU", "Downsamples sequence by 2x"]
+    },
+    {
+      id: "pos",
+      label: "Pos Embed",
+      sublabel: "sinusoidal",
+      icon: "embedding",
+      color: "muted",
+      details: ["Sinusoidal positional embeddings", "Added to conv output"]
+    },
+    {
+      id: "transformer",
+      label: "Transformer",
+      sublabel: "12-32 layers",
+      icon: "transformer",
+      color: "highlight",
+      details: ["Multi-head self-attention", "Feed-forward layers", "Pre-activation residual connections", "Final layer normalization"]
+    },
+    {
+      id: "output",
+      label: "Encoder Output",
+      sublabel: "contextualized",
+      icon: "attention",
+      color: "accent",
+      details: ["Rich audio representations", "Used by decoder for transcription"]
+    }
+  ]}
+/>
+
+**Decoder**
+
+The decoder follows the standard Transformer decoder architecture with learned positional embeddings and tied input-output token representations (same weight matrix for input embeddings and output projection). It uses byte-pair encoding tokenization similar to GPT-2.
+
+**Model Sizes**
+
+| Model | Parameters | Layers | Width | Heads |
+|-------|------------|--------|-------|-------|
+| tiny | 39M | 4 | 384 | 6 |
+| base | 74M | 6 | 512 | 8 |
+| small | 244M | 12 | 768 | 12 |
+| medium | 769M | 24 | 1024 | 16 |
+| large-v3 | 1.55B | 32 | 1280 | 20 |
+
+Whisper's encoder-decoder structure makes it naturally suited for batch processing but challenging for streaming applications. The encoder requires the full 30-second audio context before producing useful representations [3].
+
+### Conformer Architecture
+
+The [Conformer](https://arxiv.org/abs/2005.08100) (Convolution-augmented Transformer), introduced by Google in 2020, addresses a fundamental limitation of pure Transformers: while self-attention captures global context well, it struggles with local feature patterns that are important for speech [4].
+
+**Key Insight**
+
+Speech signals contain both local patterns (phonemes, formants) and global dependencies (grammar, semantics). CNNs excel at local feature extraction while Transformers handle global context. Conformer combines both.
+
+**Block Structure**
+
+The Conformer uses a "macaron" structure where two feed-forward layers sandwich the attention and convolution modules:
+
+<ConformerBlock />
+
+**Convolution Module Details**
+
+The convolution module uses depthwise separable convolutions for efficiency:
+
+1. **Pointwise conv** with expansion factor 2 followed by GLU activation
+2. **Depthwise conv** (1D, kernel size typically 31) captures local context
+3. **BatchNorm** for training stability
+4. **Swish activation** (x * sigmoid(x))
+5. **Pointwise conv** to project back to original dimension
+
+The depthwise convolution has kernel size 31 by default, meaning each output position attends to 15 frames on each side (roughly 150ms of audio context at standard 10ms frame rates).
+
+**Performance**
+
+On LibriSpeech, Conformer achieves 2.1%/4.3% WER without a language model and 1.9%/3.9% with an external language model on test-clean/test-other [4]. This made it the dominant architecture for production ASR systems through 2024.
+
+### CTC vs Attention-Based Decoding
+
+ASR systems use two main decoding paradigms with different tradeoffs [5].
+
+**Connectionist Temporal Classification (CTC)**
+
+CTC, introduced by Graves et al. in 2006, addresses the alignment problem in sequence-to-sequence tasks where input and output sequences have different lengths.
+
+Key properties:
+- **Monotonic alignment**: Output tokens appear in the same order as their corresponding input frames
+- **Conditional independence**: CTC assumes each output token is independent given the input, which simplifies computation but ignores output dependencies
+- **Blank token**: A special "blank" token allows the model to output nothing for frames that fall between phonemes
+
+<TokenFlow
+  title="CTC Decoding Example"
+  inputTokens={["h", "h", "-", "e", "e", "e", "-", "l", "l", "-", "l", "-", "o", "o"]}
+  outputText="hello"
+/>
+
+CTC loss marginalizes over all possible alignments between input and output:
+
+```
+P(Y|X) = Σ P(A|X)  for all valid alignments A
+```
+
+Models like Wav2Vec2, HuBERT, and M-CTC-T use CTC [5]. The main advantage is **non-autoregressive decoding**: all output tokens can be computed in parallel, enabling faster inference.
+
+**Attention-Based Encoder-Decoder (AED)**
+
+AED models (like Whisper) use cross-attention to learn soft alignments between encoder outputs and decoder states:
+
+- **No independence assumption**: Each output token conditions on all previous tokens
+- **Implicit language model**: The decoder learns language patterns from training data
+- **Flexible alignment**: Can handle non-monotonic mappings (useful for translation)
+
+The downside is **autoregressive decoding**: tokens must be generated sequentially, increasing latency.
+
+**Hybrid CTC/Attention**
+
+Many modern systems combine both approaches. During training, a CTC loss is applied to the encoder output as a regularizer, encouraging monotonic alignment. During inference, CTC scores can be used to constrain beam search [5].
+
+The RNN-Transducer (RNN-T), used by Google and other production systems, extends CTC with a prediction network that models output dependencies without full autoregressive decoding.
+
+### Streaming ASR Challenges and Solutions
+
+Real-time applications like voice assistants require streaming ASR that transcribes speech with minimal latency. This is challenging because Transformer models rely on full-sequence attention [6].
+
+**The Problem**
+
+Standard self-attention has O(n^2) complexity and requires the entire sequence:
+
+```
+Attention(Q, K, V) = softmax(QK^T / √d) V
+```
+
+For a 30-second audio clip at 50 frames/second, this means 1500 frames must be available before processing begins.
+
+**Chunked Attention**
+
+The primary solution is chunked (or blockwise) attention:
+
+1. Divide input into fixed-size chunks (e.g., 640ms)
+2. Each chunk attends only to itself and a limited left context
+3. Process chunks incrementally as audio arrives
+
+<ChunkedAttention />
+
+**Tradeoffs**
+
+- Smaller chunks = lower latency, worse accuracy
+- Larger left context = better accuracy, higher memory and compute
+
+Research shows that chunked attention with 32-48 frames of left context and 16-32 frame chunks achieves a reasonable balance. The SSCFormer architecture uses sequentially sampled chunks with causal convolutions to improve accuracy within the streaming constraint [6].
+
+**Positional Encoding for Streaming**
+
+With chunked attention, relative positional encodings work better than absolute ones. The model only needs to represent distances up to the maximum context window, not positions within an indefinitely long stream.
+
+---
+
+## Text-to-Speech Models
+
+Text-to-speech (TTS) converts text into natural-sounding audio. Modern TTS has evolved from concatenative synthesis (splicing recorded audio) through parametric synthesis to end-to-end neural approaches.
+
+### VITS Architecture
+
+[VITS](https://arxiv.org/abs/2106.06103) (Variational Inference with adversarial learning for end-to-end Text-to-Speech) unifies the acoustic model and vocoder into a single end-to-end framework using variational inference and adversarial training [7].
+
+**Key Innovation**
+
+Traditional TTS pipelines generate mel spectrograms from text, then convert spectrograms to waveforms with a separate vocoder. This two-stage approach can cause mismatch artifacts. VITS generates waveforms directly from text.
+
+**Architecture Components**
+
+<TTSPipeline
+  title="VITS Architecture"
+  inputLabel="Text Input"
+  outputLabel="Waveform Output"
+  stages={[
+    {
+      id: "encoder",
+      label: "Text Encoder",
+      sublabel: "Transformer",
+      color: "accent"
+    },
+    {
+      id: "prior",
+      label: "Prior Encoder",
+      sublabel: "Posterior distribution",
+      annotation: "Normalizing flows (4 coupling layers), each has 4 WaveNet residual blocks",
+      color: "highlight"
+    },
+    {
+      id: "duration",
+      label: "Duration Predictor",
+      annotation: "Stochastic: predicts distribution using DDSConv (dilated depthwise sep)",
+      color: "highlight"
+    },
+    {
+      id: "decoder",
+      label: "HiFi-GAN Decoder",
+      color: "accent"
+    }
+  ]}
+/>
+
+**Variational Inference Framework**
+
+VITS models TTS as a conditional VAE:
+
+1. **Posterior encoder**: During training, encodes ground-truth mel spectrogram into latent z
+2. **Prior encoder**: Learns to predict z from text alone (with normalizing flows to increase expressiveness)
+3. **Decoder**: Generates waveform from z
+
+The training objective combines:
+- Reconstruction loss (from VAE)
+- KL divergence between prior and posterior
+- Adversarial loss (discriminator judges waveform quality)
+- Feature matching loss (compare discriminator activations)
+
+**Stochastic Duration Predictor**
+
+Unlike deterministic duration predictors, VITS uses a stochastic duration predictor that models duration as a distribution. This enables generating the same text with different speaking rates and rhythms, capturing the natural variability in human speech.
+
+**VITS2 Improvements**
+
+VITS2 enhances the original with:
+- Improved duration prediction using a transformer-based predictor
+- Better speaker conditioning for multi-speaker models
+- Monotonic alignment search for more stable training
+
+### Tacotron Family Evolution
+
+The [Tacotron](https://arxiv.org/abs/1712.05884) models pioneered end-to-end TTS using sequence-to-sequence learning [8].
+
+**Tacotron 1 (2017)**
+
+- Character-level input (no phoneme conversion needed)
+- Encoder: CBHG (1-D convolution bank + highway network + bidirectional GRU)
+- Attention: Content-based attention with location features
+- Decoder: Autoregressive GRU predicting mel spectrogram frames
+- Vocoder: Griffin-Lim algorithm (fast but low quality)
+
+**Tacotron 2 (2017)**
+
+Key improvements over Tacotron 1:
+- Simplified encoder: 3 conv layers + bidirectional LSTM
+- Location-sensitive attention: Adds previous alignment to attention computation
+- Decoder: 2 autoregressive LSTM layers
+- PostNet: 5 conv layers to refine mel spectrogram
+- Vocoder: WaveNet (high quality but slow)
+
+<TTSPipeline
+  title="Tacotron 2 Architecture"
+  inputLabel='Text: "Hello world"'
+  outputLabel="Mel Spectrogram"
+  stages={[
+    {
+      id: "embed",
+      label: "Character Embedding",
+      sublabel: "512-dim",
+      color: "muted"
+    },
+    {
+      id: "conv",
+      label: "3x Conv1D Layers",
+      details: ["512 filters, k=5", "BatchNorm + ReLU"],
+      color: "accent"
+    },
+    {
+      id: "lstm-enc",
+      label: "Bidirectional LSTM",
+      sublabel: "512 units",
+      color: "accent"
+    },
+    {
+      id: "attention",
+      label: "Location-Sensitive Attention",
+      details: ["Previous alignment", "Conv features", "Content-based scoring"],
+      color: "highlight"
+    },
+    {
+      id: "lstm-dec",
+      label: "2x Decoder LSTM",
+      details: ["1024 units each", "+ Pre-net"],
+      color: "accent"
+    },
+    {
+      id: "proj",
+      label: "Linear Projection",
+      sublabel: "to Mel spectrogram",
+      color: "muted"
+    },
+    {
+      id: "postnet",
+      label: "PostNet",
+      sublabel: "5x Conv1D layers",
+      color: "accent"
+    }
+  ]}
+/>
+
+Tacotron 2 achieved MOS of 4.53, approaching the 4.58 MOS of professionally recorded speech [8].
+
+**FastSpeech (2019) and FastSpeech 2 (2020)**
+
+FastSpeech addressed Tacotron's slow autoregressive inference:
+
+- **Non-autoregressive**: Generates all mel frames in parallel
+- **Duration predictor**: Explicitly models phoneme durations
+- **Length regulator**: Expands text sequence to match mel length
+
+FastSpeech 2 added pitch and energy predictors for more controllable synthesis. It achieves RTF of ~0.02 on V100 (50x faster than real-time).
+
+### Neural Vocoders
+
+Vocoders convert mel spectrograms (or other intermediate representations) into audio waveforms. This is an inverse problem: spectrograms discard phase information, which the vocoder must reconstruct.
+
+**HiFi-GAN**
+
+[HiFi-GAN](https://github.com/jik876/hifi-gan), published in 2020, uses GANs for efficient high-fidelity synthesis [9].
+
+Architecture:
+- **Generator**: Transposed convolutions for upsampling, multi-receptive field fusion (MRF) blocks
+- **Multi-period discriminator (MPD)**: Multiple discriminators operating on different periodic subsequences (periods 2, 3, 5, 7, 11)
+- **Multi-scale discriminator (MSD)**: Discriminators at different audio resolutions
+
+The key insight is that speech contains multiple periodic components (fundamental frequency and harmonics). By having discriminators focus on different periodicities, the model learns to generate all these components correctly.
+
+<TTSPipeline
+  title="HiFi-GAN Generator"
+  inputLabel="Mel Spectrogram (80 x T)"
+  outputLabel="Audio Waveform"
+  stages={[
+    {
+      id: "upsample",
+      label: "Transposed Conv",
+      sublabel: "kernel=16, stride=8",
+      annotation: "Upsample 8x",
+      color: "accent"
+    },
+    {
+      id: "mrf",
+      label: "MRF Block",
+      details: ["Conv (k=3, d=1)", "Conv (k=7, d=1)", "Conv (k=11, d=1)"],
+      annotation: "Multiple parallel residual blocks with different kernel sizes and dilations",
+      color: "highlight"
+    },
+    {
+      id: "repeat",
+      label: "Repeat 3x",
+      sublabel: "with different upsample factors",
+      color: "muted"
+    },
+    {
+      id: "output",
+      label: "Conv1D + tanh",
+      color: "accent"
+    }
+  ]}
+/>
+
+HiFi-GAN V1 (14M params) generates audio 13.4x faster than real-time on CPU.
+
+**BigVGAN**
+
+[BigVGAN](https://arxiv.org/abs/2206.04658), from NVIDIA in 2022, scales up HiFi-GAN with architectural improvements [10]:
+
+1. **Snake activation**: Periodic activation function x + sin^2(x)/a with learned frequency. Provides inductive bias for generating periodic waveforms.
+
+2. **Anti-aliased representation**: Low-pass filtering before downsampling in discriminator to prevent aliasing artifacts.
+
+3. **Larger scale**: Up to 112M parameters (vs 14M for HiFi-GAN V1)
+
+BigVGAN trained only on clean speech (LibriTTS) generalizes to unseen speakers, languages, singing, and even instrumental music without fine-tuning.
+
+### Zero-Shot TTS
+
+Zero-shot TTS generates speech in any voice given only a few seconds of reference audio.
+
+**VALL-E**
+
+[VALL-E](https://www.microsoft.com/en-us/research/project/vall-e-x/), from Microsoft in 2023, treats TTS as a language modeling problem [11]:
+
+1. Audio is tokenized using a neural codec (EnCodec) into discrete codes at 75 Hz with 8 codebook levels
+2. A Transformer language model is trained to predict audio tokens given text and a 3-second acoustic prompt
+3. The first codebook level captures semantic content; subsequent levels add acoustic detail
+
+<TTSPipeline
+  title="VALL-E Zero-Shot TTS"
+  inputLabel="Text tokens + Reference audio tokens (3s)"
+  outputLabel="Waveform"
+  stages={[
+    {
+      id: "ar",
+      label: "Autoregressive Model",
+      sublabel: "predicts 1st codebook",
+      annotation: "Predicts coarse codes",
+      color: "accent"
+    },
+    {
+      id: "nar",
+      label: "Non-autoregressive Model",
+      sublabel: "predicts codebooks 2-8",
+      annotation: "Predicts fine codes given coarse codes",
+      color: "highlight"
+    },
+    {
+      id: "codec",
+      label: "Neural Codec Decoder",
+      sublabel: "EnCodec",
+      color: "accent"
+    }
+  ]}
+/>
+
+VALL-E 2 achieved human parity on LibriSpeech and VCTK using repetition-aware sampling and grouped code modeling [11].
+
+**XTTS**
+
+[XTTS](https://arxiv.org/html/2406.04904v1), from Coqui, builds on Tortoise with improvements for multilingual zero-shot TTS [12]:
+
+- VQ-VAE encodes mel spectrograms at 21.53 Hz (vs 75 Hz for VALL-E, reducing sequence length)
+- GPT-2 decoder (443M params) predicts audio tokens
+- Perceiver architecture for speaker conditioning: processes reference mel spectrogram into 32 latent vectors
+- Supports 16 languages with SOTA results
+
+XTTS v2 achieves RTF of 0.48 with 200ms time-to-first-chunk for streaming applications [12].
+
+**F5-TTS**
+
+[F5-TTS](https://gradientflow.com/f5-tts/) uses a non-autoregressive design with flow matching:
+
+- Requires only 2,994 MB GPU memory
+- Better for resource-constrained environments
+- Trades streaming capability for efficiency
+
+### How Voice Cloning Works
+
+Voice cloning extracts a speaker's characteristics from reference audio and applies them to synthesize new speech [13].
+
+**Speaker Encoder**
+
+A neural network extracts a fixed-dimension speaker embedding from reference audio:
+
+1. Input: Mel spectrogram of reference audio (3-10 seconds)
+2. Architecture: Often 3-layer LSTM or ECAPA-TDNN
+3. Output: 256-dim speaker embedding vector (d-vector)
+
+<TTSPipeline
+  title="Speaker Encoder Pipeline"
+  inputLabel="Reference Audio"
+  outputLabel="256-dim d-vector"
+  stages={[
+    {
+      id: "mel",
+      label: "Mel Spectrogram",
+      sublabel: "40 or 80 channels",
+      color: "muted"
+    },
+    {
+      id: "lstm",
+      label: "3x LSTM Layers",
+      sublabel: "768 units each",
+      color: "accent"
+    },
+    {
+      id: "pool",
+      label: "Temporal Average Pooling",
+      color: "highlight"
+    },
+    {
+      id: "norm",
+      label: "L2 Normalize",
+      color: "muted"
+    }
+  ]}
+/>
+
+**Embedding-Based Adaptation**
+
+The speaker embedding conditions the TTS model:
+
+1. **Concatenation**: Append embedding to encoder output
+2. **Addition**: Add embedding to hidden states
+3. **FiLM**: Use embedding to predict scale/shift parameters for normalization layers
+
+More advanced approaches use attention-based conditioning (like XTTS's Perceiver) to capture finer-grained speaker characteristics.
+
+**Quality vs Data**
+
+- Zero-shot (3-10s reference): Captures voice timbre but may miss speaking style
+- Few-shot fine-tuning (1-5 min): Better style transfer, requires training
+- Full fine-tuning (30+ min): Highest quality, significant compute cost
+
+---
+
+## Voice Conversion and Cloning
+
+Voice conversion transforms speech from one speaker to sound like another while preserving linguistic content.
+
+### Speaker Embedding Extraction
+
+Modern voice conversion uses self-supervised models like HuBERT to extract speaker-independent content representations [14].
+
+**HuBERT for Content**
+
+HuBERT (Hidden-Unit BERT) is trained via masked prediction on audio:
+
+1. Extract MFCC features
+2. Cluster MFCCs with k-means to create pseudo-labels
+3. Train Transformer to predict masked pseudo-labels
+4. Iterate: use model outputs as new clustering targets
+
+The resulting representations capture phonetic content while being somewhat speaker-invariant. RVC uses layer 12 of HuBERT as content features [14].
+
+**ECAPA-TDNN for Speaker**
+
+ECAPA-TDNN extracts speaker embeddings:
+
+- Time Delay Neural Network with multi-scale features
+- Squeeze-and-excitation blocks for channel attention
+- Attentive statistics pooling
+- Trained on speaker verification (distinguish speakers)
+
+### Disentanglement of Content and Speaker
+
+The core challenge in voice conversion is separating "what is said" from "who said it" [15].
+
+**Information Bottleneck**
+
+One approach uses information bottlenecks to force separation:
+
+<BranchingFlow
+  title="Voice Conversion Disentanglement"
+  inputLabel="Source Audio"
+  outputLabel="Converted Audio"
+  leftBranch={[
+    { id: "content", label: "Content Encoder", sublabel: "(narrow)", color: "accent" }
+  ]}
+  rightBranch={[
+    { id: "speaker", label: "Speaker Encoder", sublabel: "(narrow)", color: "accent" }
+  ]}
+  leftLabel="Content Path"
+  rightLabel="Speaker Path"
+  mergeNode={{ id: "replace", label: "Replace Speaker Embedding", sublabel: "Target speaker embedding", color: "highlight" }}
+  postMerge={[
+    { id: "decoder", label: "Decoder", color: "accent" }
+  ]}
+/>
+
+**Adversarial Disentanglement**
+
+Train with adversarial losses to ensure:
+- Content encoder output cannot predict speaker (speaker classifier fails)
+- Speaker encoder output cannot predict content (ASR fails)
+
+**CONTENTVEC Approach**
+
+CONTENTVEC converts all training audio to a single speaker using an unsupervised VC system, then trains HuBERT on this speaker-normalized data. The resulting representations contain minimal speaker information [15].
+
+### RVC Architecture
+
+[Retrieval-based Voice Conversion (RVC)](https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI) is an open-source system achieving high-quality conversion with minimal data [14].
+
+**Pipeline**
+
+<TTSPipeline
+  title="RVC Voice Conversion Pipeline"
+  inputLabel="Source Audio"
+  outputLabel="Converted Audio"
+  stages={[
+    {
+      id: "hubert",
+      label: "HuBERT Content Encoder",
+      annotation: "Content features (layer 12)",
+      color: "accent"
+    },
+    {
+      id: "rmvpe",
+      label: "RMVPE Pitch Extractor",
+      annotation: "Pitch (F0) extraction, works on polyphonic audio",
+      color: "accent"
+    },
+    {
+      id: "retrieval",
+      label: "Faiss Index Retrieval",
+      sublabel: "+ Target Speaker Embedding",
+      annotation: "Replace with nearest training set features",
+      color: "highlight"
+    },
+    {
+      id: "vits",
+      label: "VITS Decoder",
+      details: ["HuBERT features + F0 + speaker embedding"],
+      color: "accent"
+    }
+  ]}
+/>
+
+**Retrieval Module**
+
+RVC's key innovation is the retrieval step:
+
+1. During training: Store all HuBERT features from target speaker in a Faiss index
+2. During inference: For each source feature, find k nearest neighbors in the index
+3. Blend source features with retrieved features (configurable ratio)
+
+This reduces "timbre leakage" by replacing source speaker characteristics with training set features.
+
+**Performance**
+
+RVC achieves 90ms end-to-end latency with ASIO audio interfaces and learns high-quality transformations from about 10 minutes of target speaker audio [14].
+
+### So-VITS-SVC
+
+[So-VITS-SVC](https://github.com/svc-develop-team/so-vits-svc) (SoftVC VITS Singing Voice Conversion) specializes in singing voice conversion [16].
+
+**Differences from Speech VC**
+
+Singing voice conversion has additional challenges:
+- Must preserve pitch contour exactly (wrong notes are obvious)
+- Longer sustained vowels expose synthesis artifacts
+- Vibrato, breath, and other expressive elements must transfer
+
+**Architecture**
+
+So-VITS-SVC uses:
+
+1. **SoftVC content encoder**: Variant of HuBERT trained for voice conversion
+2. **F0 predictor**: Optional pitch prediction (disabled for singing to preserve exact pitch)
+3. **VITS backbone**: Prior encoder (6-layer Transformer with 2-head attention) + HiFi-GAN decoder
+4. **NSF-HiFiGAN vocoder**: Addresses glitching artifacts in original HiFi-GAN
+
+**Shallow Diffusion Enhancement**
+
+Recent versions add optional diffusion refinement:
+1. VITS generates initial waveform
+2. Diffusion model (from DDSP-SVC) refines quality
+3. Only runs a few diffusion steps ("shallow") for efficiency
+
+**Clustering for Timbre Matching**
+
+Similar to RVC's retrieval, So-VITS-SVC uses feature clustering:
+- K-means cluster centers represent "prototypical" target speaker features
+- Source features are blended with cluster centers
+- Tradeoff: More clustering = better timbre match, less clarity
+
+---
+
+## Audio Language Models
+
+Audio language models extend the language modeling paradigm to generate audio directly, enabling unified speech-text systems.
+
+### AudioLM and Audio Tokenization
+
+[AudioLM](https://arxiv.org/abs/2209.03143), from Google in 2022, pioneered treating audio generation as language modeling [17].
+
+**Hybrid Tokenization**
+
+AudioLM uses two types of tokens to capture different aspects of audio:
+
+1. **Semantic tokens** (from w2v-BERT): Capture content, phonetics, rhythm, harmony
+2. **Acoustic tokens** (from SoundStream): Capture timbre, recording quality, fine acoustic details
+
+<BranchingFlow
+  title="AudioLM Hybrid Tokenization"
+  inputLabel="Audio Input"
+  outputLabel=""
+  leftBranch={[
+    { id: "w2v", label: "w2v-BERT", sublabel: "(semantic)", color: "accent" }
+  ]}
+  rightBranch={[
+    { id: "sound", label: "SoundStream", sublabel: "(acoustic)", color: "accent" }
+  ]}
+  leftLabel="Semantic Path"
+  rightLabel="Acoustic Path"
+  mergeNode={{ id: "output", label: "Semantic Tokens (coarse) + Acoustic Tokens RVQ (fine detail)", color: "highlight" }}
+/>
+
+**Three-Stage Generation**
+
+AudioLM generates hierarchically:
+
+1. **Semantic modeling**: Transformer predicts semantic tokens (captures structure)
+2. **Coarse acoustic modeling**: Transformer predicts first few acoustic codebook levels given semantics
+3. **Fine acoustic modeling**: Transformer adds remaining codebook levels for full quality
+
+This cascade allows the model to first get the high-level content right, then progressively add acoustic detail.
+
+**Capabilities**
+
+Without any text supervision, AudioLM generates:
+- Coherent speech continuations that maintain speaker identity, grammar, and semantic coherence
+- Piano music with proper harmony and rhythm
+- General audio with consistent acoustic properties
+
+### SpeechGPT and Multimodal Audio-Text Models
+
+[SpeechGPT](https://www.alphaxiv.org/overview/2305.11000v2) extends LLMs to natively understand and generate speech [18].
+
+**Architecture**
+
+1. **Speech tokenization**: HuBERT converts speech to discrete tokens
+2. **Vocabulary expansion**: LLM vocabulary extended to include speech tokens
+3. **Unified modeling**: Single model processes interleaved text and speech
+
+<TTSPipeline
+  title="SpeechGPT Multimodal Architecture"
+  inputLabel='"Translate this speech: <speech tokens>"'
+  outputLabel="Audio Output"
+  stages={[
+    {
+      id: "llama",
+      label: "LLaMA-13B",
+      details: ["vocabulary: text + speech", "Embeddings: [text_emb | speech_emb]"],
+      color: "highlight"
+    },
+    {
+      id: "output-tokens",
+      label: "Output",
+      sublabel: "<translated speech tokens>",
+      color: "muted"
+    },
+    {
+      id: "vocoder",
+      label: "Unit-based Vocoder",
+      color: "accent"
+    }
+  ]}
+/>
+
+**Training Stages**
+
+1. **Modality adaptation**: Train speech encoder/decoder with frozen LLM
+2. **Cross-modal instruction tuning**: Train on speech-text tasks
+3. **Chain-of-modality tuning**: Generate "thought" in text before speech output (like chain-of-thought)
+
+The key insight is that by representing speech as tokens within the LLM's vocabulary, knowledge transfers between modalities. The model can answer questions about speech content, translate speech, or generate speech responses.
+
+### Moshi: Real-Time Conversational AI
+
+[Moshi](https://kyutai.org/Moshi.pdf), from Kyutai (French AI lab), is the first real-time full-duplex spoken dialogue system [19].
+
+**Key Innovation: Parallel Audio Streams**
+
+Moshi models two simultaneous audio streams:
+- **Moshi's speech**: What the AI is saying
+- **User's speech**: What the human is saying
+
+This removes turn-taking constraints. The model always listens and always generates (speech or silence), enabling natural interruptions and backchannels ("uh-huh", "right").
+
+<DualStream
+  title="Full-Duplex Conversation"
+  topStreamLabel="Moshi"
+  bottomStreamLabel="User"
+  topStream={[
+    { content: "Let me explain...", type: "speech" },
+    { content: "silence", type: "silence" },
+    { content: "So basically...", type: "speech" }
+  ]}
+  bottomStream={[
+    { content: "silence", type: "silence" },
+    { content: "Uh-huh", type: "speech" },
+    { content: "silence", type: "silence" },
+    { content: "Wait, what?", type: "speech" },
+    { content: "silence", type: "silence" }
+  ]}
+  caption="Both streams modeled simultaneously!"
+/>
+
+**Architecture**
+
+<HierarchicalFlow
+  title="Moshi Architecture"
+  backbone={[
+    {
+      id: "llm",
+      label: "Text LLM Backbone (Helium-7B)",
+      details: ["Standard transformer language model", "Provides reasoning and world knowledge"],
+      color: "highlight"
+    },
+    {
+      id: "audio-lm",
+      label: "Audio Language Model (Depth Transformer)",
+      details: ["Small model that maps text to audio tokens", "Handles acoustic details"],
+      color: "accent"
+    }
+  ]}
+  outputs={[
+    { id: "moshi", label: "Moshi Audio Stream", color: "accent" },
+    { id: "user", label: "User Audio Stream", color: "accent" }
+  ]}
+/>
+
+**Mimi Codec**
+
+Moshi uses a custom neural codec called Mimi:
+- Residual vector quantization (RVQ) like EnCodec
+- Optimized for streaming with low latency
+- 12.5 Hz frame rate for semantic tokens, higher for acoustic
+
+**Inner Monologue**
+
+Moshi generates time-aligned text tokens as a "prefix" to audio tokens:
+
+```
+Internal: [text: "Hello"]  [audio: "Hello"] [text: "how"] [audio: "how"]...
+```
+
+This provides:
+- Implicit speech recognition (text output)
+- Better linguistic quality (text grounds the audio)
+- Debugging capability (see what model "thinks")
+
+**Performance**
+
+- 160ms theoretical latency (200ms practical)
+- Full-duplex conversation handling
+- 92+ different voice intonations
+- Released under CC-BY 4.0 license
+
+### MoE in Audio Models
+
+Mixture of Experts (MoE) enables scaling model capacity without proportionally increasing compute. Recent work applies MoE to audio [20].
+
+**MoME (Mixture of Matryoshka Experts)**
+
+For audio-visual speech recognition:
+- Integrates sparse MoE into matryoshka representation learning
+- Top-k routing activates subset of experts per token
+- Shared experts handle common patterns; routed experts specialize
+- Achieves SOTA on LRS2/LRS3 with fewer parameters
+
+**MoHAVE (Mixture of Hierarchical Audio-Visual Experts)**
+
+Uses hierarchical gating:
+- Modality-specific expert groups (audio vs visual)
+- Dynamic activation based on input context
+- Scales capacity without linear compute increase
+
+**Practical Considerations**
+
+MoE for audio faces challenges:
+- Load balancing: Ensuring experts are utilized evenly
+- Expert collapse: Preventing all tokens from routing to same expert
+- Memory: All experts must fit in memory even if only subset is active
+
+---
+
+## Training and Data
+
+Training voice models requires careful data preparation and domain-specific techniques.
+
+### Audio Preprocessing
+
+**Mel Spectrograms**
+
+The standard intermediate representation for speech models [21]:
+
+1. **Resampling**: Typically to 16 kHz (ASR) or 22.05/24 kHz (TTS)
+2. **STFT**: Short-time Fourier transform with:
+   - Window size: 25ms (400 samples at 16 kHz)
+   - Hop size: 10ms (160 samples)
+   - FFT size: 512 or 1024
+3. **Mel filterbank**: Apply triangular filters spaced on mel scale (80-128 bins)
+4. **Log compression**: log(mel + 1e-5) to compress dynamic range
+5. **Normalization**: Per-channel or global mean/variance normalization
+
+```python
+import librosa
+
+# Standard preprocessing
+audio, sr = librosa.load(path, sr=16000)
+mel = librosa.feature.melspectrogram(
+    y=audio,
+    sr=sr,
+    n_fft=1024,
+    hop_length=256,
+    n_mels=80
+)
+log_mel = np.log(mel + 1e-5)
+```
+
+**MFCC**
+
+Mel-Frequency Cepstral Coefficients add DCT to mel spectrograms:
+
+1. Compute log mel spectrogram
+2. Apply Discrete Cosine Transform
+3. Keep first 13-40 coefficients
+
+MFCCs decorrelate features and compress representation. They're more common in traditional ASR but less used in end-to-end neural models which learn their own representations [21].
+
+**Raw Waveform**
+
+Some models (Wav2Vec2, HuBERT) operate directly on raw waveforms:
+- No information loss from spectrogram conversion
+- Model learns appropriate filterbanks
+- Requires more compute and data
+
+### Data Quality Requirements
+
+**ASR Data**
+
+- Volume: State-of-the-art requires 10,000+ hours (Whisper: 680,000 hours)
+- Transcription: Can use weak supervision (web captions) but human transcription helps
+- Diversity: Multiple speakers, accents, recording conditions, noise levels
+- Alignment: Exact timestamps not required for seq2seq models
+
+**TTS Data**
+
+- Volume: 10-50 hours for single-speaker high-quality
+- Recording quality: Studio recordings preferred (low noise, consistent mic)
+- Transcription: Must be exact (punctuation affects prosody)
+- Consistency: Same speaker, same emotional register, same recording setup
+- Alignment: Phone-level timestamps improve training stability
+
+For voice cloning:
+- Zero-shot: 3-10 seconds reference audio
+- Few-shot fine-tuning: 1-5 minutes
+- Full fine-tuning: 30+ minutes
+
+### Audio-Text Alignment
+
+Forced alignment aligns transcripts to audio at the word or phone level [22].
+
+**Montreal Forced Aligner (MFA)**
+
+Standard tool for TTS data preparation:
+
+1. **Input**: Audio + orthographic transcript
+2. **Pronunciation dictionary**: Maps words to phoneme sequences
+3. **Acoustic model**: GMM-HMM trained on target language
+4. **Output**: TextGrid with word/phone timestamps
+
+```bash
+# Example MFA usage
+mfa align /path/to/audio /path/to/dictionary /path/to/model /path/to/output
+```
+
+MFA uses Kaldi internally with:
+- Triphone acoustic models (context-dependent phonemes)
+- Speaker adaptation via CMVN
+- 10ms temporal resolution
+
+**CTC Segmentation**
+
+Alternative using neural ASR models:
+- Use CTC model to get frame-level posterior probabilities
+- Dynamic programming to find best alignment
+- Works without pronunciation dictionary
+- Available in NeMo toolkit
+
+**Practical Tips**
+
+- Chunk audio to 5-10 second segments
+- Resample to 16 kHz mono
+- MFA still outperforms WhisperX/MMS for alignment (despite their ASR accuracy) [22]
+
+### Fine-Tuning on Small Datasets
+
+**TTS Adaptation**
+
+For adapting TTS to new speakers with limited data [23]:
+
+1. **Speaker embedding only**: Freeze model, train only speaker embedding
+   - Works with 10 seconds of audio
+   - Captures voice timbre, not speaking style
+
+2. **Full fine-tuning with mixing**: Mix original speaker data with new speaker
+   - Equal sampling from both in each batch
+   - Prevents catastrophic forgetting
+   - Works with 1-5 minutes of data
+
+3. **LoRA/Adapter tuning**: Add small trainable modules to frozen model
+   - 1-2% of original parameters
+   - Good quality with 5+ minutes of data
+
+**Zero-Shot Models**
+
+YourTTS and XTTS can adapt to new voices without fine-tuning:
+- Extract speaker embedding from reference audio
+- Condition synthesis on that embedding
+- Works immediately with 3-10 seconds of reference
+
+**ASR Fine-Tuning**
+
+For domain-specific ASR [24]:
+
+```python
+from transformers import WhisperForConditionalGeneration, WhisperProcessor
+from peft import LoraConfig, get_peft_model
+
+model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-small")
+processor = WhisperProcessor.from_pretrained("openai/whisper-small")
+
+# LoRA config for efficient fine-tuning
+lora_config = LoraConfig(
+    r=16,
+    lora_alpha=32,
+    target_modules=["q_proj", "v_proj"],
+    lora_dropout=0.05,
+)
+model = get_peft_model(model, lora_config)
+
+# Results in ~99% fewer trainable parameters
+```
+
+Fine-tuning on ~400 samples can achieve 31+ WER point improvement for domain-specific vocabulary [24].
+
+---
+
+## Inference Considerations
+
+Deploying audio models requires attention to latency, throughput, and resource constraints.
+
+### Real-Time Factor and Latency
+
+**Real-Time Factor (RTF)**
+
+RTF = processing_time / audio_duration [25]
+
+- RTF < 1: Faster than real-time (required for streaming)
+- RTF = 0.5: Processes 1 second of audio in 0.5 seconds
+- RTF = 0.1: 10x faster than real-time
+
+**Latency Components**
+
+For streaming ASR:
+- **Algorithmic latency**: Time the model needs to "see ahead" (chunk size + right context)
+- **Compute latency**: Processing time for each chunk
+- **Network latency**: Round-trip time to server (if cloud-based)
+
+For TTS:
+- **First-packet latency**: Time to first audio sample
+- **Full synthesis latency**: Time to complete waveform
+
+**Benchmarks**
+
+| Model | Task | RTF (GPU) | Latency |
+|-------|------|-----------|---------|
+| Whisper large-v3 | ASR | ~0.3 | Batch, not streaming |
+| Conformer-CTC | Streaming ASR | ~0.1-0.2 | 200-400ms |
+| FastSpeech 2 | TTS | 0.02 | 20ms per second of audio |
+| VITS | TTS | 0.067 | 67ms per second of audio |
+| XTTS v2 | Zero-shot TTS | 0.48 | 200ms first chunk |
+| HiFi-GAN | Vocoder | 0.02 | ~20ms |
+
+### Streaming Inference for ASR
+
+**Chunk-Based Processing**
+
+```python
+# Pseudocode for streaming ASR
+chunk_size = 640  # ms
+left_context = 480  # ms
+buffer = []
+
+while audio_stream.has_data():
+    chunk = audio_stream.read(chunk_size)
+    buffer.append(chunk)
+
+    # Keep only necessary context
+    context = buffer[-left_context_chunks:]
+
+    # Process with context
+    features = extract_features(context + [chunk])
+    text = model.decode(features)
+
+    yield text
+```
+
+**Endpointer**
+
+Detect when user stops speaking to finalize transcription:
+- Voice Activity Detection (VAD) for speech/silence
+- End-of-query detection for semantic completeness
+- Typically 400-800ms of silence triggers endpoint
+
+### Vocoder Optimization
+
+Vocoders are often the bottleneck in TTS pipelines.
+
+**Strategies**
+
+1. **Caching**: Cache vocoder output for repeated phrases
+2. **Streaming vocoder**: Generate audio in chunks as mel frames arrive
+3. **Smaller models**: HiFi-GAN V3 (1M params) vs V1 (14M)
+4. **INT8 quantization**: 2-4x speedup with minimal quality loss
+
+**Multi-Band Generation**
+
+Split frequency range into bands, generate each with smaller model:
+- Reduces per-band complexity
+- Enables parallel generation
+- MultiBand-MelGAN achieves very low RTF
+
+### Quantization for Audio Models
+
+**Post-Training Quantization (PTQ)**
+
+Apply quantization after training [26]:
+
+```python
+# INT8 quantization for faster inference
+import torch
+
+model_fp32 = load_model()
+model_int8 = torch.quantization.quantize_dynamic(
+    model_fp32,
+    {torch.nn.Linear, torch.nn.Conv1d},
+    dtype=torch.qint8
+)
+```
+
+**Quantization-Aware Training (QAT)**
+
+Train with simulated quantization for better accuracy:
+- Fake quantization during forward pass
+- Full precision gradients during backward pass
+- Recovers most accuracy loss from PTQ
+
+**Results**
+
+- Whisper: INT8 gives ~2x speedup on CPU with \<1% WER increase
+- HiFi-GAN: INT8 gives ~2x speedup, some high-frequency quality loss
+- VITS: INT4 on decoder achieves 40% latency reduction
+
+**Framework Support**
+
+- ONNX Runtime: Broad model support, CPU/GPU
+- TensorRT: NVIDIA GPUs, aggressive optimization
+- OpenVINO: Intel CPUs/GPUs
+- Core ML: Apple Silicon
+
+---
+
+## Practical Examples
+
+### Running Whisper Locally
+
+**Installation**
+
+```bash
+pip install openai-whisper
+# Or with faster-whisper (CTranslate2 backend)
+pip install faster-whisper
+```
+
+**Basic Transcription**
+
+```python
+import whisper
+
+model = whisper.load_model("base")  # tiny, base, small, medium, large-v3
+result = model.transcribe("audio.mp3")
+print(result["text"])
+
+# With options
+result = model.transcribe(
+    "audio.mp3",
+    language="en",
+    task="transcribe",  # or "translate" for X->English
+    fp16=True,  # Use FP16 on GPU
+    condition_on_previous_text=True,  # Use context
+)
+```
+
+**Faster-Whisper for Production**
+
+```python
+from faster_whisper import WhisperModel
+
+# INT8 quantization for faster CPU inference
+model = WhisperModel("large-v3", device="cpu", compute_type="int8")
+
+# Or FP16 on GPU
+model = WhisperModel("large-v3", device="cuda", compute_type="float16")
+
+segments, info = model.transcribe("audio.mp3", beam_size=5)
+
+for segment in segments:
+    print(f"[{segment.start:.2f}s -> {segment.end:.2f}s] {segment.text}")
+```
+
+**Streaming with Whisper**
+
+Whisper isn't designed for streaming, but you can approximate it:
+
+```python
+import numpy as np
+from faster_whisper import WhisperModel
+
+model = WhisperModel("base", device="cuda")
+
+def process_chunk(audio_chunk, previous_text=""):
+    # Pad to 30 seconds if needed
+    if len(audio_chunk) < 30 * 16000:
+        audio_chunk = np.pad(audio_chunk, (0, 30 * 16000 - len(audio_chunk)))
+
+    segments, _ = model.transcribe(
+        audio_chunk,
+        initial_prompt=previous_text,  # Context from previous chunks
+        vad_filter=True,  # Filter silence
+    )
+    return " ".join([s.text for s in segments])
+```
+
+### Fine-Tuning a TTS Model
+
+**Fine-tuning Coqui TTS**
+
+```python
+# Install
+# pip install TTS
+
+from TTS.api import TTS
+
+# Load pre-trained VITS model
+tts = TTS("tts_models/en/ljspeech/vits")
+
+# For fine-tuning, use the training script
+# 1. Prepare data in LJSpeech format:
+#    wavs/
+#      audio1.wav
+#      audio2.wav
+#    metadata.csv: audio1|transcript one|transcript one
+#                  audio2|transcript two|transcript two
+
+# 2. Create config
+from TTS.tts.configs.vits_config import VitsConfig
+from TTS.tts.models.vits import Vits
+
+config = VitsConfig(
+    audio={"sample_rate": 22050},
+    run_name="my_voice",
+    batch_size=16,
+    eval_batch_size=8,
+    num_loader_workers=4,
+    num_eval_loader_workers=4,
+    run_eval=True,
+    test_delay_epochs=-1,
+    epochs=1000,
+    text_cleaner="english_cleaners",
+    use_phonemes=True,
+    phoneme_language="en-us",
+    output_path="output/",
+    datasets=[{
+        "name": "ljspeech",
+        "path": "/path/to/your/data/",
+        "meta_file_train": "metadata.csv"
+    }],
+)
+
+# 3. Start from pretrained checkpoint
+config.load_json("/path/to/pretrained/config.json")
+model = Vits.init_from_config(config)
+model.load_checkpoint(config, "/path/to/pretrained/best_model.pth")
+
+# 4. Fine-tune
+from TTS.trainer import Trainer
+trainer = Trainer(
+    TrainerArgs(),
+    config,
+    output_path="output/",
+    model=model,
+)
+trainer.fit()
+```
+
+**Fine-tuning with XTTS**
+
+```python
+from TTS.api import TTS
+
+# XTTS supports zero-shot cloning without fine-tuning
+tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2")
+
+# Generate with voice cloning
+tts.tts_to_file(
+    text="Hello, this is my cloned voice!",
+    speaker_wav="reference_audio.wav",  # 3-10 seconds
+    language="en",
+    file_path="output.wav"
+)
+
+# For fine-tuning (better quality with more data)
+# Use the XTTS fine-tuning script with your dataset
+```
+
+### Voice Conversion Pipeline
+
+**Using RVC**
+
+```bash
+# Clone RVC
+git clone https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI
+cd Retrieval-based-Voice-Conversion-WebUI
+pip install -r requirements.txt
+
+# Download pretrained models
+# https://huggingface.co/lj1995/VoiceConversionWebUI
+
+# Launch WebUI
+python infer-web.py
+```
+
+**Programmatic Voice Conversion**
+
+```python
+# Simplified RVC inference (actual implementation more complex)
+import torch
+from fairseq import checkpoint_utils
+
+# Load HuBERT for content extraction
+hubert_model, cfg, task = checkpoint_utils.load_model_ensemble_and_task(
+    ["hubert_base.pt"]
+)
+hubert = hubert_model[0].eval()
+
+# Load RVC model
+rvc_model = torch.load("target_voice.pth")
+
+def convert_voice(source_audio):
+    # 1. Extract content features
+    with torch.no_grad():
+        content = hubert.extract_features(source_audio)[0]
+
+    # 2. Extract pitch
+    f0 = extract_f0(source_audio)  # RMVPE or CREPE
+
+    # 3. Retrieve similar features from training set (optional)
+    retrieved = faiss_index.search(content, k=3)
+    content = blend(content, retrieved)
+
+    # 4. Generate with RVC model
+    audio = rvc_model(content, f0)
+
+    return audio
+```
+
+**So-VITS-SVC for Singing**
+
+```bash
+# Clone So-VITS-SVC
+git clone https://github.com/svc-develop-team/so-vits-svc
+cd so-vits-svc
+pip install -r requirements.txt
+
+# Prepare training data
+# Place wav files in dataset_raw/speaker_name/
+
+# Preprocess
+python resample.py
+python preprocess_flist_config.py
+python preprocess_hubert_f0.py
+
+# Train
+python train.py -c configs/config.json -m speaker_name
+
+# Inference
+python inference_main.py -m "logs/speaker_name/model.pth" \
+    -c "configs/config.json" \
+    -n "song.wav" \
+    -t 0  # pitch shift in semitones
+```
+
+---
+
+## References
+
+1. Radford, A., et al. (2022). "Robust Speech Recognition via Large-Scale Weak Supervision." OpenAI. https://github.com/openai/whisper
+
+2. OpenAI. (2023). "Whisper large-v3." Hugging Face. https://huggingface.co/openai/whisper-large-v3
+
+3. Zhou, et al. (2025). "Adapting Whisper for Streaming Speech Recognition via Two-Pass Decoding." Interspeech 2025. https://www.isca-archive.org/interspeech_2025/zhou25_interspeech.pdf
+
+4. Gulati, A., et al. (2020). "Conformer: Convolution-augmented Transformer for Speech Recognition." Interspeech 2020. https://arxiv.org/abs/2005.08100
+
+5. Hugging Face. "CTC Architectures." Audio Course. https://huggingface.co/learn/audio-course/chapter3/ctc
+
+6. SpeechBrain Documentation. "Streaming Speech Recognition with Conformers." https://speechbrain.readthedocs.io/en/v1.0.2/tutorials/nn/conformer-streaming-asr.html
+
+7. Kim, J., et al. (2021). "Conditional Variational Autoencoder with Adversarial Learning for End-to-End Text-to-Speech." ICML 2021. https://arxiv.org/abs/2106.06103
+
+8. Shen, J., et al. (2017). "Natural TTS Synthesis by Conditioning WaveNet on Mel Spectrogram Predictions." https://arxiv.org/abs/1712.05884
+
+9. Kong, J., et al. (2020). "HiFi-GAN: Generative Adversarial Networks for Efficient and High Fidelity Speech Synthesis." NeurIPS 2020. https://github.com/jik876/hifi-gan
+
+10. Lee, S.-G., et al. (2022). "BigVGAN: A Universal Neural Vocoder with Large-Scale Training." ICLR 2023. https://arxiv.org/abs/2206.04658
+
+11. Microsoft Research. "VALL-E." https://www.microsoft.com/en-us/research/project/vall-e-x/
+
+12. Casanova, E., et al. (2024). "XTTS: a Massively Multilingual Zero-Shot Text-to-Speech Model." https://arxiv.org/html/2406.04904v1
+
+13. Voice Cloning Survey. (2025). https://arxiv.org/html/2505.00579v1
+
+14. RVC Project. "Retrieval-based Voice Conversion WebUI." https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI
+
+15. Qian, K., et al. (2022). "CONTENTVEC: An Improved Self-Supervised Speech Representation." ICML 2022. https://proceedings.mlr.press/v162/qian22b/qian22b.pdf
+
+16. So-VITS-SVC. "SoftVC VITS Singing Voice Conversion." https://github.com/svc-develop-team/so-vits-svc
+
+17. Borsos, Z., et al. (2022). "AudioLM: a Language Modeling Approach to Audio Generation." https://arxiv.org/abs/2209.03143
+
+18. Zhang, D., et al. (2023). "SpeechGPT: Empowering Large Language Models with Intrinsic Cross-Modal Conversational Abilities." https://www.alphaxiv.org/overview/2305.11000v2
+
+19. Défossez, A., et al. (2024). "Moshi: a speech-text foundation model for real-time dialogue." Kyutai. https://kyutai.org/Moshi.pdf
+
+20. Wu, et al. (2025). "MoME: Mixture of Matryoshka Experts for Audio-Visual Speech Recognition." NeurIPS 2025. https://arxiv.org/abs/2510.04136
+
+21. Ketanhdoshi. "Audio Deep Learning Made Simple: Data Preparation and Augmentation." https://ketanhdoshi.github.io/Audio-Augment/
+
+22. McAuliffe, M., et al. (2017). "Montreal Forced Aligner: Trainable Text-Speech Alignment Using Kaldi." https://montreal-forced-aligner.readthedocs.io/
+
+23. Arik, S.O., et al. (2018). "Neural Voice Cloning with a Few Samples." NeurIPS 2018.
+
+24. Hugging Face. "Fine-Tune Whisper For Multilingual ASR." https://huggingface.co/blog/fine-tune-whisper
+
+25. Open Voice Technology Wiki. "Real-time-factor." https://openvoice-tech.net/index.php/Real-time-factor
+
+26. "Model Quantization Techniques for ASR/TTS." https://apxml.com/courses/speech-recognition-synthesis-asr-tts/chapter-6-optimization-deployment-toolkits/quantization-speech-models

@@ -1,0 +1,326 @@
+---
+/**
+ * Animated data flow visualization
+ * Shows how data moves through processing stages
+ */
+interface Stage {
+  id: string;
+  label: string;
+  sublabel?: string;
+  color?: 'accent' | 'highlight' | 'muted';
+}
+
+interface Props {
+  stages: Stage[];
+  title?: string;
+  animationSpeed?: 'slow' | 'normal' | 'fast';
+  dataLabel?: string;
+}
+
+const { stages, title, animationSpeed = 'normal', dataLabel = 'data' } = Astro.props;
+const speedMs = { slow: 2000, normal: 1200, fast: 800 }[animationSpeed];
+---
+
+<div class="data-flow" data-speed={speedMs}>
+  {title && <div class="flow-title">{title}</div>}
+
+  <div class="flow-container">
+    <button class="flow-control play-btn" aria-label="Play animation">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M4 2.5v11l9-5.5-9-5.5z"/>
+      </svg>
+    </button>
+
+    <div class="flow-track">
+      {stages.map((stage, index) => (
+        <>
+          {index > 0 && (
+            <div class="flow-pipe">
+              <div class="pipe-line"></div>
+              <div class="data-packet" data-stage={index - 1}></div>
+            </div>
+          )}
+          <div class={`flow-stage ${stage.color || 'muted'}`} data-stage-id={stage.id}>
+            <div class="stage-label">{stage.label}</div>
+            {stage.sublabel && <div class="stage-sublabel">{stage.sublabel}</div>}
+            <div class="stage-indicator"></div>
+          </div>
+        </>
+      ))}
+    </div>
+
+    <div class="flow-legend">
+      <span class="legend-item">
+        <span class="legend-dot"></span>
+        {dataLabel}
+      </span>
+    </div>
+  </div>
+</div>
+
+<script>
+  function initDataFlow() {
+    document.querySelectorAll('.data-flow').forEach((container) => {
+      const playBtn = container.querySelector('.play-btn');
+      const packets = container.querySelectorAll('.data-packet');
+      const stages = container.querySelectorAll('.flow-stage');
+      const speed = parseInt(container.dataset.speed || '1200', 10);
+
+      let isPlaying = false;
+      let animationFrame;
+      let currentStage = -1;
+
+      const animate = () => {
+        if (!isPlaying) return;
+
+        currentStage++;
+        if (currentStage >= stages.length) {
+          currentStage = -1;
+          packets.forEach((p) => p.classList.remove('active', 'arrived'));
+          stages.forEach((s) => s.classList.remove('active'));
+        }
+
+        if (currentStage >= 0) {
+          // Activate current stage
+          stages[currentStage].classList.add('active');
+
+          // Move packet to this stage
+          if (currentStage > 0) {
+            const packet = packets[currentStage - 1];
+            packet.classList.add('active');
+            setTimeout(() => {
+              packet.classList.add('arrived');
+            }, speed * 0.8);
+          }
+
+          // Deactivate previous stages
+          if (currentStage > 0) {
+            stages[currentStage - 1].classList.remove('active');
+          }
+        }
+
+        animationFrame = setTimeout(animate, speed);
+      };
+
+      const togglePlay = () => {
+        isPlaying = !isPlaying;
+        playBtn.classList.toggle('playing', isPlaying);
+
+        if (isPlaying) {
+          currentStage = -1;
+          packets.forEach((p) => p.classList.remove('active', 'arrived'));
+          stages.forEach((s) => s.classList.remove('active'));
+          animate();
+        } else {
+          clearTimeout(animationFrame);
+        }
+      };
+
+      playBtn?.addEventListener('click', togglePlay);
+    });
+  }
+
+  initDataFlow();
+  document.addEventListener('astro:after-swap', initDataFlow);
+</script>
+
+<style>
+  .data-flow {
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  .flow-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .flow-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .flow-control {
+    align-self: flex-start;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease-out;
+  }
+
+  .flow-control:hover {
+    border-color: var(--text-secondary);
+    color: var(--text-secondary);
+  }
+
+  .flow-control.playing {
+    background: var(--text-secondary);
+    border-color: var(--text-secondary);
+    color: var(--bg);
+  }
+
+  .flow-track {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+    padding: 1rem 0;
+  }
+
+  .flow-stage {
+    position: relative;
+    padding: 0.75rem 1.25rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    text-align: center;
+    min-width: 100px;
+    transition: all 0.2s ease-out;
+    flex-shrink: 0;
+  }
+
+  .flow-stage.accent {
+    border-color: var(--text-secondary);
+  }
+
+  .flow-stage.highlight {
+    border-color: var(--text-tertiary);
+  }
+
+  .flow-stage.active {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  html.dark .flow-stage.active {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .flow-stage.accent.active {
+    background: var(--selection);
+  }
+
+  .flow-stage.highlight.active {
+    background: var(--selection);
+  }
+
+  .stage-label {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-primary);
+    font-weight: var(--font-weight-bold);
+  }
+
+  .stage-sublabel {
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+    margin-top: 0.25rem;
+  }
+
+  .stage-indicator {
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: all 0.2s ease-out;
+  }
+
+  .flow-stage.active .stage-indicator {
+    background: var(--text-secondary);
+    box-shadow: 0 0 8px var(--text-secondary);
+  }
+
+  .flow-pipe {
+    position: relative;
+    width: 40px;
+    height: 2px;
+    flex-shrink: 0;
+  }
+
+  .pipe-line {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--border);
+    transform: translateY(-50%);
+  }
+
+  .data-packet {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-secondary);
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    transition: left 0.8s ease-in-out, opacity 0.2s ease-out;
+  }
+
+  .data-packet.active {
+    opacity: 1;
+  }
+
+  .data-packet.arrived {
+    left: 100%;
+  }
+
+  .flow-legend {
+    display: flex;
+    gap: 1rem;
+    padding-top: 0.5rem;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    font-family: var(--mono);
+  }
+
+  .legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-secondary);
+  }
+
+  @media (max-width: 600px) {
+    .flow-track {
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .flow-pipe {
+      display: none;
+    }
+
+    .flow-stage {
+      margin: 0.25rem;
+    }
+  }
+</style>

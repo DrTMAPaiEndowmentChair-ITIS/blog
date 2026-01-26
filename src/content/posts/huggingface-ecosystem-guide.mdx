@@ -1,0 +1,1923 @@
+---
+title: 'The Complete Hugging Face Ecosystem Guide'
+pubDate: '2026-01-20'
+---
+
+import ModelFormatCompare from '@/components/viz/ModelFormatCompare.astro';
+
+**Author**: Aadit Agrawal
+
+## What is Hugging Face
+
+Hugging Face is an American company founded in 2016 by Clement Delangue and Julien Chaumond, originally as a chatbot startup. It has since evolved into the central hub for open-source machine learning. The platform hosts over 2.4 million models and 730,000 datasets as of January 2026, serving more than 18 million monthly visitors.
+
+The company builds on a core open-source stack: Transformers, Datasets, Diffusers, PEFT, Accelerate, TRL, Timm, and Optimum. Beyond libraries, Hugging Face provides production tools like Inference Endpoints, Text Generation Inference (TGI), and Text Embeddings Inference (TEI). Over 2,000 organizations use their Enterprise Hub for private deployments with SSO, regional data storage, and audit logs.
+
+Hugging Face integrates with major cloud providers. AWS offers Deep Learning Containers and SageMaker integration. Azure Machine Learning and Google Vertex AI both support direct model deployment. In April 2025, the company acquired Pollen Robotics, a humanoid robotics startup, signaling expansion beyond pure software.
+
+---
+
+## The Models Hub
+
+The Hub is where you discover, evaluate, and download models. Each model repository contains the weights, configuration files, and documentation needed to run inference or continue training.
+
+### Discovering Models
+
+Filter by task (text generation, image classification, audio transcription), library (Transformers, Diffusers, GGUF), license, and language. The search indexes model names, tags, and README content. Sorting by downloads or likes surfaces popular choices; sorting by recent shows the latest uploads.
+
+### Model Cards
+
+Every model should have a model card in the README.md file. Cards follow a structured template covering:
+
+- **Model description**: Architecture, training data, intended use
+- **Limitations**: Known failure modes, biases, out-of-scope uses
+- **Training procedure**: Hyperparameters, hardware, preprocessing
+- **Evaluation results**: Benchmarks, metrics, disaggregated performance
+
+The metadata block at the top enables Hub features. Specify `license` for filtering, `datasets` to link training data, and `metrics` with `eval_results` to display benchmark performance in the UI. The Hub parses this YAML and renders widgets showing accuracy, F1, perplexity, or custom metrics.
+
+### Licenses
+
+Common licenses on the Hub include Apache 2.0, MIT, and various model-specific licenses like Llama's community license or Gemma's terms of use. The `license` field in metadata enables filtering. For custom licenses, use `license: other` with `license_name` and `license_link` fields, or include a LICENSE file in the repository.
+
+### Evaluation with the Evaluate Library
+
+The Evaluate library provides dozens of metrics with a consistent API:
+
+```python
+import evaluate
+
+accuracy = evaluate.load("accuracy")
+results = accuracy.compute(predictions=[0, 1, 1], references=[0, 1, 0])
+print(results)  # {'accuracy': 0.666...}
+
+# Load multiple metrics
+clf_metrics = evaluate.combine(["accuracy", "f1", "precision", "recall"])
+results = clf_metrics.compute(predictions=[0, 1, 1, 0], references=[0, 1, 0, 1])
+```
+
+Each metric includes a card documenting its formula, value ranges, and appropriate use cases.
+
+---
+
+## Model Formats and Download Types
+
+Models come in various formats optimized for different runtimes and hardware. Understanding when to use each saves time and compute.
+
+<ModelFormatCompare />
+
+### PyTorch Weights: safetensors vs .bin
+
+The `.bin` format uses Python's pickle for serialization. Pickle can execute arbitrary code during deserialization, creating security risks when loading untrusted models.
+
+Safetensors solves this. Developed by Hugging Face, it stores tensors in a binary format without code execution. Loading is 76x faster on CPU and 2x faster on GPU compared to pickle. The BLOOM model loads on 8 GPUs in 45 seconds with safetensors versus 10 minutes with pickle weights.
+
+Safetensors also supports lazy loading through its `safe_open()` context manager. Tensors load on-demand rather than all at once, critical for distributed inference where each GPU only needs a shard.
+
+```python
+from safetensors import safe_open
+
+# Lazy loading - tensors loaded only when accessed
+with safe_open("model.safetensors", framework="pt") as f:
+    tensor_a = f.get_tensor("layer.0.weight")
+```
+
+Transformers defaults to safetensors when available. Legacy `.bin` files work but carry security and performance penalties.
+
+### GGUF for llama.cpp and Ollama
+
+GGUF (Georgi Gerganov Universal Format) packages everything needed to run a model: architecture details, tokenizer, quantization parameters, and weights in a single file. It evolved from the earlier GGML format for better extensibility.
+
+The format targets llama.cpp and tools built on it like Ollama, LM Studio, and koboldcpp. GGUF excels at CPU inference and mixed CPU/GPU offloading on consumer hardware.
+
+Quantization options range from 8-bit down to 1.5-bit:
+
+| Type | Description | Size Reduction |
+|------|-------------|----------------|
+| Q8_0 | 8-bit, block size 32 | ~2x |
+| Q6_K | 6-bit K-Quant | ~2.5x |
+| Q5_K_M | 5-bit K-Quant medium | ~2.8x |
+| Q4_K_M | 4-bit K-Quant medium | ~3.3x |
+| Q4_0 | 4-bit basic | ~4x |
+| Q2_K | 2-bit K-Quant | ~6x |
+
+Q4_K_M hits the sweet spot for most users. A 13.5GB FP16 model shrinks to 4GB while maintaining acceptable quality. K-Quant variants use different bit allocations per layer based on importance, preserving quality better than uniform quantization.
+
+Convert HuggingFace models to GGUF:
+
+```bash
+# Clone llama.cpp
+git clone https://github.com/ggml-org/llama.cpp
+cd llama.cpp
+
+# Convert to GGUF (F16 baseline)
+python convert_hf_to_gguf.py /path/to/hf-model --outfile model-f16.gguf
+
+# Quantize to Q4_K_M
+./llama-quantize model-f16.gguf model-q4_k_m.gguf Q4_K_M
+```
+
+For better quantization quality, compute an importance matrix from a calibration dataset:
+
+```bash
+# Generate importance matrix
+./llama-imatrix -m model-f16.gguf -f calibration.txt -o imatrix.dat
+
+# Quantize with importance matrix
+./llama-quantize --imatrix imatrix.dat model-f16.gguf model-q4_k_m.gguf Q4_K_M
+```
+
+### ONNX for Cross-Platform Deployment
+
+ONNX (Open Neural Network Exchange) defines a standard graph format for neural networks. Train in PyTorch or TensorFlow, export to ONNX, run anywhere.
+
+ONNX Runtime powers inference across platforms: NVIDIA GPUs via TensorRT, Intel CPUs via OpenVINO, AMD GPUs via ROCm, Apple Silicon via CoreML, and Windows via DirectML. This portability makes ONNX valuable for production deployment across heterogeneous hardware.
+
+Export a Transformers model to ONNX:
+
+```python
+from optimum.onnxruntime import ORTModelForSequenceClassification
+from transformers import AutoTokenizer
+
+model_id = "distilbert-base-uncased-finetuned-sst-2-english"
+save_dir = "onnx_model"
+
+# Export and save
+model = ORTModelForSequenceClassification.from_pretrained(model_id, export=True)
+tokenizer = AutoTokenizer.from_pretrained(model_id)
+
+model.save_pretrained(save_dir)
+tokenizer.save_pretrained(save_dir)
+
+# Load and run inference
+model = ORTModelForSequenceClassification.from_pretrained(save_dir)
+inputs = tokenizer("This movie was great!", return_tensors="pt")
+outputs = model(**inputs)
+```
+
+The ONNX Model Zoo on Hugging Face hosts pre-exported models at huggingface.co/onnxmodelzoo.
+
+### AWQ, GPTQ, and bitsandbytes Quantization
+
+These methods reduce model precision for faster inference and lower memory usage, each with different tradeoffs.
+
+**GPTQ** uses post-training quantization with Hessian-based optimization to minimize output error. It requires a calibration dataset and pre-quantizes weights. Best for GPU inference when you need raw throughput.
+
+**AWQ** (Activation-aware Weight Quantization) identifies and protects important weights by observing activations. Like GPTQ, it requires calibration and pre-quantization. AWQ often preserves quality better than GPTQ, especially for instruction-tuned models.
+
+**bitsandbytes** quantizes on-the-fly during model loading. No calibration dataset or pre-quantized checkpoint needed. Its NF4 (NormalFloat4) format assumes weights follow a Gaussian distribution and places more quantization levels near zero where weights cluster. Best for fine-tuning with QLoRA and quick experimentation.
+
+```python
+from transformers import AutoModelForCausalLM, BitsAndBytesConfig
+
+# Load with 4-bit quantization
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype="bfloat16",
+)
+
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-3.1-8B",
+    quantization_config=bnb_config,
+    device_map="auto",
+)
+```
+
+Quality comparison from 2025 benchmarks: bitsandbytes has the smallest quality drop, AWQ comes second, GPTQ and Marlin (GPTQ's optimized kernel) are close behind. The practical difference matters most for your specific use case; test on your evaluation set.
+
+### TensorRT-LLM for Maximum NVIDIA Performance
+
+TensorRT-LLM is NVIDIA's library for optimizing LLM inference on their GPUs. It applies custom attention kernels, inflight batching, paged KV caching, and hardware-specific optimizations.
+
+The library supports quantization formats tied to GPU generations:
+
+- **Blackwell (B200, GB200)**: FP4 with NVFP4 format
+- **Ada Lovelace (L40, RTX 40 series)**: FP8
+- **Ampere (A100, RTX 30 series)**: INT8 SmoothQuant, INT4 AWQ
+
+Recent benchmarks show DeepSeek-R1 running 3x faster with speculative decoding on TensorRT-LLM. Pre-quantized NVFP4 models for Llama 3.3 70B and DeepSeek-R1 are available on the Hub.
+
+TensorRT-LLM requires building an engine specific to your GPU and model. This compilation step takes time but produces optimized inference:
+
+```python
+from tensorrt_llm import LLM, SamplingParams
+
+llm = LLM(model="meta-llama/Llama-3.1-8B-Instruct")
+
+prompts = ["Explain quantum computing in simple terms"]
+sampling_params = SamplingParams(temperature=0.7, max_tokens=256)
+
+outputs = llm.generate(prompts, sampling_params)
+```
+
+### Choosing the Right Format
+
+| Use Case | Format |
+|----------|--------|
+| Local CPU/GPU inference, consumer hardware | GGUF |
+| Production GPU serving, max throughput | TensorRT-LLM |
+| Cross-platform deployment | ONNX |
+| Fine-tuning with limited VRAM | bitsandbytes |
+| Pre-quantized GPU inference | AWQ or GPTQ |
+| Standard Transformers usage | safetensors |
+
+---
+
+## Datasets on the Hub
+
+The Hub hosts over 730,000 datasets with tools for exploration, streaming, and efficient loading.
+
+### The Datasets Library
+
+Load datasets with a single function call:
+
+```python
+from datasets import load_dataset
+
+# Load from the Hub
+dataset = load_dataset("imdb")
+
+# Access splits
+train = dataset["train"]
+test = dataset["test"]
+
+# Iterate
+for example in train:
+    print(example["text"], example["label"])
+    break
+```
+
+The library handles downloading, caching, and format conversion automatically.
+
+### Arrow Format and Memory Mapping
+
+Datasets uses Apache Arrow for storage. Arrow's columnar layout enables zero-copy reads and memory-mapped access. A dataset backed by an on-disk Arrow cache can exceed available RAM; the OS pages data in and out as needed.
+
+This architecture lets you work with terabyte-scale datasets on machines with limited memory:
+
+```python
+# Large dataset - only loads what you access
+dataset = load_dataset("HuggingFaceFW/fineweb", "sample-10BT")
+
+# Process without loading everything into memory
+def tokenize(examples):
+    return tokenizer(examples["text"], truncation=True)
+
+tokenized = dataset.map(tokenize, batched=True, num_proc=4)
+```
+
+### Streaming for Large Datasets
+
+The English split of FineWeb is 45 terabytes. Streaming lets you use it without downloading:
+
+```python
+from datasets import load_dataset
+
+# Stream - no disk space needed
+dataset = load_dataset(
+    "HuggingFaceFW/fineweb",
+    name="sample-10BT",
+    split="train",
+    streaming=True
+)
+
+# Iterate over examples
+for example in dataset.take(10):
+    print(example["text"][:100])
+```
+
+Streaming datasets support `map`, `filter`, `shuffle`, and `take`. Data downloads on demand as you iterate.
+
+### Parquet and the Dataset Viewer
+
+Datasets on the Hub automatically convert to Parquet, a columnar format that enables efficient partial reads. The Dataset Viewer uses this to display data in your browser without downloading entire files.
+
+Parquet stores column statistics and page indexes enabling:
+
+- Reading only specific columns
+- Filtering rows server-side
+- Random access within files
+
+```python
+# Read specific columns from Parquet
+import pyarrow.parquet as pq
+
+# Only download 'text' column
+table = pq.read_table(
+    "hf://datasets/username/dataset/data.parquet",
+    columns=["text"]
+)
+```
+
+---
+
+## The Transformers Library
+
+Transformers is the core library for working with pretrained models. It provides a unified API across architectures: BERT, GPT, T5, LLaMA, Mistral, Qwen, Gemma, and hundreds more.
+
+### The Pipeline API
+
+Pipelines abstract away tokenization, model loading, and output processing:
+
+```python
+from transformers import pipeline
+
+# Sentiment analysis
+classifier = pipeline("sentiment-analysis")
+result = classifier("I love this library!")
+# [{'label': 'POSITIVE', 'score': 0.9998}]
+
+# Text generation
+generator = pipeline("text-generation", model="meta-llama/Llama-3.2-1B")
+output = generator("The future of AI is", max_length=50)
+
+# Question answering
+qa = pipeline("question-answering")
+result = qa(question="What is the capital?", context="France's capital is Paris.")
+# {'answer': 'Paris', 'score': 0.99...}
+```
+
+Pipelines support GPU acceleration, batch processing, and half-precision:
+
+```python
+# GPU with fp16
+pipe = pipeline(
+    "text-generation",
+    model="meta-llama/Llama-3.1-8B-Instruct",
+    device_map="auto",
+    torch_dtype="auto",
+)
+```
+
+### Tokenizers
+
+Tokenizers convert text to token IDs the model understands. The library provides both Python (`PreTrainedTokenizer`) and Rust-backed fast (`PreTrainedTokenizerFast`) implementations.
+
+Transformers v5 redesigned tokenization. Tokenizers now separate architecture from learned vocabulary, similar to how PyTorch separates network structure from weights:
+
+```python
+from transformers import AutoTokenizer
+
+tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B")
+
+# Encode text
+tokens = tokenizer("Hello world", return_tensors="pt")
+# {'input_ids': tensor([[...]]), 'attention_mask': tensor([[...]])}
+
+# Decode back
+text = tokenizer.decode(tokens["input_ids"][0])
+```
+
+Different model families use different tokenization schemes: BPE (GPT, Llama), SentencePiece (T5, Gemma), or WordPiece (BERT). The tokenizer handles this transparently.
+
+### Loading Models
+
+Load any model with `AutoModel` classes:
+
+```python
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+model_id = "meta-llama/Llama-3.1-8B-Instruct"
+
+tokenizer = AutoTokenizer.from_pretrained(model_id)
+model = AutoModelForCausalLM.from_pretrained(
+    model_id,
+    device_map="auto",  # Automatic device placement
+    torch_dtype="auto", # Use model's native dtype
+)
+
+# Generate
+inputs = tokenizer("Explain transformers:", return_tensors="pt").to(model.device)
+outputs = model.generate(**inputs, max_new_tokens=100)
+print(tokenizer.decode(outputs[0]))
+```
+
+Control memory usage with quantization and offloading:
+
+```python
+# 4-bit quantization
+model = AutoModelForCausalLM.from_pretrained(
+    model_id,
+    load_in_4bit=True,
+    device_map="auto",
+)
+
+# CPU offloading for models larger than VRAM
+model = AutoModelForCausalLM.from_pretrained(
+    model_id,
+    device_map="auto",
+    offload_folder="offload",
+)
+```
+
+---
+
+## Transformers Library Internals
+
+Understanding how Transformers works under the hood helps debug issues and extend functionality.
+
+### AutoModel and AutoTokenizer Resolution
+
+When you call `AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-8B")`, the library performs several resolution steps:
+
+1. **Download config.json** from the Hub repository
+2. **Parse model_type** from the config (e.g., `"llama"`)
+3. **Look up the model class** in an internal registry mapping model types to implementations
+4. **Instantiate the correct class** (e.g., `LlamaForCausalLM`)
+
+The registry lives in `transformers/models/auto/modeling_auto.py`. Each Auto class maintains a mapping like:
+
+```python
+MODEL_FOR_CAUSAL_LM_MAPPING_NAMES = OrderedDict([
+    ("llama", "LlamaForCausalLM"),
+    ("mistral", "MistralForCausalLM"),
+    ("gpt2", "GPT2LMHeadModel"),
+    # ... hundreds more
+])
+```
+
+For custom models hosted on the Hub, the `config.json` can include an `auto_map` field that points to local Python files:
+
+```json
+{
+  "model_type": "custom_model",
+  "auto_map": {
+    "AutoConfig": "configuration_custom.CustomConfig",
+    "AutoModelForCausalLM": "modeling_custom.CustomModelForCausalLM"
+  }
+}
+```
+
+This requires `trust_remote_code=True` when loading, since it executes code from the repository. The [Auto Classes documentation](https://huggingface.co/docs/transformers/en/model_doc/auto) covers registration in detail.
+
+### The modeling_*.py Architecture Pattern
+
+Each model architecture follows a consistent file structure:
+
+```
+transformers/models/llama/
+├── __init__.py
+├── configuration_llama.py    # LlamaConfig class
+├── modeling_llama.py         # LlamaModel, LlamaForCausalLM, etc.
+├── tokenization_llama.py     # LlamaTokenizer (slow)
+└── tokenization_llama_fast.py # LlamaTokenizerFast (Rust)
+```
+
+The `modeling_*.py` file contains the actual PyTorch implementation. Models are built from composable pieces:
+
+- **Embeddings**: Token and position embeddings
+- **Attention**: Self-attention with various implementations (eager, SDPA, Flash Attention)
+- **MLP/FFN**: Feed-forward layers
+- **Blocks/Layers**: Stack attention + MLP with residuals and normalization
+- **Model**: The full transformer stack
+- **Head**: Task-specific output layers (LM head, classification head, etc.)
+
+A typical file structure:
+
+```python
+class LlamaAttention(nn.Module):
+    """Multi-headed attention from 'Attention Is All You Need' paper"""
+
+class LlamaMLP(nn.Module):
+    """Feed-forward network with SiLU activation"""
+
+class LlamaDecoderLayer(nn.Module):
+    """Single transformer block: attention + MLP"""
+
+class LlamaModel(LlamaPreTrainedModel):
+    """The bare Llama Model outputting raw hidden-states"""
+
+class LlamaForCausalLM(LlamaPreTrainedModel):
+    """Llama Model with a language modeling head"""
+```
+
+### PreTrainedModel Base Class
+
+Every model inherits from `PreTrainedModel`, which provides core functionality according to the [Models documentation](https://huggingface.co/docs/transformers/main_classes/model):
+
+**Loading and saving:**
+- `from_pretrained()`: Load weights from Hub or local directory
+- `save_pretrained()`: Save model and config to directory
+- `push_to_hub()`: Upload to the Hub
+
+**Weight initialization:**
+- `_init_weights()`: Initialize a module's weights (called recursively)
+- The `_is_hf_initialized` flag prevents re-initializing tied parameters
+
+**Memory management:**
+- `gradient_checkpointing_enable()`: Trade compute for memory
+- `resize_token_embeddings()`: Adjust embedding size for new tokens
+
+**Device handling:**
+- `to()`: Move model to device
+- `half()`, `bfloat16()`, `float()`: Change precision
+
+Key class attributes every model defines:
+
+```python
+class LlamaPreTrainedModel(PreTrainedModel):
+    config_class = LlamaConfig
+    base_model_prefix = "model"
+    supports_gradient_checkpointing = True
+    _no_split_modules = ["LlamaDecoderLayer"]
+    _skip_keys_device_placement = ["past_key_values"]
+```
+
+The `_no_split_modules` attribute tells the device placement algorithm which modules must stay on a single device.
+
+### Generation Mixin and Decoding Strategies
+
+The `GenerationMixin` class adds `generate()` to models. It supports multiple decoding strategies documented in the [Generation strategies guide](https://huggingface.co/docs/transformers/en/generation_strategies):
+
+**Greedy decoding**: Select the highest probability token at each step.
+
+```python
+outputs = model.generate(inputs, do_sample=False)
+```
+
+**Beam search**: Maintain multiple hypotheses, selecting the sequence with highest total probability.
+
+```python
+outputs = model.generate(inputs, num_beams=5, early_stopping=True)
+```
+
+**Sampling with temperature**: Sample from the probability distribution, with temperature controlling randomness.
+
+```python
+outputs = model.generate(inputs, do_sample=True, temperature=0.7)
+```
+
+**Top-k sampling**: Sample from the k most likely tokens.
+
+```python
+outputs = model.generate(inputs, do_sample=True, top_k=50)
+```
+
+**Nucleus (top-p) sampling**: Sample from the smallest set of tokens whose cumulative probability exceeds p. Described in Holtzman et al.'s "The Curious Case of Neural Text Degeneration."
+
+```python
+outputs = model.generate(inputs, do_sample=True, top_p=0.95)
+```
+
+The generation loop internally:
+
+1. Runs the model forward pass to get logits
+2. Applies logits processors (temperature, top-k/p filtering, repetition penalty)
+3. Selects next token(s) based on the decoding strategy
+4. Appends to the sequence and updates the KV cache
+5. Checks stopping criteria (max length, EOS token, custom criteria)
+6. Repeats until done
+
+### KV Cache Implementation
+
+During autoregressive generation, the model computes key and value projections for all previous tokens at each step. Without caching, this means O(n^2) compute for generating n tokens. The KV cache stores these projections for reuse.
+
+The [KV cache strategies documentation](https://huggingface.co/docs/transformers/en/kv_cache) describes available implementations:
+
+**DynamicCache** (default): Grows as generation progresses. Simple but can cause memory fragmentation.
+
+```python
+outputs = model.generate(inputs, use_cache=True)  # Default
+```
+
+**StaticCache**: Pre-allocates fixed-size tensors. Enables torch.compile() but wastes memory on short sequences.
+
+```python
+outputs = model.generate(inputs, cache_implementation="static")
+```
+
+**QuantizedCache**: Compresses KV values to lower precision, based on the KIVI paper. Quantizes keys per-channel and values per-token.
+
+```python
+from transformers import QuantizedCacheConfig
+
+cache_config = QuantizedCacheConfig(nbits=4)
+outputs = model.generate(inputs, cache_config=cache_config)
+```
+
+**OffloadedCache**: Moves KV cache to CPU, prefetching asynchronously. Enables longer sequences on limited VRAM.
+
+The cache is a tuple of (key_states, value_states) for each layer, stored in the model's `past_key_values` attribute during generation.
+
+### Attention Mask Handling
+
+Attention masks control which tokens can attend to which. Different model types use different masking strategies:
+
+**Padding mask**: Binary mask where 1 = real token, 0 = padding. Prevents attention to padding tokens.
+
+```python
+# Tokenizer returns attention_mask automatically
+inputs = tokenizer(["short", "much longer sequence"], padding=True, return_tensors="pt")
+# attention_mask: [[1, 1, 0, 0], [1, 1, 1, 1]]
+```
+
+**Causal mask**: Lower-triangular mask for autoregressive models. Token at position i can only attend to positions 0..i.
+
+```python
+# Created internally for decoder models
+# [[1, 0, 0, 0],
+#  [1, 1, 0, 0],
+#  [1, 1, 1, 0],
+#  [1, 1, 1, 1]]
+```
+
+**Bidirectional mask**: Full attention for encoder models like BERT. Every token attends to every other token.
+
+**Encoder-decoder mask**: Cross-attention from decoder to encoder uses the encoder's padding mask.
+
+Models combine these masks. A causal LM with padding combines the causal mask with the padding mask using element-wise multiplication.
+
+The [attention mask discussion](https://discuss.huggingface.co/t/difference-between-attention-mask-and-causal-mask/104922) covers the differences in detail.
+
+---
+
+## Tokenization Deep Dive
+
+Tokenization converts raw text into the discrete tokens models consume. Modern tokenizers use subword algorithms that balance vocabulary size against sequence length.
+
+### Tokenization Algorithms Compared
+
+Four algorithms dominate according to the [tokenizer summary](https://huggingface.co/docs/transformers/tokenizer_summary):
+
+**Byte-Pair Encoding (BPE)**: Starts with individual characters, iteratively merges the most frequent pair. Used by GPT-2, GPT-3, GPT-4, LLaMA, RoBERTa.
+
+```
+Training corpus: "low lower lowest"
+Initial: ['l', 'o', 'w', ' ', 'l', 'o', 'w', 'e', 'r', ...]
+After merges: ['low', 'low', 'er', 'low', 'est']
+```
+
+**WordPiece**: Similar to BPE but merges based on likelihood maximization rather than frequency. Prefixes continuations with `##`. Used by BERT, DistilBERT, Electra.
+
+```
+"unbelievable" → ["un", "##believ", "##able"]
+```
+
+**Unigram**: Starts with a large vocabulary, iteratively removes tokens that least affect the training loss. Probabilistic: can produce multiple valid tokenizations. Used within SentencePiece.
+
+**SentencePiece**: A framework that treats text as a raw byte stream, enabling language-agnostic tokenization. Can use BPE or Unigram internally. Used by T5, ALBERT, XLNet, Gemma.
+
+The [tokenization algorithms comparison](https://codesignal.com/learn/courses/2-modern-tokenization-techniques-for-ai-llms/lessons/comparing-bpe-wordpiece-and-sentencepiece-in-nlp) shows that BPE offers better contextual specialization while SentencePiece achieves better encoding efficiency.
+
+### The tokenizer.json File Format
+
+Fast tokenizers serialize their configuration to `tokenizer.json`. This file encodes:
+
+```json
+{
+  "version": "1.0",
+  "truncation": null,
+  "padding": null,
+  "added_tokens": [...],
+  "normalizer": {
+    "type": "Sequence",
+    "normalizers": [...]
+  },
+  "pre_tokenizer": {
+    "type": "ByteLevel",
+    "add_prefix_space": false
+  },
+  "model": {
+    "type": "BPE",
+    "vocab": {"<s>": 0, "</s>": 1, ...},
+    "merges": ["Ġ t", "Ġ a", "h e", ...]
+  },
+  "decoder": {...}
+}
+```
+
+The `merges` array encodes BPE merge rules in order of application. During tokenization, the algorithm:
+
+1. Splits input using the pre-tokenizer
+2. For each word, starts with individual bytes/characters
+3. Applies merges in order until no more apply
+4. Maps resulting subwords to vocabulary IDs
+
+### Special Tokens and Why They Matter
+
+Special tokens serve structural roles:
+
+- `[CLS]` / `<s>`: Sequence start, used for classification
+- `[SEP]` / `</s>`: Sequence end or separator
+- `[PAD]`: Padding for batching
+- `[UNK]`: Unknown tokens (rare with subword tokenizers)
+- `[MASK]`: Masked positions for MLM training
+
+Models expect specific special tokens. Using the wrong ones breaks the model:
+
+```python
+tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B")
+
+# Chat models need proper formatting
+messages = [{"role": "user", "content": "Hello"}]
+formatted = tokenizer.apply_chat_template(messages, tokenize=False)
+# Adds <|begin_of_text|>, <|start_header_id|>, etc.
+```
+
+### Fast vs Slow Tokenizers
+
+The [fast tokenizers guide](https://huggingface.co/docs/transformers/en/fast_tokenizers) explains the difference:
+
+**Slow tokenizers** (`PreTrainedTokenizer`): Pure Python implementation. Full control, easier to modify, but 10-100x slower.
+
+**Fast tokenizers** (`PreTrainedTokenizerFast`): Rust backend via the `tokenizers` library. Parallel processing, sub-millisecond tokenization for most inputs.
+
+The fast tokenizer provides additional features:
+
+```python
+tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+encoding = tokenizer("Hello world", return_offsets_mapping=True)
+
+# Character offsets for each token
+print(encoding.offset_mapping)
+# [(0, 5), (6, 11)]  # "Hello", "world"
+
+# Map token index to word index
+print(encoding.word_ids())
+# [0, 1]
+```
+
+### Training Tokenizers from Scratch
+
+The [tokenizers quicktour](https://huggingface.co/docs/tokenizers/en/quicktour) shows how to train custom tokenizers:
+
+```python
+from tokenizers import Tokenizer
+from tokenizers.models import BPE
+from tokenizers.trainers import BpeTrainer
+from tokenizers.pre_tokenizers import Whitespace
+
+# Initialize with BPE model
+tokenizer = Tokenizer(BPE(unk_token="[UNK]"))
+tokenizer.pre_tokenizer = Whitespace()
+
+# Configure trainer
+trainer = BpeTrainer(
+    vocab_size=30000,
+    min_frequency=2,
+    special_tokens=["[UNK]", "[CLS]", "[SEP]", "[PAD]", "[MASK]"]
+)
+
+# Train on files
+files = ["wiki.txt", "books.txt"]
+tokenizer.train(files, trainer)
+
+# Save
+tokenizer.save("my-tokenizer.json")
+```
+
+For byte-level BPE (like GPT-2):
+
+```python
+from tokenizers import pre_tokenizers
+from tokenizers.pre_tokenizers import ByteLevel
+
+tokenizer = Tokenizer(BPE(unk_token="[UNK]"))
+tokenizer.pre_tokenizer = ByteLevel(add_prefix_space=False)
+
+trainer = BpeTrainer(
+    vocab_size=50257,
+    initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
+    special_tokens=["[UNK]", "[PAD]"]
+)
+```
+
+Training a tokenizer on a GB of text takes under 20 seconds with the Rust backend.
+
+---
+
+## Model Loading Mechanics
+
+Loading large models requires careful memory management. Transformers and Accelerate provide several mechanisms.
+
+### Sharded Checkpoint Loading
+
+Large models split weights across multiple files (shards). A 70B model might have 15 shards of ~10GB each. The `model.safetensors.index.json` file maps parameter names to shard files:
+
+```json
+{
+  "metadata": {"total_size": 140000000000},
+  "weight_map": {
+    "model.embed_tokens.weight": "model-00001-of-00015.safetensors",
+    "model.layers.0.self_attn.q_proj.weight": "model-00001-of-00015.safetensors",
+    "model.layers.0.self_attn.k_proj.weight": "model-00001-of-00015.safetensors",
+    ...
+  }
+}
+```
+
+During loading, Transformers:
+
+1. Downloads/locates all shard files
+2. Loads one shard at a time
+3. Copies relevant tensors to the model
+4. Discards the shard before loading the next
+
+This keeps peak memory at (model size) + (largest shard size) rather than (model size) * 2.
+
+### device_map="auto" and Layer Distribution
+
+The [big model inference guide](https://huggingface.co/docs/accelerate/en/usage_guides/big_modeling) explains automatic device placement:
+
+```python
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-3.1-70B",
+    device_map="auto",
+    torch_dtype=torch.bfloat16,
+)
+```
+
+Accelerate computes a device map by:
+
+1. Estimating each layer's memory requirement
+2. Querying available GPU memory
+3. Assigning layers to devices in order (GPU 0, GPU 1, ..., CPU, disk)
+4. Ensuring no module in `_no_split_modules` crosses device boundaries
+
+Available strategies:
+
+- `"auto"`: Fill GPUs in order, overflow to CPU/disk
+- `"balanced"`: Distribute evenly across GPUs
+- `"balanced_low_0"`: Keep GPU 0 lighter (useful when GPU 0 handles other tasks)
+- `"sequential"`: Fill devices completely before moving to next
+
+View the computed map:
+
+```python
+from accelerate import infer_auto_device_map
+from transformers import AutoConfig, AutoModelForCausalLM
+
+config = AutoConfig.from_pretrained("meta-llama/Llama-3.1-70B")
+with init_empty_weights():
+    model = AutoModelForCausalLM.from_config(config)
+
+device_map = infer_auto_device_map(model, max_memory={0: "24GB", 1: "24GB", "cpu": "100GB"})
+print(device_map)
+# {'model.embed_tokens': 0, 'model.layers.0': 0, ..., 'model.layers.40': 1, ...}
+```
+
+**Important limitation**: `device_map="auto"` supports inference only, not training. The hook-based execution doesn't support backpropagation across devices.
+
+### bitsandbytes Quantization Paths
+
+The [bitsandbytes guide](https://huggingface.co/docs/transformers/en/quantization/bitsandbytes) details on-the-fly quantization:
+
+**8-bit quantization (LLM.int8)**:
+
+```python
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-3.1-8B",
+    load_in_8bit=True,
+    device_map="auto",
+)
+```
+
+Uses mixed-precision decomposition: outlier features (magnitude > 6.0 by default) stay in FP16, the rest quantizes to INT8. This preserves quality for models with outlier activations.
+
+**4-bit quantization (NF4/FP4)**:
+
+```python
+from transformers import BitsAndBytesConfig
+
+config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",           # NormalFloat4 or "fp4"
+    bnb_4bit_compute_dtype=torch.bfloat16,  # Compute in bf16
+    bnb_4bit_use_double_quant=True,      # Quantize the quantization constants
+)
+```
+
+NF4 (NormalFloat4) optimizes for normally-distributed weights by placing quantization levels at distribution quantiles. Double quantization applies 8-bit quantization to the scaling factors, saving an additional 0.4 bits per parameter.
+
+PyTorch doesn't support 4-bit dtypes, so bitsandbytes packs two 4-bit values into one 8-bit value, changing tensor shapes. Computation happens in 16/32-bit after dequantization.
+
+### Safetensors Lazy Loading
+
+The [safetensors documentation](https://huggingface.co/docs/safetensors) describes lazy loading:
+
+```python
+from safetensors import safe_open
+
+with safe_open("model.safetensors", framework="pt") as f:
+    # Only metadata loaded at this point
+    print(f.keys())  # List all tensor names
+
+    # Individual tensors load on-demand
+    tensor = f.get_tensor("model.layers.0.self_attn.q_proj.weight")
+```
+
+Safetensors uses memory-mapping: the OS maps the file into virtual address space, loading pages only when accessed. This enables:
+
+- Inspecting tensor names without loading weights
+- Loading specific tensors for distributed inference
+- Parallel loading from multiple processes sharing the memory map
+
+The file layout keeps tensor metadata contiguous at the start, enabling fast scanning without reading weight data.
+
+### Memory Estimation Before Loading
+
+Estimate memory requirements before attempting to load:
+
+```python
+from accelerate.commands.estimate import estimate_command
+
+# CLI
+# accelerate estimate-memory meta-llama/Llama-3.1-70B
+
+# Programmatic
+from accelerate import init_empty_weights
+from transformers import AutoConfig, AutoModelForCausalLM
+
+config = AutoConfig.from_pretrained("meta-llama/Llama-3.1-70B")
+
+with init_empty_weights():
+    model = AutoModelForCausalLM.from_config(config)
+
+param_bytes = sum(p.numel() * p.element_size() for p in model.parameters())
+print(f"Model size: {param_bytes / 1e9:.1f} GB in {model.dtype}")
+```
+
+The `init_empty_weights()` context creates tensors on PyTorch's "meta" device, which stores only shape and dtype, not actual data.
+
+---
+
+## Training Infrastructure
+
+### Trainer Class Internals
+
+The [Trainer documentation](https://huggingface.co/docs/transformers/en/main_classes/trainer) covers the main training API. Key components:
+
+**Training loop structure:**
+
+```python
+for epoch in range(num_epochs):
+    for step, batch in enumerate(train_dataloader):
+        # Forward pass
+        outputs = model(**batch)
+        loss = outputs.loss
+
+        # Scale loss for gradient accumulation
+        loss = loss / gradient_accumulation_steps
+
+        # Backward pass
+        loss.backward()
+
+        # Update weights every N steps
+        if (step + 1) % gradient_accumulation_steps == 0:
+            optimizer.step()
+            lr_scheduler.step()
+            optimizer.zero_grad()
+```
+
+**Subclassing for custom behavior:**
+
+```python
+from transformers import Trainer
+
+class CustomTrainer(Trainer):
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        outputs = model(**inputs)
+        loss = my_custom_loss(outputs.logits, inputs["labels"])
+        return (loss, outputs) if return_outputs else loss
+
+    def training_step(self, model, inputs, num_items_in_batch=None):
+        # Custom training step logic
+        ...
+```
+
+### Gradient Accumulation Implementation
+
+The [gradient accumulation blog post](https://huggingface.co/blog/gradient_accumulation) explains the details:
+
+Gradient accumulation simulates larger batch sizes by accumulating gradients over multiple forward passes before updating weights.
+
+```python
+training_args = TrainingArguments(
+    per_device_train_batch_size=4,
+    gradient_accumulation_steps=8,
+    # Effective batch size = 4 * 8 = 32
+)
+```
+
+Internally, the Trainer scales the loss by `1/gradient_accumulation_steps` before each backward pass. This ensures the accumulated gradients match what you'd get from a single large batch.
+
+Recent versions fixed a subtle bug: some loss functions (like cross-entropy) already average over batch elements, so the scaling was being applied twice in certain configurations. The fix introduced `num_items_in_batch` parameter to loss computation functions.
+
+### Mixed Precision Training Paths
+
+The [PyTorch AMP documentation](https://docs.pytorch.org/docs/stable/amp.html) covers mixed precision:
+
+**FP16 training** (requires loss scaling):
+
+```python
+from torch.amp import autocast, GradScaler
+
+scaler = GradScaler("cuda")
+
+for batch in dataloader:
+    optimizer.zero_grad()
+
+    with autocast("cuda", dtype=torch.float16):
+        outputs = model(**batch)
+        loss = outputs.loss
+
+    scaler.scale(loss).backward()
+    scaler.step(optimizer)
+    scaler.update()
+```
+
+`GradScaler` prevents gradient underflow by scaling loss up before backward (so gradients are larger), then scaling gradients down before optimizer step.
+
+**BF16 training** (no loss scaling needed):
+
+```python
+with autocast("cuda", dtype=torch.bfloat16):
+    outputs = model(**batch)
+    loss = outputs.loss
+
+loss.backward()
+optimizer.step()
+```
+
+BFloat16 has the same exponent range as FP32, so it doesn't suffer from underflow. GradScaler is unnecessary and can harm training.
+
+**With Trainer:**
+
+```python
+training_args = TrainingArguments(
+    bf16=True,   # or fp16=True
+    # ...
+)
+```
+
+### PEFT Integration with Training
+
+The [PEFT integration guide](https://huggingface.co/docs/transformers/en/peft) shows how adapters work with Trainer:
+
+```python
+from peft import LoraConfig, TaskType, get_peft_model
+from transformers import AutoModelForCausalLM, Trainer, TrainingArguments
+
+# Load base model
+model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-8B")
+
+# Configure LoRA
+lora_config = LoraConfig(
+    r=16,
+    lora_alpha=32,
+    target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
+    lora_dropout=0.05,
+    task_type=TaskType.CAUSAL_LM,
+)
+
+# Wrap model with PEFT
+model = get_peft_model(model, lora_config)
+model.print_trainable_parameters()
+# trainable params: 13,631,488 || all params: 8,043,892,736 || trainable%: 0.17
+
+# Train normally - Trainer handles the PEFT model
+trainer = Trainer(model=model, args=training_args, train_dataset=dataset)
+trainer.train()
+```
+
+PEFT works by:
+
+1. Identifying target modules (linear layers matching `target_modules`)
+2. Replacing them with wrapped versions containing LoRA matrices
+3. Freezing base model parameters (requires_grad=False)
+4. Only the small A and B matrices train
+
+For QLoRA (quantized base + LoRA):
+
+```python
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-3.1-8B",
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.bfloat16,
+)
+model = get_peft_model(model, lora_config)
+```
+
+The quantized weights stay frozen (they can't be trained anyway), and only the FP16/BF16 LoRA matrices update.
+
+---
+
+## Hub API Deep Dive
+
+### Git LFS and Large File Handling
+
+The [storage documentation](https://huggingface.co/docs/hub/en/storage-backends) explains file handling:
+
+Historically, Hub repositories used Git LFS (Large File Storage) for files over 10MB. LFS stores file content in a separate server, with Git tracking only pointer files.
+
+As of May 2025, new repositories default to Xet storage, which offers chunk-level deduplication. When you modify a file, only changed chunks upload, not the entire file. This matters for iterative checkpoint uploads during training.
+
+**File size limits:**
+- Pre-receive hook rejects commits with files > 10MB not tracked by LFS/Xet
+- Individual files capped at 50GB
+- Recommended: split large files into ~20GB chunks
+
+**Repository limits:**
+- < 100k files total recommended
+- < 10k files per directory
+- For large datasets, use Parquet or WebDataset formats
+
+### Repository Structure Conventions
+
+Model repositories follow conventions that enable auto-loading:
+
+```
+my-model/
+├── README.md                    # Model card with YAML frontmatter
+├── config.json                  # Model architecture configuration
+├── model.safetensors            # Weights (or sharded)
+├── model.safetensors.index.json # Shard index if sharded
+├── tokenizer.json               # Fast tokenizer config
+├── tokenizer_config.json        # Tokenizer settings
+├── special_tokens_map.json      # Special token definitions
+├── vocab.json                   # Vocabulary (some tokenizers)
+├── merges.txt                   # BPE merges (some tokenizers)
+└── generation_config.json       # Default generation settings
+```
+
+Dataset repositories:
+
+```
+my-dataset/
+├── README.md                    # Dataset card
+├── data/
+│   ├── train-00000-of-00010.parquet
+│   ├── train-00001-of-00010.parquet
+│   └── ...
+└── dataset_info.json            # Dataset metadata
+```
+
+### Model Card YAML Frontmatter
+
+The [model cards documentation](https://huggingface.co/docs/hub/en/model-cards) specifies the metadata format:
+
+```yaml
+---
+language:
+  - en
+  - zh
+license: apache-2.0
+library_name: transformers
+pipeline_tag: text-generation
+tags:
+  - llama
+  - chat
+datasets:
+  - HuggingFaceH4/ultrachat_200k
+base_model: meta-llama/Llama-3.1-8B
+model-index:
+  - name: my-model
+    results:
+      - task:
+          type: text-generation
+        dataset:
+          name: MMLU
+          type: cais/mmlu
+        metrics:
+          - name: accuracy
+            type: accuracy
+            value: 0.72
+---
+
+# My Model
+
+Model description here...
+```
+
+The Hub parses this YAML to:
+- Enable filtering by language, license, task
+- Display the inference widget based on `pipeline_tag`
+- Show benchmark results on the model page
+- Link to base models and training datasets
+
+### huggingface_hub Library Internals
+
+The [huggingface_hub documentation](https://huggingface.co/docs/huggingface_hub/package_reference/hf_api) covers the Python client:
+
+```python
+from huggingface_hub import HfApi, hf_hub_download, snapshot_download
+
+api = HfApi()
+
+# List repository files
+files = api.list_repo_files("meta-llama/Llama-3.1-8B")
+
+# Get model info
+info = api.model_info("meta-llama/Llama-3.1-8B")
+print(info.downloads)  # Download count
+print(info.tags)       # Tags like "llama", "text-generation"
+
+# Download single file (cached)
+path = hf_hub_download(
+    repo_id="meta-llama/Llama-3.1-8B",
+    filename="config.json",
+)
+
+# Download entire repo
+local_dir = snapshot_download("meta-llama/Llama-3.1-8B")
+```
+
+The library uses a content-addressed cache at `~/.cache/huggingface/hub/`:
+
+```
+hub/
+├── models--meta-llama--Llama-3.1-8B/
+│   ├── refs/
+│   │   └── main              # Points to commit hash
+│   ├── blobs/
+│   │   └── abc123...         # Content-addressed files
+│   └── snapshots/
+│       └── def456.../        # Symlinks to blobs
+```
+
+This deduplicates identical files across model versions and enables instant switching between revisions.
+
+---
+
+## Datasets Library Internals
+
+### Apache Arrow Format and Memory Mapping
+
+The [Datasets Arrow documentation](https://huggingface.co/docs/datasets/en/about_arrow) explains the storage layer:
+
+Arrow is a columnar memory format optimized for analytics. Key properties:
+
+- **Columnar**: All values for a column stored contiguously, enabling vectorized operations
+- **Zero-copy**: Data can be shared across processes without serialization
+- **Memory-mapped**: OS handles paging data in/out of RAM
+
+```python
+from datasets import load_dataset
+
+dataset = load_dataset("imdb", split="train")
+
+# Dataset is backed by Arrow file on disk
+print(dataset.cache_files)
+# [{'filename': '~/.cache/huggingface/datasets/imdb/.../train/dataset.arrow'}]
+
+# Access uses memory mapping - doesn't load into RAM
+print(dataset[0])  # Pages in just this example
+```
+
+This lets you iterate over datasets larger than RAM. The OS virtual memory system handles what's actually in physical memory.
+
+### Dataset.map() Parallelization
+
+The [map parallelization discussion](https://discuss.huggingface.co/t/how-does-datasets-dataset-map-parallelize-data/36370) explains multiprocessing:
+
+```python
+def process(examples):
+    return {"length": [len(t) for t in examples["text"]]}
+
+# Single process
+dataset = dataset.map(process, batched=True)
+
+# Parallel processing
+dataset = dataset.map(process, batched=True, num_proc=4)
+```
+
+With `num_proc > 1`:
+
+1. Dataset splits into `num_proc` shards
+2. Each shard processes in a separate worker
+3. Workers write results to temporary Arrow files
+4. Results concatenate into final dataset
+
+Requirements for parallelization:
+- Function must be picklable (top-level functions work; lambdas and closures may not)
+- Workers don't share state
+- Each worker loads its shard independently via memory mapping
+
+### Streaming Datasets and Shard Fetching
+
+The [streaming documentation](https://huggingface.co/docs/datasets/stream) covers iterable datasets:
+
+```python
+dataset = load_dataset("HuggingFaceFW/fineweb", split="train", streaming=True)
+
+for example in dataset:
+    process(example)
+```
+
+Streaming datasets:
+- Don't download the full dataset
+- Fetch data on-demand as you iterate
+- Support transformations (map, filter) that apply lazily
+
+For sharded datasets, streaming fetches shards sequentially. Shuffling operates within a buffer:
+
+```python
+# Shuffles within buffer of 10000 examples
+dataset = dataset.shuffle(seed=42, buffer_size=10000)
+```
+
+To resume from a checkpoint:
+
+```python
+# Skip to position (fetches from start of current shard)
+dataset = dataset.skip(1000)
+```
+
+Resuming isn't instant because it must re-read from the beginning of the current shard.
+
+### Custom Dataset Loading Scripts
+
+The [dataset script documentation](https://huggingface.co/docs/datasets/v3.4.0/en/dataset_script) shows how to write loaders:
+
+```python
+import datasets
+
+class MyDataset(datasets.GeneratorBasedBuilder):
+    """My custom dataset."""
+
+    VERSION = datasets.Version("1.0.0")
+
+    def _info(self):
+        return datasets.DatasetInfo(
+            description="My dataset description",
+            features=datasets.Features({
+                "text": datasets.Value("string"),
+                "label": datasets.ClassLabel(names=["negative", "positive"]),
+            }),
+        )
+
+    def _split_generators(self, dl_manager):
+        # Download and extract data
+        data_dir = dl_manager.download_and_extract("https://example.com/data.zip")
+
+        return [
+            datasets.SplitGenerator(
+                name=datasets.Split.TRAIN,
+                gen_kwargs={"filepath": f"{data_dir}/train.jsonl"},
+            ),
+            datasets.SplitGenerator(
+                name=datasets.Split.TEST,
+                gen_kwargs={"filepath": f"{data_dir}/test.jsonl"},
+            ),
+        ]
+
+    def _generate_examples(self, filepath):
+        with open(filepath) as f:
+            for idx, line in enumerate(f):
+                data = json.loads(line)
+                yield idx, {
+                    "text": data["text"],
+                    "label": data["label"],
+                }
+```
+
+For Arrow-based builders (better for large datasets):
+
+```python
+class MyArrowDataset(datasets.ArrowBasedBuilder):
+    def _generate_tables(self, filepath):
+        # Yield PyArrow tables instead of individual examples
+        table = pq.read_table(filepath)
+        yield 0, table
+```
+
+---
+
+## The Diffusers Library
+
+Diffusers handles diffusion models for image, video, and audio generation. It supports Stable Diffusion, SDXL, Flux, Kandinsky, and other architectures.
+
+### Basic Image Generation
+
+```python
+import torch
+from diffusers import DiffusionPipeline
+
+# Load Stable Diffusion XL
+pipe = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    torch_dtype=torch.float16,
+)
+pipe.to("cuda")
+
+# Generate
+image = pipe("A cat astronaut floating in space, digital art").images[0]
+image.save("cat_astronaut.png")
+```
+
+### FLUX Models
+
+FLUX is a 12 billion parameter rectified flow transformer from Black Forest Labs. It produces high-quality images with strong text rendering and prompt adherence.
+
+```python
+import torch
+from diffusers import FluxPipeline
+
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-schnell",
+    torch_dtype=torch.bfloat16
+)
+pipe.enable_model_cpu_offload()
+
+# FLUX.1-schnell generates in 1-4 steps
+image = pipe(
+    "A photo of a mountain lake at sunset",
+    guidance_scale=0.0,
+    num_inference_steps=4,
+).images[0]
+image.save("lake.png")
+```
+
+FLUX.1-schnell is distilled for speed. FLUX.1-dev offers higher quality with more steps. FLUX.1-Kontext handles image editing with text instructions.
+
+### Memory Optimization
+
+Diffusers provides multiple strategies for running on limited VRAM:
+
+```python
+# CPU offloading - moves components to CPU when not in use
+pipe.enable_model_cpu_offload()
+
+# Sequential CPU offloading - more aggressive, slower
+pipe.enable_sequential_cpu_offload()
+
+# Attention slicing - trades compute for memory
+pipe.enable_attention_slicing()
+
+# VAE tiling - generate high-res without OOM
+pipe.enable_vae_tiling()
+```
+
+### LoRA and Adapters
+
+Load style or concept LoRAs:
+
+```python
+pipe.load_lora_weights("username/style-lora", weight_name="lora.safetensors")
+
+# Adjust LoRA strength
+pipe.fuse_lora(lora_scale=0.8)
+
+# Unload
+pipe.unfuse_lora()
+pipe.unload_lora_weights()
+```
+
+---
+
+## Hugging Face Spaces
+
+Spaces are web applications hosted on Hugging Face. The key insight: Spaces are Git repositories. You can clone them, run them locally, and modify them like any codebase.
+
+### Cloning and Running Locally
+
+```bash
+# Clone a Space
+git clone https://huggingface.co/spaces/username/my-space
+cd my-space
+
+# Install dependencies
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Run locally
+python app.py  # or gradio app.py for Gradio apps
+```
+
+Spaces typically use Gradio or Streamlit for the frontend. The same code runs identically on your machine and on Hugging Face's servers.
+
+### Gradio Space Example
+
+```python
+import gradio as gr
+from transformers import pipeline
+
+classifier = pipeline("sentiment-analysis")
+
+def classify(text):
+    result = classifier(text)[0]
+    return f"{result['label']}: {result['score']:.4f}"
+
+demo = gr.Interface(fn=classify, inputs="text", outputs="text")
+demo.launch()
+```
+
+### Syncing with GitHub
+
+Configure a GitHub Action to push changes to both GitHub and Hugging Face:
+
+```yaml
+name: Sync to Hugging Face
+on:
+  push:
+    branches: [main]
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Push to HF
+        run: |
+          git push https://user:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/user/space main
+```
+
+Spaces support Docker for custom environments, persistent storage for databases, and GPU runtimes for ML inference.
+
+---
+
+## Other Hugging Face Libraries
+
+### Accelerate
+
+Accelerate lets you run the same PyTorch training code on any hardware configuration: single GPU, multi-GPU, TPU, or distributed clusters. Add a few lines to existing code:
+
+```python
+from accelerate import Accelerator
+
+accelerator = Accelerator()
+
+# Wrap model, optimizer, dataloader
+model, optimizer, dataloader = accelerator.prepare(model, optimizer, dataloader)
+
+for batch in dataloader:
+    outputs = model(**batch)
+    loss = outputs.loss
+    accelerator.backward(loss)
+    optimizer.step()
+    optimizer.zero_grad()
+```
+
+Configure distributed training with the CLI:
+
+```bash
+accelerate config  # Interactive setup
+accelerate launch train.py  # Launch with config
+```
+
+Accelerate handles mixed precision (fp16, bf16, fp8), DeepSpeed integration, and FSDP for sharding large models.
+
+### PEFT
+
+PEFT implements parameter-efficient fine-tuning methods. LoRA is the most popular: freeze the base model and train small adapter matrices.
+
+```python
+from peft import LoraConfig, get_peft_model
+from transformers import AutoModelForCausalLM
+
+model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-8B")
+
+lora_config = LoraConfig(
+    r=16,                    # Rank
+    lora_alpha=32,           # Scaling
+    target_modules="all-linear",  # Apply to all linear layers
+    lora_dropout=0.05,
+)
+
+peft_model = get_peft_model(model, lora_config)
+peft_model.print_trainable_parameters()
+# trainable params: 41,943,040 || all params: 8,030,261,248 || trainable%: 0.52
+```
+
+A 7B model drops from training billions of parameters to millions. The base model stays frozen; only the adapter trains. Merge adapters back into the base model for inference or keep them separate to swap styles.
+
+PEFT supports LoRA variants like DoRA (magnitude and direction decomposition) and methods beyond LoRA: IA3, AdaLoRA, and prompt tuning.
+
+### TRL
+
+TRL provides trainers for post-training: supervised fine-tuning, RLHF, and preference optimization.
+
+```python
+from trl import SFTTrainer
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from datasets import load_dataset
+
+model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-8B")
+tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B")
+dataset = load_dataset("your-dataset")
+
+trainer = SFTTrainer(
+    model=model,
+    train_dataset=dataset,
+    tokenizer=tokenizer,
+    max_seq_length=2048,
+)
+
+trainer.train()
+```
+
+For preference optimization, DPOTrainer implements Direct Preference Optimization:
+
+```python
+from trl import DPOTrainer, DPOConfig
+
+config = DPOConfig(
+    beta=0.1,
+    output_dir="dpo_model",
+)
+
+trainer = DPOTrainer(
+    model=model,
+    ref_model=ref_model,
+    args=config,
+    train_dataset=preference_dataset,  # Has 'chosen' and 'rejected' columns
+    tokenizer=tokenizer,
+)
+```
+
+GRPOTrainer implements Group Relative Policy Optimization, the algorithm behind DeepSeek R1. It avoids needing a separate reward model by comparing outputs within groups.
+
+### Optimum
+
+Optimum provides hardware-specific optimizations. Export to ONNX, quantize, and run on specialized accelerators:
+
+```python
+from optimum.onnxruntime import ORTModelForSequenceClassification
+
+# Load and export to ONNX
+model = ORTModelForSequenceClassification.from_pretrained(
+    "distilbert-base-uncased-finetuned-sst-2-english",
+    export=True
+)
+
+# Or load existing ONNX model
+model = ORTModelForSequenceClassification.from_pretrained("onnx_model_dir")
+```
+
+Optimum integrates with:
+- Intel Gaudi accelerators via optimum-habana
+- AWS Trainium via optimum-neuron
+- Intel CPUs via optimum-intel
+- AMD GPUs via optimum-amd
+
+The optimum-benchmark tool compares performance across backends and quantization schemes.
+
+---
+
+## Practical Code Examples
+
+### Complete Fine-Tuning Pipeline
+
+```python
+from datasets import load_dataset
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    TrainingArguments,
+)
+from peft import LoraConfig
+from trl import SFTTrainer
+
+# Load model with 4-bit quantization
+model_id = "meta-llama/Llama-3.1-8B"
+
+model = AutoModelForCausalLM.from_pretrained(
+    model_id,
+    load_in_4bit=True,
+    device_map="auto",
+)
+tokenizer = AutoTokenizer.from_pretrained(model_id)
+tokenizer.pad_token = tokenizer.eos_token
+
+# Load dataset
+dataset = load_dataset("databricks/databricks-dolly-15k", split="train")
+
+# LoRA config for QLoRA
+peft_config = LoraConfig(
+    r=16,
+    lora_alpha=32,
+    target_modules="all-linear",
+    lora_dropout=0.05,
+    task_type="CAUSAL_LM",
+)
+
+# Training arguments
+training_args = TrainingArguments(
+    output_dir="./llama-finetuned",
+    num_train_epochs=1,
+    per_device_train_batch_size=4,
+    gradient_accumulation_steps=4,
+    learning_rate=2e-4,
+    bf16=True,
+    logging_steps=10,
+    save_strategy="epoch",
+)
+
+# Train
+trainer = SFTTrainer(
+    model=model,
+    train_dataset=dataset,
+    peft_config=peft_config,
+    args=training_args,
+    tokenizer=tokenizer,
+)
+
+trainer.train()
+trainer.save_model()
+```
+
+### Building a RAG System
+
+```python
+from sentence_transformers import SentenceTransformer
+from transformers import pipeline
+import numpy as np
+
+# Embedding model
+embedder = SentenceTransformer("BAAI/bge-base-en-v1.5")
+
+# Generator
+generator = pipeline(
+    "text-generation",
+    model="meta-llama/Llama-3.2-3B-Instruct",
+    device_map="auto",
+)
+
+# Sample documents
+documents = [
+    "Python was created by Guido van Rossum and released in 1991.",
+    "JavaScript was created by Brendan Eich in 1995.",
+    "Rust was developed by Mozilla and released in 2015.",
+]
+
+# Embed documents
+doc_embeddings = embedder.encode(documents, normalize_embeddings=True)
+
+def retrieve_and_generate(query: str, top_k: int = 2) -> str:
+    # Embed query
+    query_embedding = embedder.encode([query], normalize_embeddings=True)
+
+    # Find similar documents
+    scores = np.dot(doc_embeddings, query_embedding.T).flatten()
+    top_indices = np.argsort(scores)[-top_k:][::-1]
+
+    context = "\n".join([documents[i] for i in top_indices])
+
+    # Generate answer
+    prompt = f"""Context: {context}
+
+Question: {query}
+
+Answer based on the context above:"""
+
+    response = generator(prompt, max_new_tokens=100, do_sample=False)
+    return response[0]["generated_text"]
+
+answer = retrieve_and_generate("When was Python created?")
+print(answer)
+```
+
+### Multi-Modal Pipeline with FLUX
+
+```python
+import torch
+from diffusers import FluxPipeline
+from transformers import pipeline
+
+# Image generation
+flux = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-schnell",
+    torch_dtype=torch.bfloat16
+)
+flux.enable_model_cpu_offload()
+
+# Image captioning
+captioner = pipeline(
+    "image-to-text",
+    model="Salesforce/blip2-opt-2.7b",
+    device_map="auto",
+)
+
+# Generate image
+prompt = "A cozy cabin in the woods during autumn, warm lighting"
+image = flux(prompt, num_inference_steps=4).images[0]
+image.save("cabin.png")
+
+# Caption the generated image
+caption = captioner(image)
+print(f"Generated caption: {caption[0]['generated_text']}")
+```
+
+### Distributed Training with Accelerate
+
+```python
+# train.py
+from accelerate import Accelerator
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from torch.utils.data import DataLoader
+from datasets import load_dataset
+import torch
+
+accelerator = Accelerator(mixed_precision="bf16")
+
+# Load model and tokenizer
+model = AutoModelForSequenceClassification.from_pretrained(
+    "bert-base-uncased",
+    num_labels=2,
+)
+tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+
+# Load and tokenize dataset
+dataset = load_dataset("imdb", split="train[:1000]")
+
+def tokenize(examples):
+    return tokenizer(examples["text"], truncation=True, padding="max_length", max_length=512)
+
+dataset = dataset.map(tokenize, batched=True)
+dataset.set_format("torch", columns=["input_ids", "attention_mask", "label"])
+
+dataloader = DataLoader(dataset, batch_size=8, shuffle=True)
+optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5)
+
+# Prepare for distributed training
+model, optimizer, dataloader = accelerator.prepare(model, optimizer, dataloader)
+
+# Training loop
+model.train()
+for epoch in range(3):
+    for batch in dataloader:
+        outputs = model(
+            input_ids=batch["input_ids"],
+            attention_mask=batch["attention_mask"],
+            labels=batch["label"],
+        )
+        accelerator.backward(outputs.loss)
+        optimizer.step()
+        optimizer.zero_grad()
+
+    accelerator.print(f"Epoch {epoch} complete")
+
+accelerator.save_model(model, "trained_model")
+```
+
+Launch with:
+
+```bash
+accelerate launch --multi_gpu --num_processes 4 train.py
+```
+
+---
+
+## References
+
+- [Hugging Face Hub Documentation](https://huggingface.co/docs/hub/en/index)
+- [Hugging Face Wikipedia](https://en.wikipedia.org/wiki/Hugging_Face)
+- [Hugging Face 2026 Statistics - Fueler](https://fueler.io/blog/hugging-face-usage-revenue-valuation-growth-statistics)
+- [Transformers GitHub Repository](https://github.com/huggingface/transformers)
+- [Transformers v5 Tokenization Blog](https://huggingface.co/blog/tokenizers)
+- [Pipeline Documentation](https://huggingface.co/docs/transformers/main_classes/pipelines)
+- [Auto Classes Documentation](https://huggingface.co/docs/transformers/en/model_doc/auto)
+- [Models Documentation](https://huggingface.co/docs/transformers/main_classes/model)
+- [Generation Strategies](https://huggingface.co/docs/transformers/en/generation_strategies)
+- [KV Cache Strategies](https://huggingface.co/docs/transformers/en/kv_cache)
+- [Tokenizer Summary](https://huggingface.co/docs/transformers/tokenizer_summary)
+- [Fast Tokenizers Guide](https://huggingface.co/docs/transformers/en/fast_tokenizers)
+- [Tokenizers Quicktour](https://huggingface.co/docs/tokenizers/en/quicktour)
+- [Tokenizers GitHub Repository](https://github.com/huggingface/tokenizers)
+- [Big Model Inference Guide](https://huggingface.co/docs/accelerate/en/usage_guides/big_modeling)
+- [Loading Big Models Concept Guide](https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference)
+- [Bitsandbytes Quantization Guide](https://huggingface.co/docs/transformers/en/quantization/bitsandbytes)
+- [Making LLMs Accessible with 4-bit Quantization](https://huggingface.co/blog/4bit-transformers-bitsandbytes)
+- [Trainer Documentation](https://huggingface.co/docs/transformers/en/main_classes/trainer)
+- [Fixing Gradient Accumulation Blog](https://huggingface.co/blog/gradient_accumulation)
+- [PyTorch AMP Documentation](https://docs.pytorch.org/docs/stable/amp.html)
+- [PyTorch Mixed Precision Blog](https://pytorch.org/blog/what-every-user-should-know-about-mixed-precision-training-in-pytorch/)
+- [PEFT Integration Guide](https://huggingface.co/docs/transformers/en/peft)
+- [PEFT GitHub Repository](https://github.com/huggingface/peft)
+- [Storage Backends Documentation](https://huggingface.co/docs/hub/en/storage-backends)
+- [Model Cards Documentation](https://huggingface.co/docs/hub/en/model-cards)
+- [huggingface_hub Documentation](https://huggingface.co/docs/huggingface_hub/package_reference/hf_api)
+- [Datasets Arrow Documentation](https://huggingface.co/docs/datasets/en/about_arrow)
+- [Streaming Datasets](https://huggingface.co/docs/datasets/stream)
+- [Dataset Loading Scripts](https://huggingface.co/docs/datasets/v3.4.0/en/dataset_script)
+- [Diffusers GitHub Repository](https://github.com/huggingface/diffusers)
+- [FLUX.1-dev Model Card](https://huggingface.co/black-forest-labs/FLUX.1-dev)
+- [Safetensors Speed Comparison](https://huggingface.co/docs/safetensors/speed)
+- [Safetensors DeepWiki](https://deepwiki.com/huggingface/safetensors)
+- [llama.cpp GitHub Repository](https://github.com/ggml-org/llama.cpp)
+- [GGUF Quantization Guide](https://github.com/ggml-org/llama.cpp/blob/master/tools/quantize/README.md)
+- [GGUF Format Explained](https://apxml.com/courses/practical-llm-quantization/chapter-5-quantization-formats-tooling/gguf-format)
+- [Quantization Methods Comparison - Maarten Grootendorst](https://newsletter.maartengrootendorst.com/p/which-quantization-method-is-right)
+- [AWQ vs GPTQ vs GGUF - LocalAI Master](https://localaimaster.com/blog/quantization-explained)
+- [vLLM Quantization Guide](https://docs.jarvislabs.ai/blog/vllm-quantization-complete-guide-benchmarks)
+- [ONNX Official Site](https://onnx.ai/)
+- [ONNX Runtime Documentation](https://onnxruntime.ai/docs/)
+- [TensorRT-LLM GitHub Repository](https://github.com/NVIDIA/TensorRT-LLM)
+- [TensorRT-LLM Documentation](https://nvidia.github.io/TensorRT-LLM/overview.html)
+- [Datasets Streaming Documentation](https://huggingface.co/docs/hub/en/datasets-streaming)
+- [Parquet Introduction - Hugging Face Blog](https://huggingface.co/blog/cfahlgren1/intro-to-parquet-format)
+- [Evaluate Library GitHub](https://github.com/huggingface/evaluate)
+- [LoRA PEFT Documentation](https://huggingface.co/docs/peft/en/package_reference/lora)
+- [Fine-tuning LLMs in 2025 - Phil Schmid](https://www.philschmid.de/fine-tune-llms-in-2025)
+- [Accelerate GitHub Repository](https://github.com/huggingface/accelerate)
+- [Accelerate 1.0.0 Blog Post](https://huggingface.co/blog/accelerate-v1)
+- [TRL Documentation](https://huggingface.co/docs/trl/en/index)
+- [TRL GitHub Repository](https://github.com/huggingface/trl)
+- [Optimum GitHub Repository](https://github.com/huggingface/optimum)
+- [Optimum Documentation](https://huggingface.co/docs/optimum/en/index)
+- [Spaces Overview](https://huggingface.co/docs/hub/spaces-overview)
+- [Getting Started with Repositories](https://huggingface.co/docs/hub/repositories-getting-started)
+- [Tokenization Algorithms Comparison - CodeSignal](https://codesignal.com/learn/courses/2-modern-tokenization-techniques-for-ai-llms/lessons/comparing-bpe-wordpiece-and-sentencepiece-in-nlp)
+- [KV Cache Quantization Blog](https://huggingface.co/blog/kv-cache-quantization)

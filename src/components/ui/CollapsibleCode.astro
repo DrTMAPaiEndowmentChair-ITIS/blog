@@ -1,0 +1,130 @@
+---
+interface Props {
+  title?: string;
+  defaultOpen?: boolean;
+  language?: string;
+}
+
+const { title = 'Code', defaultOpen = false, language = '' } = Astro.props;
+---
+
+<div class="collapsible-code" data-default-open={defaultOpen}>
+  <button class="code-toggle" aria-expanded={defaultOpen ? 'true' : 'false'}>
+    <span class="toggle-icon">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <path d="M4 2L8 6L4 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    <span class="code-title">{title}</span>
+    {language && <span class="code-lang">{language}</span>}
+  </button>
+  <div class="code-content">
+    <slot />
+  </div>
+</div>
+
+<style>
+  .collapsible-code {
+    margin: 1.5em 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--astro-code-background);
+  }
+
+  .code-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1rem;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    text-align: left;
+    transition: all 0.15s ease-out;
+  }
+
+  .code-toggle:hover {
+    color: var(--text-primary);
+    background: var(--code-bg);
+  }
+
+  .code-toggle[aria-expanded="true"] {
+    border-bottom-color: var(--border);
+  }
+
+  .toggle-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease-out;
+  }
+
+  .code-toggle[aria-expanded="true"] .toggle-icon {
+    transform: rotate(90deg);
+  }
+
+  .code-title {
+    flex: 1;
+    font-weight: 500;
+  }
+
+  .code-lang {
+    padding: 0.125rem 0.5rem;
+    background: var(--accent-muted);
+    color: var(--accent);
+    border-radius: 4px;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .code-content {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.25s ease-out;
+  }
+
+  .code-toggle[aria-expanded="true"] + .code-content {
+    grid-template-rows: 1fr;
+  }
+
+  .code-content > :global(*) {
+    overflow: hidden;
+  }
+
+  /* Override prose pre styles when inside collapsible */
+  .code-content :global(pre) {
+    margin: 0;
+    border-radius: 0;
+    border: none;
+  }
+</style>
+
+<script>
+  function initCollapsibleCode() {
+    document.querySelectorAll('.collapsible-code').forEach((container) => {
+      const toggle = container.querySelector('.code-toggle');
+      const defaultOpen = container.dataset.defaultOpen === 'true';
+
+      if (!toggle) return;
+
+      // Set initial state
+      toggle.setAttribute('aria-expanded', defaultOpen ? 'true' : 'false');
+
+      toggle.addEventListener('click', () => {
+        const isExpanded = toggle.getAttribute('aria-expanded') === 'true';
+        toggle.setAttribute('aria-expanded', isExpanded ? 'false' : 'true');
+      });
+    });
+  }
+
+  // Initialize on page load and after navigation
+  initCollapsibleCode();
+  document.addEventListener('astro:after-swap', initCollapsibleCode);
+</script>

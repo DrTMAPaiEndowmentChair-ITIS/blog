@@ -1,0 +1,132 @@
+---
+/**
+ * Interactive comparison grid for comparing features/specs
+ * Highlights differences on hover
+ */
+interface Item {
+  name: string;
+  specs: Record<string, string | number>;
+  highlight?: boolean;
+}
+
+interface Props {
+  items: Item[];
+  specLabels: Record<string, string>;
+  title?: string;
+}
+
+const { items, specLabels, title } = Astro.props;
+const specKeys = Object.keys(specLabels);
+---
+
+<div class="comparison-grid">
+  {title && <div class="grid-title">{title}</div>}
+  <div class="grid-container">
+    <div class="grid-header">
+      <div class="grid-cell header-cell spec-label"></div>
+      {items.map((item) => (
+        <div class={`grid-cell header-cell item-name ${item.highlight ? 'highlighted' : ''}`}>
+          {item.name}
+        </div>
+      ))}
+    </div>
+    {specKeys.map((key) => (
+      <div class="grid-row" data-spec={key}>
+        <div class="grid-cell spec-label">{specLabels[key]}</div>
+        {items.map((item) => (
+          <div class={`grid-cell spec-value ${item.highlight ? 'highlighted' : ''}`}>
+            {item.specs[key] ?? '—'}
+          </div>
+        ))}
+      </div>
+    ))}
+  </div>
+</div>
+
+<style>
+  .comparison-grid {
+    margin: 2em 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .grid-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .grid-container {
+    display: grid;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    overflow: hidden;
+    min-width: fit-content;
+  }
+
+  .grid-header,
+  .grid-row {
+    display: grid;
+    grid-template-columns: 140px repeat(auto-fit, minmax(100px, 1fr));
+  }
+
+  .grid-cell {
+    padding: 0.625rem 0.875rem;
+    background: var(--bg);
+    font-size: var(--font-size-s);
+    transition: background 0.1s ease-out;
+  }
+
+  .header-cell {
+    background: var(--astro-code-background);
+    font-weight: var(--font-weight-bold);
+  }
+
+  .spec-label {
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: 0.75rem;
+  }
+
+  .spec-value {
+    font-family: var(--mono);
+    text-align: center;
+  }
+
+  .item-name {
+    text-align: center;
+  }
+
+  .highlighted {
+    background: var(--selection) !important;
+  }
+
+  .highlighted.header-cell {
+    color: var(--text-secondary);
+  }
+
+  .grid-row:hover .grid-cell {
+    background: var(--code-bg);
+  }
+
+  .grid-row:hover .highlighted {
+    background: var(--selection) !important;
+  }
+
+  @media (max-width: 600px) {
+    .grid-header,
+    .grid-row {
+      grid-template-columns: 100px repeat(auto-fit, minmax(80px, 1fr));
+    }
+
+    .grid-cell {
+      padding: 0.5rem 0.625rem;
+      font-size: 0.7rem;
+    }
+  }
+</style>

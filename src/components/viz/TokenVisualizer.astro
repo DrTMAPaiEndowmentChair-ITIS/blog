@@ -1,0 +1,124 @@
+---
+/**
+ * Interactive token visualizer
+ * Shows how text is split into tokens with IDs
+ */
+interface Token {
+  text: string;
+  id?: number;
+  type?: 'normal' | 'special' | 'subword';
+}
+
+interface Props {
+  tokens: Token[];
+  title?: string;
+  showIds?: boolean;
+}
+
+const { tokens, title, showIds = true } = Astro.props;
+---
+
+<div class="token-visualizer">
+  {title && <div class="viz-title">{title}</div>}
+  <div class="token-container">
+    {tokens.map((token, index) => (
+      <div
+        class={`token ${token.type || 'normal'}`}
+        data-token-index={index}
+        tabindex="0"
+      >
+        <span class="token-text">{token.text}</span>
+        {showIds && token.id !== undefined && (
+          <span class="token-id">{token.id}</span>
+        )}
+      </div>
+    ))}
+  </div>
+</div>
+
+<style>
+  .token-visualizer {
+    margin: 2em 0;
+    padding: 1.25rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  .viz-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .token-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    align-items: flex-start;
+  }
+
+  .token {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.375rem 0.5rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    cursor: default;
+    transition: all 0.1s ease-out;
+  }
+
+  .token:hover,
+  .token:focus {
+    transform: translateY(-2px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-color: var(--text-secondary);
+  }
+
+  html.dark .token:hover,
+  html.dark .token:focus {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  .token.special {
+    background: var(--selection);
+    border-color: var(--text-secondary);
+  }
+
+  .token.special .token-text {
+    color: var(--text-secondary);
+  }
+
+  .token.subword {
+    background: var(--code-bg);
+    border-color: var(--text-tertiary);
+  }
+
+  .token.subword .token-text::before {
+    content: '##';
+    opacity: 0.5;
+    font-size: 0.7em;
+  }
+
+  .token-text {
+    color: var(--text-primary);
+    white-space: pre;
+  }
+
+  .token-id {
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+    margin-top: 0.25rem;
+    padding-top: 0.25rem;
+    border-top: 1px solid var(--border);
+    min-width: 100%;
+    text-align: center;
+  }
+</style>

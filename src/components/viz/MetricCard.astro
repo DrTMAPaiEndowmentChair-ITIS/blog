@@ -1,0 +1,111 @@
+---
+/**
+ * Metric display card with optional comparison
+ */
+interface Props {
+  label: string;
+  value: string | number;
+  unit?: string;
+  comparison?: {
+    value: string | number;
+    label: string;
+  };
+  trend?: 'up' | 'down' | 'neutral';
+  size?: 'normal' | 'large';
+}
+
+const { label, value, unit, comparison, trend, size = 'normal' } = Astro.props;
+---
+
+<div class={`metric-card ${size}`}>
+  <div class="metric-label">{label}</div>
+  <div class="metric-value-container">
+    <span class="metric-value">{value}</span>
+    {unit && <span class="metric-unit">{unit}</span>}
+    {trend && (
+      <span class={`metric-trend ${trend}`}>
+        {trend === 'up' && '↑'}
+        {trend === 'down' && '↓'}
+        {trend === 'neutral' && '→'}
+      </span>
+    )}
+  </div>
+  {comparison && (
+    <div class="metric-comparison">
+      vs {comparison.value} {comparison.label}
+    </div>
+  )}
+</div>
+
+<style>
+  .metric-card {
+    padding: 1rem 1.25rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 120px;
+  }
+
+  .metric-card.large {
+    padding: 1.25rem 1.5rem;
+    min-width: 160px;
+  }
+
+  .metric-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .metric-value-container {
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
+  }
+
+  .metric-value {
+    font-family: var(--mono);
+    font-size: 1.5rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+    line-height: 1.2;
+  }
+
+  .metric-card.large .metric-value {
+    font-size: 2rem;
+  }
+
+  .metric-unit {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+  }
+
+  .metric-trend {
+    font-size: var(--font-size-s);
+    margin-left: 0.25rem;
+  }
+
+  .metric-trend.up {
+    color: var(--text-secondary);
+  }
+
+  .metric-trend.down {
+    color: var(--text-tertiary);
+  }
+
+  .metric-trend.neutral {
+    color: var(--text-tertiary);
+  }
+
+  .metric-comparison {
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    margin-top: 0.25rem;
+  }
+</style>

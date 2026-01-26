@@ -1,0 +1,353 @@
+---
+/**
+ * HPC Workflow Visualization
+ * Shows the high-performance computing workflow from environment setup
+ * through PyTorch, CUDA configuration, performance tuning, and monitoring
+ */
+interface Props {
+  title?: string;
+  layout?: 'horizontal' | 'vertical';
+}
+
+const { title = "HPC Workflow", layout = 'vertical' } = Astro.props;
+
+const stages = [
+  {
+    id: 'env-setup',
+    phase: 'Environment Setup',
+    name: 'uv + Python',
+    tools: ['uv', 'virtualenv', '.python-version'],
+    description: 'Fast package management',
+    color: 'accent'
+  },
+  {
+    id: 'pytorch',
+    phase: 'Framework Install',
+    name: 'PyTorch + CUDA',
+    tools: ['torch', 'torchvision', 'cu121'],
+    description: 'GPU-accelerated tensors',
+    color: 'accent'
+  },
+  {
+    id: 'cuda-config',
+    phase: 'CUDA Configuration',
+    name: 'A100 Optimization',
+    tools: ['nvidia-smi', 'AMP', 'TF32'],
+    description: 'Hardware detection',
+    color: 'highlight'
+  },
+  {
+    id: 'perf-tuning',
+    phase: 'Performance Tuning',
+    name: 'DataLoader + Compile',
+    tools: ['torch.compile', 'DDP', 'CUDA Graphs'],
+    description: 'Maximize throughput',
+    color: 'highlight'
+  },
+  {
+    id: 'monitoring',
+    phase: 'Monitoring',
+    name: 'Profiling',
+    tools: ['nvtop', 'Nsight', 'PyTorch Profiler'],
+    description: 'Track utilization',
+    color: 'accent'
+  }
+];
+---
+
+<div class={`hpc-workflow layout-${layout}`}>
+  {title && <div class="flow-title">{title}</div>}
+
+  <div class="workflow-track">
+    {stages.map((stage, index) => (
+      <>
+        <div class={`workflow-stage ${stage.color}`} data-stage-id={stage.id}>
+          <div class="stage-number">{index + 1}</div>
+          <div class="stage-content">
+            <div class="stage-phase">{stage.phase}</div>
+            <div class="stage-name">{stage.name}</div>
+            <div class="stage-description">{stage.description}</div>
+            <div class="stage-tools">
+              {stage.tools.map((tool) => (
+                <span class="tool-tag">{tool}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+        {index < stages.length - 1 && (
+          <div class="workflow-connector">
+            <div class="connector-line"></div>
+            <div class="connector-arrow"></div>
+          </div>
+        )}
+      </>
+    ))}
+  </div>
+
+  <div class="flow-legend">
+    <div class="legend-item">
+      <span class="legend-dot accent"></span>
+      <span>Setup & Monitoring</span>
+    </div>
+    <div class="legend-item">
+      <span class="legend-dot highlight"></span>
+      <span>Performance Critical</span>
+    </div>
+  </div>
+</div>
+
+<style>
+  .hpc-workflow {
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  .flow-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .workflow-track {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+  }
+
+  .layout-horizontal .workflow-track {
+    flex-direction: row;
+    align-items: flex-start;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+  }
+
+  .workflow-stage {
+    display: flex;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    transition: all 0.15s ease-out;
+  }
+
+  .layout-horizontal .workflow-stage {
+    flex-direction: column;
+    min-width: 160px;
+    flex-shrink: 0;
+  }
+
+  .workflow-stage:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+
+  html.dark .workflow-stage:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  }
+
+  .workflow-stage.accent {
+    border-color: var(--text-secondary);
+  }
+
+  .workflow-stage.accent:hover {
+    background: var(--selection);
+  }
+
+  .workflow-stage.highlight {
+    border-color: var(--text-tertiary);
+  }
+
+  .workflow-stage.highlight:hover {
+    background: var(--code-bg);
+  }
+
+  .stage-number {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--code-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+  }
+
+  .workflow-stage.accent .stage-number {
+    background: var(--selection);
+    color: var(--text-secondary);
+  }
+
+  .workflow-stage.highlight .stage-number {
+    background: var(--code-bg);
+    color: var(--text-tertiary);
+  }
+
+  .stage-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1;
+  }
+
+  .stage-phase {
+    font-family: var(--mono);
+    font-size: 0.5rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .stage-name {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+  }
+
+  .stage-description {
+    font-size: 0.55rem;
+    color: var(--text-tertiary);
+  }
+
+  .stage-tools {
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+    margin-top: 0.375rem;
+  }
+
+  .tool-tag {
+    font-family: var(--mono);
+    font-size: 0.5rem;
+    padding: 0.1rem 0.3rem;
+    background: var(--code-bg);
+    border-radius: 0;
+    color: var(--text-tertiary);
+  }
+
+  .workflow-connector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.375rem 0;
+  }
+
+  .layout-horizontal .workflow-connector {
+    flex-direction: row;
+    padding: 0 0.25rem;
+    align-self: center;
+    margin-top: 2rem;
+  }
+
+  .connector-line {
+    width: 2px;
+    height: 20px;
+    background: var(--border);
+  }
+
+  .layout-horizontal .connector-line {
+    width: 24px;
+    height: 2px;
+  }
+
+  .connector-arrow {
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid var(--border);
+  }
+
+  .layout-horizontal .connector-arrow {
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-left: 6px solid var(--border);
+    border-right: none;
+  }
+
+  .flow-legend {
+    display: flex;
+    gap: 1.25rem;
+    justify-content: center;
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .legend-item span:last-child {
+    font-size: 0.5rem;
+    color: var(--text-tertiary);
+    font-family: var(--mono);
+  }
+
+  .legend-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--border);
+  }
+
+  .legend-dot.accent {
+    background: var(--text-secondary);
+  }
+
+  .legend-dot.highlight {
+    background: var(--text-tertiary);
+  }
+
+  @media (max-width: 600px) {
+    .hpc-workflow {
+      padding: 1rem;
+    }
+
+    .layout-horizontal .workflow-track {
+      flex-direction: column;
+    }
+
+    .layout-horizontal .workflow-stage {
+      flex-direction: row;
+      min-width: auto;
+    }
+
+    .layout-horizontal .workflow-connector {
+      flex-direction: column;
+      padding: 0.375rem 0;
+      margin-top: 0;
+    }
+
+    .layout-horizontal .connector-line {
+      width: 2px;
+      height: 20px;
+    }
+
+    .layout-horizontal .connector-arrow {
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 6px solid var(--border);
+      border-bottom: none;
+    }
+
+    .flow-legend {
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+  }
+</style>

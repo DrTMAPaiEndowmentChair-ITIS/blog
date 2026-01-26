@@ -1,0 +1,162 @@
+---
+/**
+ * Interactive architecture diagram component
+ * Displays a pipeline/flow diagram with hover states and optional descriptions
+ */
+interface Block {
+  id: string;
+  label: string;
+  description?: string;
+  color?: 'accent' | 'highlight' | 'muted';
+}
+
+interface Props {
+  blocks: Block[];
+  title?: string;
+  direction?: 'horizontal' | 'vertical';
+}
+
+const { blocks, title, direction = 'horizontal' } = Astro.props;
+---
+
+<div class="arch-diagram" data-direction={direction}>
+  {title && <div class="diagram-title">{title}</div>}
+  <div class="diagram-flow">
+    {blocks.map((block, index) => (
+      <>
+        <div
+          class={`diagram-block ${block.color || 'muted'}`}
+          data-block-id={block.id}
+          tabindex="0"
+        >
+          <span class="block-label">{block.label}</span>
+          {block.description && (
+            <div class="block-tooltip">{block.description}</div>
+          )}
+        </div>
+        {index < blocks.length - 1 && (
+          <div class="diagram-arrow">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <path d="M5 12H19M19 12L13 6M19 12L13 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        )}
+      </>
+    ))}
+  </div>
+</div>
+
+<style>
+  .arch-diagram {
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  .diagram-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .diagram-flow {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  [data-direction="vertical"] .diagram-flow {
+    flex-direction: column;
+  }
+
+  [data-direction="vertical"] .diagram-arrow {
+    transform: rotate(90deg);
+  }
+
+  .diagram-block {
+    position: relative;
+    padding: 0.75rem 1.25rem;
+    border-radius: 0;
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    cursor: default;
+    transition: all 0.15s ease-out;
+    text-align: center;
+    min-width: 100px;
+  }
+
+  .diagram-block.accent {
+    background: var(--accent-muted);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+  }
+
+  .diagram-block.highlight {
+    background: var(--highlight-muted);
+    border: 1px solid var(--highlight);
+    color: var(--text-primary);
+  }
+
+  .diagram-block.muted {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+
+  .diagram-block:hover,
+  .diagram-block:focus {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  html.dark .diagram-block:hover,
+  html.dark .diagram-block:focus {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .block-tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(-8px);
+    padding: 0.5rem 0.75rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease-out;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    z-index: 10;
+  }
+
+  .diagram-block:hover .block-tooltip,
+  .diagram-block:focus .block-tooltip {
+    opacity: 1;
+  }
+
+  .diagram-arrow {
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 600px) {
+    .diagram-flow {
+      flex-direction: column;
+    }
+
+    .diagram-arrow {
+      transform: rotate(90deg);
+    }
+  }
+</style>

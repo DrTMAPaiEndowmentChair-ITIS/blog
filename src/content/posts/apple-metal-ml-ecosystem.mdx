@@ -1,0 +1,879 @@
+---
+title: "Apple's Metal Ecosystem for Machine Learning: Beyond MLX"
+pubDate: '2026-01-26'
+---
+
+import AppleMLStack from '../../components/viz/AppleMLStack.astro';
+
+**Author**: Aadit Agrawal
+
+## Introduction
+
+Apple Silicon has transformed what is possible for on-device machine learning. While MLX gets the headlines for LLM inference, Apple's ML stack runs much deeper. Metal Performance Shaders, CoreML, the Accelerate framework, and various neural network libraries form a layered ecosystem that powers everything from real-time image processing to transformer inference on iPhones.
+
+This guide explores the full Metal ML ecosystem: how PyTorch MPS works under the hood, when to use CoreML versus MLX, how to write custom GPU kernels, and the practical realities of deploying models across Apple platforms.
+
+<AppleMLStack />
+
+---
+
+## Metal Performance Shaders
+
+Metal Performance Shaders (MPS) is Apple's framework for optimized GPU compute kernels. Originally focused on image processing and linear algebra, MPS has evolved into a foundational layer for machine learning on Apple platforms.
+
+### What MPS Provides
+
+MPS offers pre-built, hardware-tuned kernels for common operations. These kernels are optimized for each GPU family in Apple's lineup, from the integrated graphics in older Intel Macs to the latest M-series chips. The framework handles the low-level details of GPU programming: memory allocation, command buffer management, and shader compilation.
+
+For machine learning, MPS provides:
+
+- **Convolution operations**: 2D and 3D convolutions with various padding modes
+- **Pooling layers**: Max, average, and L2 pooling
+- **Normalization**: Batch normalization, instance normalization, layer normalization
+- **Activation functions**: ReLU, sigmoid, tanh, and others
+- **Matrix operations**: Matrix multiplication, transpose, and decomposition
+- **Neural network primitives**: Fully connected layers, softmax, LSTM cells
+
+These operations form the building blocks that higher-level frameworks like PyTorch and TensorFlow use when running on Apple GPUs.
+
+### MPSGraph: The Computation Graph Framework
+
+MPSGraph extends MPS with a graph-based execution model. Rather than executing individual operations, you build a computation graph that MPSGraph compiles and optimizes as a unit.
+
+```swift
+import MetalPerformanceShadersGraph
+
+let graph = MPSGraph()
+
+// Define input placeholders
+let inputTensor = graph.placeholder(
+    shape: [1, 224, 224, 3],
+    dataType: .float32,
+    name: "input"
+)
+
+// Build operations
+let conv = graph.convolution2D(
+    inputTensor,
+    weights: weightsTensor,
+    descriptor: convDescriptor,
+    name: "conv1"
+)
+
+let relu = graph.reLU(with: conv, name: "relu1")
+```
+
+At WWDC 2024, Apple introduced several improvements to MPSGraph for transformer models. The new Scaled Dot-Product Attention (SDPA) operation fuses the entire attention computation into a single kernel. Combined with KV-cache support, this provides significant speedups for autoregressive generation.
+
+### Performance Characteristics
+
+MPS kernels achieve strong performance because they are tuned for Apple's specific GPU architectures. The Metal GPU Profiler in Xcode shows that well-optimized MPS code typically achieves high ALU utilization with minimal memory stalls.
+
+However, MPS performance varies by operation type. Large matrix multiplications and convolutions benefit most from GPU acceleration. Smaller operations may run faster on the CPU due to kernel launch overhead.
+
+---
+
+## PyTorch MPS Backend
+
+Apple contributed the MPS backend to PyTorch in 2022, enabling GPU-accelerated training and inference on Apple Silicon. The backend maps PyTorch operations to MPS kernels and MPSGraph.
+
+### How It Works
+
+When you move a tensor to the MPS device, PyTorch allocates memory in Metal's shared memory pool:
+
+```python
+import torch
+
+# Check MPS availability
+if torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
+
+# Create tensor on MPS device
+x = torch.randn(1000, 1000, device=device)
+
+# Operations execute on GPU via Metal
+y = torch.matmul(x, x.T)
+```
+
+The MPS backend implements PyTorch's ATen operations using two approaches:
+
+1. **MPSGraph operations**: Complex operations like convolutions and matrix multiplications use MPSGraph for optimal performance
+2. **Custom Metal shaders**: Element-wise operations use hand-written Metal compute shaders
+
+### Supported Operations
+
+PyTorch 2.0 expanded MPS coverage to over 300 operators. The top 60 most-used operations are all supported. You can check coverage for specific operations in the [PyTorch MPS operator tracking issue](https://github.com/pytorch/pytorch/issues/141287).
+
+Common supported operations include:
+
+- Linear algebra: matmul, bmm, addmm, mm
+- Convolutions: conv1d, conv2d, conv3d, conv_transpose
+- Pooling: max_pool2d, avg_pool2d, adaptive_avg_pool2d
+- Activations: relu, gelu, silu, sigmoid, tanh
+- Normalization: batch_norm, layer_norm, group_norm
+- Loss functions: cross_entropy, mse_loss, nll_loss
+
+### Current Limitations
+
+The MPS backend has several constraints that affect real-world usage:
+
+**No float64 support**: MPS does not support double precision. Operations requiring float64 will fail or fall back to CPU. This affects some scientific computing workloads.
+
+**No distributed training**: The NCCL and Gloo backends do not work with MPS. Multi-GPU training is not supported. This limits MPS to single-device workloads.
+
+**No Neural Engine access**: PyTorch MPS only uses the GPU. The Neural Engine, which can accelerate certain operations more efficiently, remains unused.
+
+**Operation gaps**: Some operations lack MPS implementations. The `PYTORCH_ENABLE_MPS_FALLBACK=1` environment variable enables automatic CPU fallback for unsupported operations:
+
+```bash
+PYTORCH_ENABLE_MPS_FALLBACK=1 python train.py
+```
+
+### Known Issues
+
+A notable bug in PyTorch versions before 2.4 caused silent failures when writing to non-contiguous tensors via `addcmul_` and `addcdiv_` operations. This would cause model weights to stop updating during training without any error message. The fix requires updating to PyTorch 2.4 or later.
+
+### Performance Expectations
+
+Benchmarks show MPS running about 3x slower than an RTX 4090 for equivalent models. However, MPS uses significantly less power, making it suitable for development and smaller-scale training. The unified memory architecture allows loading larger models than would fit in discrete GPU VRAM.
+
+---
+
+## CoreML
+
+CoreML is Apple's deployment framework for machine learning models. Unlike MLX or PyTorch, CoreML is designed for inference in production applications across all Apple platforms.
+
+### The CoreML Stack
+
+CoreML sits at the top of Apple's ML stack. When you load a CoreML model, the framework:
+
+1. Parses the model format (.mlmodel or .mlpackage)
+2. Analyzes the model structure to determine optimal execution
+3. Compiles operations for available hardware (CPU, GPU, Neural Engine)
+4. Creates an execution plan that may span multiple processors
+
+The key insight is that CoreML handles hardware targeting automatically. The same model file runs on an iPhone, iPad, Mac, Apple Watch, or Vision Pro, with CoreML selecting the best execution strategy for each device.
+
+### Neural Engine Targeting
+
+The Apple Neural Engine (ANE) is a dedicated accelerator for matrix operations. It offers higher throughput than the GPU for certain workloads while using less power. CoreML is the primary way to access the ANE.
+
+However, ANE compatibility is strict. Operations must match specific constraints:
+
+- Tensor dimensions must align to hardware requirements
+- Certain operations have no ANE implementation
+- If any layer in a path cannot run on ANE, the entire path falls back
+
+Apple's research on [deploying transformers to the Neural Engine](https://machinelearning.apple.com/research/neural-engine-transformers) details the constraints and optimization strategies.
+
+### Model Conversion with coremltools
+
+The `coremltools` Python package converts models from PyTorch, TensorFlow, and other frameworks to CoreML format:
+
+```python
+import coremltools as ct
+import torch
+
+# Load PyTorch model
+model = MyModel()
+model.eval()
+
+# Create example input
+example_input = torch.randn(1, 3, 224, 224)
+
+# Trace the model
+traced_model = torch.jit.trace(model, example_input)
+
+# Convert to CoreML
+mlmodel = ct.convert(
+    traced_model,
+    inputs=[ct.TensorType(shape=example_input.shape)],
+    minimum_deployment_target=ct.target.iOS17
+)
+
+# Save the model
+mlmodel.save("MyModel.mlpackage")
+```
+
+Direct conversion from PyTorch is recommended over the older ONNX intermediate format. The PyTorch converter handles more operations and produces better-optimized models.
+
+### Stateful Models in iOS 18
+
+iOS 18 introduced stateful models to CoreML. This feature enables KV-cache for transformer inference without manual buffer management:
+
+```python
+import coremltools as ct
+from coremltools.converters.mil import Builder as mb
+
+# Define state for KV-cache
+kv_cache_state = ct.StateType(
+    wrapped_type=ct.TensorType(shape=(batch, heads, seq_len, head_dim)),
+    name="kv_cache"
+)
+
+# Convert with state
+mlmodel = ct.convert(
+    traced_model,
+    states=[kv_cache_state],
+    minimum_deployment_target=ct.target.iOS18
+)
+```
+
+The state persists across inference calls, avoiding expensive memory allocations for each token generation step.
+
+### On-Device Inference Performance
+
+Apple's benchmarks show Llama 3.1 8B running at approximately 33 tokens per second on an M1 Max using CoreML with 4-bit quantization. Smaller models achieve faster speeds. On mobile devices, the Neural Engine enables real-time inference for vision and audio models while maintaining battery efficiency.
+
+---
+
+## CoreML vs MLX: When to Use Each
+
+CoreML and MLX serve different purposes despite both running on Apple Silicon. Understanding their trade-offs helps you choose the right tool.
+
+### CoreML Strengths
+
+**Production deployment**: CoreML integrates with Swift and Objective-C. It is the standard way to ship ML models in iOS, iPadOS, watchOS, tvOS, and visionOS apps.
+
+**Neural Engine access**: CoreML is currently the only way to run models on the ANE. For power-sensitive mobile applications, this matters.
+
+**Hardware abstraction**: One model file works across all Apple devices. CoreML handles the details of targeting different chip generations.
+
+**App Store ready**: CoreML models work within Apple's sandboxing and code signing requirements.
+
+### MLX Strengths
+
+**Research and experimentation**: MLX provides a familiar NumPy/PyTorch-like API for rapid prototyping. You can modify models and run experiments interactively.
+
+**Training support**: MLX supports gradient computation and training. CoreML is inference-only.
+
+**Fine-tuning LLMs**: MLX includes tools for LoRA and QLoRA fine-tuning of language models. This is not possible with CoreML.
+
+**Dynamic computation**: MLX handles dynamic shapes and control flow naturally. CoreML requires static compilation.
+
+### Decision Framework
+
+**Use CoreML when:**
+- Building iOS, watchOS, tvOS, or visionOS apps
+- Power efficiency is critical (mobile devices)
+- You need Neural Engine acceleration
+- Deploying to end users through the App Store
+
+**Use MLX when:**
+- Running experiments on your Mac
+- Training or fine-tuning models
+- Working with LLMs interactively
+- Building macOS developer tools
+
+**Use both when:**
+- Developing on Mac with MLX, then converting to CoreML for deployment
+- Research teams shipping production apps
+
+The typical workflow: experiment with MLX, export to a standard format, convert to CoreML for deployment.
+
+---
+
+## Metal Compute Shaders
+
+When MPS does not provide the operation you need, you can write custom GPU kernels in Metal Shading Language (MSL).
+
+### Metal Shading Language Basics
+
+MSL is based on C++14 with GPU-specific extensions. Compute kernels are marked with the `kernel` keyword:
+
+```metal
+#include <metal_stdlib>
+using namespace metal;
+
+kernel void vector_add(
+    device const float* a [[buffer(0)]],
+    device const float* b [[buffer(1)]],
+    device float* result [[buffer(2)]],
+    uint index [[thread_position_in_grid]]
+) {
+    result[index] = a[index] + b[index];
+}
+```
+
+The `[[buffer(N)]]` attributes specify buffer bindings. The `[[thread_position_in_grid]]` attribute provides the thread's index in the dispatch grid.
+
+### Dispatching Compute Work
+
+From Swift, you create a compute pipeline and dispatch work:
+
+```swift
+import Metal
+
+// Get the default GPU
+let device = MTLCreateSystemDefaultDevice()!
+
+// Load the shader library
+let library = device.makeDefaultLibrary()!
+let function = library.makeFunction(name: "vector_add")!
+
+// Create compute pipeline
+let pipeline = try! device.makeComputePipelineState(function: function)
+
+// Create command queue and buffer
+let commandQueue = device.makeCommandQueue()!
+let commandBuffer = commandQueue.makeCommandBuffer()!
+let encoder = commandBuffer.makeComputeCommandEncoder()!
+
+// Set pipeline and buffers
+encoder.setComputePipelineState(pipeline)
+encoder.setBuffer(bufferA, offset: 0, index: 0)
+encoder.setBuffer(bufferB, offset: 0, index: 1)
+encoder.setBuffer(bufferResult, offset: 0, index: 2)
+
+// Calculate thread groups
+let threadGroupSize = MTLSize(width: 256, height: 1, depth: 1)
+let threadGroups = MTLSize(
+    width: (elementCount + 255) / 256,
+    height: 1,
+    depth: 1
+)
+
+encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadGroupSize)
+encoder.endEncoding()
+
+commandBuffer.commit()
+commandBuffer.waitUntilCompleted()
+```
+
+### Custom Kernels for ML
+
+Apple provides sample code for implementing custom PyTorch operations with Metal. This allows you to write performance-critical operations in MSL while using PyTorch for the rest of your model.
+
+A typical pattern for ML kernels:
+
+```metal
+kernel void fused_silu_multiply(
+    device const float* input [[buffer(0)]],
+    device const float* gate [[buffer(1)]],
+    device float* output [[buffer(2)]],
+    uint index [[thread_position_in_grid]]
+) {
+    float x = input[index];
+    float g = gate[index];
+
+    // SiLU: x * sigmoid(x)
+    float silu = x / (1.0 + exp(-x));
+
+    // Multiply with gate
+    output[index] = silu * g;
+}
+```
+
+Fusing operations like this reduces memory bandwidth by avoiding intermediate buffers.
+
+### Debugging Metal Shaders
+
+MSL debugging is challenging. The Xcode GPU Debugger allows stepping through shaders, but only for captured frames. For compute shaders without rendering, you can:
+
+1. Write intermediate values to a debug buffer
+2. Use Metal's GPU capture feature in Xcode
+3. Add assertions that write to a status buffer on failure
+
+---
+
+## BNNS: CPU-Optimized Neural Networks
+
+Basic Neural Network Subroutines (BNNS) is Apple's library for CPU-based neural network inference. Part of the Accelerate framework, BNNS provides operations tuned for Apple's CPU architectures.
+
+### When to Use BNNS
+
+BNNS makes sense when:
+
+- The model is small enough that GPU overhead exceeds compute time
+- Real-time requirements demand predictable latency (no GPU scheduling)
+- Power constraints favor CPU over GPU
+- You need to run inference on Apple Watch, which has limited GPU capabilities
+
+CoreML uses BNNS internally for CPU execution paths. You can also use BNNS directly for custom inference pipelines.
+
+### BNNS Graph API
+
+The BNNSGraph API, introduced in iOS 17 and expanded in iOS 18, allows you to define entire networks as graphs:
+
+```swift
+import Accelerate
+
+// Create a graph
+var graph = BNNSGraph()
+
+// Add layers
+let convLayer = BNNSGraphAddConvolutionLayer(
+    graph,
+    inputDescriptor,
+    weightDescriptor,
+    biasDescriptor,
+    outputDescriptor,
+    convolutionDescriptor
+)
+
+// Compile the graph
+BNNSGraphCompile(graph, nil)
+
+// Execute
+BNNSGraphExecute(graph, inputBuffer, outputBuffer)
+```
+
+### Graph Optimizations
+
+BNNSGraph performs several optimizations:
+
+- **Layer fusion**: Combines convolution + batch norm + activation into single operations
+- **Copy elision**: Eliminates unnecessary memory copies by using references
+- **Memory sharing**: Reuses buffers across layers when tensors have non-overlapping lifetimes
+- **Weight repacking**: Reorganizes weights for better cache locality
+
+These optimizations happen automatically when you compile the graph.
+
+### BNNS Graph Builder in iOS 18
+
+iOS 18 added BNNSGraphBuilder, which lets you construct graphs directly in Swift:
+
+```swift
+import Accelerate
+
+let builder = BNNSGraphBuilder()
+
+let input = builder.addInput(shape: [1, 224, 224, 3], dataType: .float)
+let conv = builder.addConvolution(input, weights: weights, bias: bias)
+let relu = builder.addActivation(conv, function: .relu)
+let output = builder.addOutput(relu)
+
+let graph = try builder.build()
+```
+
+This provides a more ergonomic API while still benefiting from graph-level optimizations.
+
+---
+
+## The Accelerate Framework
+
+Accelerate is Apple's foundational library for numerical computing. It provides BLAS, LAPACK, vDSP, and other optimized routines that underpin both BNNS and higher-level ML frameworks.
+
+### BLAS and LAPACK
+
+The Basic Linear Algebra Subprograms (BLAS) and Linear Algebra Package (LAPACK) implementations in Accelerate are tuned for Apple hardware:
+
+```swift
+import Accelerate
+
+// Matrix multiplication using BLAS
+var C = [Float](repeating: 0, count: m * n)
+
+cblas_sgemm(
+    CblasRowMajor,    // Row-major order
+    CblasNoTrans,     // Don't transpose A
+    CblasNoTrans,     // Don't transpose B
+    Int32(m),         // Rows of A
+    Int32(n),         // Columns of B
+    Int32(k),         // Columns of A / Rows of B
+    1.0,              // Alpha
+    A, Int32(k),      // A and its leading dimension
+    B, Int32(n),      // B and its leading dimension
+    0.0,              // Beta
+    &C, Int32(n)      // C and its leading dimension
+)
+```
+
+These routines automatically use the AMX (Apple Matrix Extensions) coprocessor when available. The AMX provides matrix multiplication throughput roughly 2x higher than standard NEON SIMD instructions.
+
+### vDSP for Signal Processing
+
+vDSP provides optimized routines for:
+
+- Fast Fourier transforms
+- Convolution and correlation
+- Vector arithmetic
+- Biquad filtering
+
+For ML workloads, vDSP is useful for audio preprocessing, spectrogram computation, and other signal processing pipelines that feed into neural networks:
+
+```swift
+import Accelerate
+
+// Compute magnitude spectrum
+var magnitudes = [Float](repeating: 0, count: fftLength / 2)
+vDSP.squareMagnitudes(
+    splitComplex,
+    result: &magnitudes
+)
+
+// Convert to decibels
+vDSP.convert(
+    amplitude: magnitudes,
+    toDecibels: &decibelSpectrum,
+    zeroReference: 1.0
+)
+```
+
+### Integration with ML Frameworks
+
+Accelerate functions are called internally by BNNS, CoreML (for CPU execution), and even MLX. When you see high CPU utilization during model inference, Accelerate routines are often doing the work.
+
+For custom preprocessing pipelines, using Accelerate directly is often faster than equivalent NumPy operations in Python:
+
+```swift
+// Fast image normalization
+vDSP.divide(
+    pixels,
+    255.0,
+    result: &normalizedPixels
+)
+
+vDSP.subtract(
+    normalizedPixels,
+    mean,
+    result: &centeredPixels
+)
+
+vDSP.divide(
+    centeredPixels,
+    stdDev,
+    result: &standardizedPixels
+)
+```
+
+---
+
+## TensorFlow Metal
+
+TensorFlow supports Apple Silicon GPUs through the `tensorflow-metal` plugin, which implements TensorFlow's PluggableDevice API.
+
+### Installation
+
+```bash
+pip install tensorflow tensorflow-metal
+```
+
+### Current State
+
+The TensorFlow Metal plugin works but has significant limitations:
+
+**Version compatibility**: As of early 2025, the plugin requires specific combinations of TensorFlow, Python, and macOS versions. The latest wheels support macOS 12 and Python up to 3.11. Users on macOS 15 with Python 3.12 face compatibility issues.
+
+**Operation coverage**: Not all TensorFlow operations have Metal implementations. Complex numbers (DT_COMPLEX64) are not supported.
+
+**Performance variability**: For small models or small batch sizes, CPU execution may be faster due to GPU dispatch overhead.
+
+### Verification
+
+To verify Metal acceleration is working:
+
+```python
+import tensorflow as tf
+
+# List physical devices
+devices = tf.config.list_physical_devices()
+print(devices)
+# Should show both CPU:0 and GPU:0
+
+# Run a simple operation
+with tf.device('/GPU:0'):
+    a = tf.random.normal([1000, 1000])
+    b = tf.matmul(a, tf.transpose(a))
+    print(b.device)  # Should show GPU
+```
+
+### Recommendation
+
+For new projects on Apple Silicon, PyTorch MPS or MLX typically offer better support and performance than TensorFlow Metal. TensorFlow Metal remains useful for existing TensorFlow codebases that need to run on Mac hardware.
+
+---
+
+## Model Conversion Pipelines
+
+Converting models to CoreML involves several steps and decisions about optimization.
+
+### PyTorch to CoreML (Direct)
+
+The recommended path for PyTorch models:
+
+```python
+import coremltools as ct
+import torch
+
+model = MyModel()
+model.eval()
+
+# Trace or script the model
+example_input = torch.randn(1, 3, 224, 224)
+traced = torch.jit.trace(model, example_input)
+
+# Convert with compute units specification
+mlmodel = ct.convert(
+    traced,
+    inputs=[ct.TensorType(name="image", shape=example_input.shape)],
+    compute_units=ct.ComputeUnit.ALL,  # CPU, GPU, and Neural Engine
+    minimum_deployment_target=ct.target.iOS17
+)
+```
+
+### ONNX to CoreML
+
+For models from other frameworks or ONNX model zoo:
+
+```python
+import coremltools as ct
+
+# Load ONNX model
+mlmodel = ct.converters.onnx.convert(
+    model="model.onnx",
+    minimum_deployment_target=ct.target.iOS16
+)
+```
+
+Note that the ONNX path may have more conversion issues than direct PyTorch conversion.
+
+### Quantization During Conversion
+
+coremltools 7+ provides optimization APIs for quantization:
+
+```python
+import coremltools as ct
+from coremltools.optimize.coreml import (
+    OpLinearQuantizerConfig,
+    OptimizationConfig,
+    linear_quantize_weights
+)
+
+# Load the model
+mlmodel = ct.models.MLModel("model.mlpackage")
+
+# Configure 8-bit quantization
+config = OptimizationConfig(
+    global_config=OpLinearQuantizerConfig(mode="linear_symmetric")
+)
+
+# Quantize weights
+quantized_model = linear_quantize_weights(mlmodel, config)
+quantized_model.save("model_int8.mlpackage")
+```
+
+For 4-bit quantization (useful for LLMs):
+
+```python
+from coremltools.optimize.coreml import (
+    OpPalettizerConfig,
+    OptimizationConfig,
+    palettize_weights
+)
+
+config = OptimizationConfig(
+    global_config=OpPalettizerConfig(
+        nbits=4,
+        mode="kmeans"
+    )
+)
+
+quantized_model = palettize_weights(mlmodel, config)
+```
+
+Block-wise quantization provides better accuracy for aggressive compression:
+
+```python
+config = OptimizationConfig(
+    global_config=OpLinearQuantizerConfig(
+        mode="linear_symmetric",
+        weight_threshold=512,  # Only quantize weights larger than this
+        granularity="per_block",
+        block_size=32
+    )
+)
+```
+
+### Training-Aware Quantization
+
+For best results, quantize during training using coremltools.optimize.torch:
+
+```python
+from coremltools.optimize.torch.quantization import (
+    LinearQuantizerConfig,
+    ModuleLinearQuantizerConfig,
+    LinearQuantizer
+)
+
+# Configure quantization
+config = LinearQuantizerConfig.from_dict({
+    "global_config": {
+        "quantization_scheme": "symmetric",
+        "milestones": [0, 100, 400, 500]
+    }
+})
+
+# Create quantizer
+quantizer = LinearQuantizer(model, config)
+
+# Prepare model for quantization-aware training
+quantizer.prepare(example_inputs=example_input)
+
+# Train the model
+for epoch in range(num_epochs):
+    quantizer.step()
+    train_one_epoch(model)
+
+# Finalize and convert
+quantizer.finalize()
+mlmodel = ct.convert(model)
+```
+
+---
+
+## Practical Deployment Considerations
+
+Deploying ML models across Apple platforms requires understanding the constraints and capabilities of each target.
+
+### iOS and iPadOS
+
+**Model size limits**: App Store apps have size limits. Use compression and quantization aggressively. Consider downloading models on first launch.
+
+**Memory constraints**: iPhones have limited RAM. The system will terminate apps that use too much memory. Profile your model's memory footprint.
+
+**Thermal throttling**: Sustained inference causes heat buildup. The system reduces performance to manage temperature. Design for burst usage patterns.
+
+**Background execution**: Background apps have limited CPU/GPU access. Use background tasks API for non-real-time inference.
+
+```swift
+import CoreML
+
+// Load model with configuration
+let config = MLModelConfiguration()
+config.computeUnits = .cpuAndNeuralEngine  // Avoid GPU for background
+
+let model = try MyModel(configuration: config)
+```
+
+### macOS
+
+macOS has fewer constraints than mobile platforms:
+
+- More memory available
+- No thermal throttling concerns for desktop Macs
+- Full GPU access without power restrictions
+
+For macOS-only apps, you can use MLX directly instead of CoreML if you prefer its API.
+
+### watchOS
+
+Apple Watch has the most constrained environment:
+
+- Limited memory (varies by model)
+- Small GPU with limited capabilities
+- CPU-focused execution via BNNS
+
+Keep models small. Quantize aggressively. Consider CPU-only execution:
+
+```swift
+let config = MLModelConfiguration()
+config.computeUnits = .cpuOnly
+
+let model = try WatchModel(configuration: config)
+```
+
+### visionOS
+
+Vision Pro runs visionOS, which supports CoreML with full GPU and Neural Engine access. The M2 chip provides capable ML performance.
+
+Spatial computing apps may need to balance ML inference with rendering workloads. Consider using `computeUnits = .cpuAndNeuralEngine` to leave GPU headroom for graphics.
+
+### Cross-Platform Strategy
+
+For apps targeting multiple Apple platforms:
+
+1. **Use CoreML as the deployment format**: One .mlpackage works everywhere
+2. **Test on real devices**: Simulator does not accurately represent Neural Engine behavior
+3. **Handle graceful degradation**: Check `MLModel.availableComputeDevices` and adjust
+4. **Profile each platform**: Performance characteristics differ significantly
+
+```swift
+// Check available compute devices
+let model = try MyModel()
+let devices = model.model.availableComputeDevices
+
+if devices.contains(where: { $0 == .neuralEngine }) {
+    // Can use Neural Engine
+} else {
+    // Fall back to CPU/GPU config
+}
+```
+
+---
+
+## The AMX Coprocessor
+
+The Apple Matrix Coprocessor (AMX) is an undocumented accelerator present in all Apple Silicon chips. While you cannot program it directly, understanding its role helps explain performance characteristics.
+
+### What AMX Does
+
+AMX accelerates matrix multiplication on the CPU. It provides roughly 2x the throughput of NEON SIMD instructions for matrix operations. When you call BLAS routines through Accelerate, AMX handles the heavy lifting.
+
+### Access Through Accelerate
+
+The only supported way to use AMX is through the Accelerate framework. Direct AMX instructions exist but are undocumented and unsupported. Apple's BLAS implementation automatically uses AMX when beneficial.
+
+This means CPU-based inference through BNNS or Accelerate benefits from AMX automatically. You do not need to do anything special.
+
+### AMX vs Neural Engine vs GPU
+
+Each accelerator has different strengths:
+
+- **AMX**: Low latency, integrated with CPU, used automatically by Accelerate
+- **Neural Engine**: Highest throughput for supported operations, best power efficiency
+- **GPU**: Flexible, handles any compute workload, good for large batch sizes
+
+CoreML manages this complexity by analyzing your model and routing operations to the most appropriate hardware.
+
+---
+
+## Summary
+
+Apple's Metal ML ecosystem provides multiple layers of optimization:
+
+| Layer | Purpose | When to Use |
+|-------|---------|-------------|
+| CoreML | Production deployment | iOS/macOS/watchOS/visionOS apps |
+| MLX | Research and training | Mac-based ML development |
+| MPSGraph | GPU compute graphs | Custom inference engines |
+| MPS | GPU primitives | Building custom ML ops |
+| BNNS | CPU inference | Low-latency, power-sensitive workloads |
+| Accelerate | Numerical computing | Preprocessing, custom algorithms |
+| Metal | Custom GPU kernels | Operations not in MPS |
+
+For most developers, the right approach is:
+
+1. Train models using PyTorch (with MPS for GPU acceleration) or MLX
+2. Convert to CoreML using coremltools
+3. Apply quantization appropriate for your target platform
+4. Deploy with CoreML, letting it handle hardware routing
+
+The ecosystem continues evolving. WWDC 2024 brought transformer optimizations to MPSGraph. iOS 18 added stateful models to CoreML. Each release improves performance and adds capabilities. Keep your tools updated and follow Apple's machine learning documentation for the latest guidance.
+
+---
+
+## References
+
+1. Apple Developer Documentation - Metal Performance Shaders: https://developer.apple.com/documentation/metalperformanceshaders
+2. Apple Developer - Accelerated PyTorch Training on Mac: https://developer.apple.com/metal/pytorch/
+3. PyTorch Documentation - MPS Backend: https://docs.pytorch.org/docs/stable/notes/mps.html
+4. Apple Developer Documentation - Core ML: https://developer.apple.com/documentation/coreml
+5. Apple Machine Learning Research - Deploying Transformers on the Apple Neural Engine: https://machinelearning.apple.com/research/neural-engine-transformers
+6. Apple Machine Learning Research - On-Device Llama 3.1 with Core ML: https://machinelearning.apple.com/research/core-ml-on-device-llama
+7. WWDC24 - Accelerate Machine Learning with Metal: https://developer.apple.com/videos/play/wwdc2024/10218/
+8. WWDC24 - Support Real-Time ML Inference on the CPU: https://developer.apple.com/videos/play/wwdc2024/10211/
+9. Apple Developer Documentation - BNNS: https://developer.apple.com/documentation/accelerate/bnns
+10. Apple Developer Documentation - Accelerate: https://developer.apple.com/documentation/accelerate
+11. Guide to Core ML Tools - Converting from PyTorch: https://apple.github.io/coremltools/docs-guides/source/convert-pytorch.html
+12. Guide to Core ML Tools - Quantization Algorithms: https://apple.github.io/coremltools/docs-guides/source/opt-quantization-algos.html
+13. Guide to Core ML Tools - Stateful Models: https://apple.github.io/coremltools/docs-guides/source/stateful-models.html
+14. Apple Developer - Metal Shading Language Specification: https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf
+15. Apple Developer Documentation - Performing Calculations on a GPU: https://developer.apple.com/documentation/Metal/performing-calculations-on-a-gpu
+16. Apple Developer - TensorFlow Metal Plugin: https://developer.apple.com/metal/tensorflow-plugin/
+17. PyTorch GitHub - MPS Operator Coverage Tracking: https://github.com/pytorch/pytorch/issues/141287
+18. Explosion AI - Fast Transformer Inference with Metal Performance Shaders: https://explosion.ai/blog/metal-performance-shaders
+19. MLX Documentation: https://ml-explore.github.io/mlx/
+20. byby.dev - When to Use Apple MLX vs Core ML: https://byby.dev/apple-mlx-vs-coreml

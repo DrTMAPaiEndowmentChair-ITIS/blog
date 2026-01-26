@@ -1,0 +1,66 @@
+---
+/**
+ * Grid wrapper for laying out visualization components
+ */
+interface Props {
+  columns?: 2 | 3 | 4;
+  gap?: 'small' | 'medium' | 'large';
+}
+
+const { columns = 3, gap = 'medium' } = Astro.props;
+---
+
+<div class={`viz-grid cols-${columns} gap-${gap}`}>
+  <slot />
+</div>
+
+<style>
+  .viz-grid {
+    display: grid;
+    margin: 2em 0;
+  }
+
+  .cols-2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cols-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .cols-4 {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .gap-small {
+    gap: 0.75rem;
+  }
+
+  .gap-medium {
+    gap: 1rem;
+  }
+
+  .gap-large {
+    gap: 1.5rem;
+  }
+
+  @media (max-width: 768px) {
+    .cols-3,
+    .cols-4 {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 480px) {
+    .cols-2,
+    .cols-3,
+    .cols-4 {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* Make child metric cards fill the grid cell */
+  .viz-grid :global(.metric-card) {
+    width: 100%;
+  }
+</style>

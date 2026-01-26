@@ -1,0 +1,212 @@
+---
+/**
+ * Model format comparison visualization
+ * Displays different ML model formats with their characteristics
+ */
+interface FormatInfo {
+  name: string;
+  extension: string;
+  loadSpeed: 'Fast' | 'Medium' | 'Slow';
+  sizeReduction: string;
+  useCase: string;
+  highlight?: boolean;
+}
+
+interface Props {
+  title?: string;
+}
+
+const { title = 'Model Format Comparison' } = Astro.props;
+
+const formats: FormatInfo[] = [
+  {
+    name: 'Safetensors',
+    extension: '.safetensors',
+    loadSpeed: 'Fast',
+    sizeReduction: 'None',
+    useCase: 'Default for Transformers, secure loading',
+  },
+  {
+    name: 'GGUF',
+    extension: '.gguf',
+    loadSpeed: 'Fast',
+    sizeReduction: '2-6x',
+    useCase: 'llama.cpp, Ollama, CPU inference',
+    highlight: true,
+  },
+  {
+    name: 'ONNX',
+    extension: '.onnx',
+    loadSpeed: 'Medium',
+    sizeReduction: 'Varies',
+    useCase: 'Cross-platform deployment',
+  },
+  {
+    name: 'PyTorch bin',
+    extension: '.bin',
+    loadSpeed: 'Slow',
+    sizeReduction: 'None',
+    useCase: 'Legacy format (security risk)',
+  },
+];
+
+function getSpeedClass(speed: string): string {
+  switch (speed) {
+    case 'Fast': return 'speed-fast';
+    case 'Medium': return 'speed-medium';
+    case 'Slow': return 'speed-slow';
+    default: return '';
+  }
+}
+---
+
+<div class="format-compare">
+  <div class="format-title">{title}</div>
+  <div class="format-grid">
+    {formats.map((format) => (
+      <div class={`format-card ${format.highlight ? 'highlighted' : ''}`}>
+        <div class="format-header">
+          <span class="format-name">{format.name}</span>
+          <code class="format-ext">{format.extension}</code>
+        </div>
+        <div class="format-specs">
+          <div class="spec-row">
+            <span class="spec-label">Load Speed</span>
+            <span class={`spec-value ${getSpeedClass(format.loadSpeed)}`}>
+              {format.loadSpeed}
+            </span>
+          </div>
+          <div class="spec-row">
+            <span class="spec-label">Size Reduction</span>
+            <span class="spec-value">{format.sizeReduction}</span>
+          </div>
+        </div>
+        <div class="format-usecase">{format.useCase}</div>
+      </div>
+    ))}
+  </div>
+</div>
+
+<style>
+  .format-compare {
+    margin: 2em 0;
+  }
+
+  .format-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .format-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+  }
+
+  .format-card {
+    padding: 1.25rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    transition: border-color 0.15s ease-out, background 0.15s ease-out;
+  }
+
+  .format-card:hover {
+    border-color: var(--text-tertiary);
+  }
+
+  .format-card.highlighted {
+    border-color: var(--text-secondary);
+    background: var(--selection);
+  }
+
+  .format-card.highlighted:hover {
+    border-color: var(--accent-hover);
+  }
+
+  .format-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .format-name {
+    font-weight: var(--font-weight-bold);
+    font-size: var(--font-size-m);
+    color: var(--text-primary);
+  }
+
+  .format-ext {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    padding: 0.2em 0.5em;
+    background: var(--code-bg);
+    border-radius: 0;
+    color: var(--text-secondary);
+  }
+
+  .format-specs {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .spec-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: var(--font-size-s);
+  }
+
+  .spec-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .spec-value {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-primary);
+  }
+
+  .speed-fast {
+    color: var(--text-secondary);
+  }
+
+  .speed-medium {
+    color: var(--text-tertiary);
+  }
+
+  .speed-slow {
+    color: var(--text-tertiary);
+  }
+
+  .format-usecase {
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    line-height: 1.5;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border);
+  }
+
+  @media (max-width: 600px) {
+    .format-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .format-card {
+      padding: 1rem;
+    }
+  }
+</style>

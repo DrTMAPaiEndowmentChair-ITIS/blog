@@ -19,17 +19,43 @@
   margin: 0 0 0.375rem 0;
 }
 
-/* Headings (h1-h5)
- Adjust size or spacing below if needed. */
+/* Headings - Visual hierarchy through subtle left indicators */
 .prose h1,
 .prose h2,
 .prose h3,
 .prose h4,
 .prose h5 {
-  font-size: var(--font-size-m);
   font-weight: var(--font-weight-bold);
-  line-height: 1.75;
-  margin: 3.75em 0 1.75em 0;
+  line-height: 1.5;
+  position: relative;
+}
+
+.prose h2 {
+  font-size: 1.1rem;
+  margin: 4em 0 1.75em 0;
+  padding-left: 0.875rem;
+  border-left: 3px solid var(--accent);
+}
+
+.prose h3 {
+  font-size: var(--font-size-m);
+  margin: 3em 0 1.5em 0;
+  padding-left: 0.875rem;
+  border-left: 2px solid var(--highlight);
+}
+
+.prose h4 {
+  font-size: var(--font-size-m);
+  margin: 2.5em 0 1.25em 0;
+  color: var(--text-secondary);
+}
+
+.prose h5 {
+  font-size: var(--font-size-s);
+  margin: 2em 0 1em 0;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 /* Bold text */
@@ -47,15 +73,16 @@
 
 /* Links */
 .prose a {
-  color: var(--primary);
+  color: var(--accent);
   text-decoration: underline;
-  text-decoration-color: var(--text-tertiary);
-  transition: text-decoration-color 0.2s ease-out;
+  text-decoration-color: var(--accent-muted);
+  text-underline-offset: 2px;
+  transition: all 0.15s ease-out;
 }
 
 .prose a:hover {
-  color: var(--primary);
-  text-decoration-color: var(--text-primary);
+  color: var(--accent-hover);
+  text-decoration-color: var(--accent);
 }
 
 /* Paragraphs */

@@ -1,0 +1,520 @@
+---
+/**
+ * Interactive scale visualization showing GGUF quantization levels
+ * Displays size vs quality trade-off with visual bars and metrics
+ */
+interface QuantLevel {
+  name: string;
+  bits: string;
+  size: string;
+  sizeGB: number;
+  quality: number; // 0-100, based on perplexity
+  perplexityIncrease: string;
+  notes: string;
+}
+
+interface Props {
+  title?: string;
+  baseModel?: string;
+}
+
+const { title = "GGUF Quantization Levels", baseModel = "7B model" } = Astro.props;
+
+const quantLevels: QuantLevel[] = [
+  {
+    name: "Q8_0",
+    bits: "8-bit",
+    size: "~7.0 GB",
+    sizeGB: 7.0,
+    quality: 100,
+    perplexityIncrease: "+0.0004",
+    notes: "Highest quality, minimal loss"
+  },
+  {
+    name: "Q6_K",
+    bits: "6-bit",
+    size: "~5.9 GB",
+    sizeGB: 5.9,
+    quality: 98,
+    perplexityIncrease: "+0.008",
+    notes: "Excellent quality, good compression"
+  },
+  {
+    name: "Q5_K_M",
+    bits: "5-bit",
+    size: "~5.33 GB",
+    sizeGB: 5.33,
+    quality: 95,
+    perplexityIncrease: "+0.0142",
+    notes: "Higher quality, slightly larger"
+  },
+  {
+    name: "Q4_K_M",
+    bits: "4-bit",
+    size: "~4.58 GB",
+    sizeGB: 4.58,
+    quality: 85,
+    perplexityIncrease: "+0.0535",
+    notes: "Recommended default, best balance"
+  },
+  {
+    name: "Q4_K_S",
+    bits: "4-bit",
+    size: "~4.37 GB",
+    sizeGB: 4.37,
+    quality: 78,
+    perplexityIncrease: "+0.0992",
+    notes: "Smaller, lower quality"
+  },
+  {
+    name: "Q3_K_M",
+    bits: "3-bit",
+    size: "~3.52 GB",
+    sizeGB: 3.52,
+    quality: 55,
+    perplexityIncrease: "+0.2437",
+    notes: "Aggressive compression"
+  },
+  {
+    name: "Q2_K",
+    bits: "2-bit",
+    size: "~2.87 GB",
+    sizeGB: 2.87,
+    quality: 30,
+    perplexityIncrease: "+0.8",
+    notes: "Extreme compression, notable degradation"
+  }
+];
+
+const maxSize = Math.max(...quantLevels.map(l => l.sizeGB));
+---
+
+<div class="quant-scale" data-levels={JSON.stringify(quantLevels)}>
+  <div class="scale-header">
+    <div class="scale-title">{title}</div>
+    <div class="scale-subtitle">Based on {baseModel}</div>
+  </div>
+
+  <div class="scale-legend">
+    <div class="legend-item">
+      <span class="legend-bar size-bar"></span>
+      <span class="legend-label">File Size</span>
+    </div>
+    <div class="legend-item">
+      <span class="legend-bar quality-bar"></span>
+      <span class="legend-label">Quality Retention</span>
+    </div>
+  </div>
+
+  <div class="scale-container">
+    {quantLevels.map((level, index) => (
+      <button
+        class={`scale-row ${level.name === 'Q4_K_M' ? 'recommended' : ''}`}
+        data-index={index}
+        aria-label={`${level.name}: ${level.size}, ${level.quality}% quality`}
+      >
+        <div class="row-header">
+          <span class="quant-name">{level.name}</span>
+          <span class="quant-bits">{level.bits}</span>
+          {level.name === 'Q4_K_M' && <span class="recommended-badge">Recommended</span>}
+        </div>
+
+        <div class="row-bars">
+          <div class="bar-group">
+            <div class="bar-track">
+              <div
+                class="bar-fill size-fill"
+                style={`width: ${(level.sizeGB / maxSize) * 100}%`}
+              ></div>
+            </div>
+            <span class="bar-value">{level.size}</span>
+          </div>
+
+          <div class="bar-group">
+            <div class="bar-track">
+              <div
+                class="bar-fill quality-fill"
+                style={`width: ${level.quality}%`}
+              ></div>
+            </div>
+            <span class="bar-value">{level.quality}%</span>
+          </div>
+        </div>
+
+        <div class="row-details">
+          <span class="detail-ppl">PPL: {level.perplexityIncrease}</span>
+          <span class="detail-notes">{level.notes}</span>
+        </div>
+      </button>
+    ))}
+  </div>
+
+  <div class="scale-info" id="quant-info-panel">
+    <div class="info-header">
+      <span class="info-name">Select a quantization level</span>
+    </div>
+    <div class="info-body">
+      <div class="info-metrics">
+        <div class="metric">
+          <span class="metric-label">File Size</span>
+          <span class="metric-value" data-field="size">--</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Quality</span>
+          <span class="metric-value" data-field="quality">--</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Perplexity</span>
+          <span class="metric-value" data-field="ppl">--</span>
+        </div>
+      </div>
+      <div class="info-notes" data-field="notes">
+        Click or hover over a quantization level to see details
+      </div>
+    </div>
+  </div>
+
+  <div class="scale-footer">
+    <div class="footer-note">
+      Lower bits = smaller files but reduced quality. Q4_K_M offers the best balance for most use cases.
+    </div>
+  </div>
+</div>
+
+<script>
+  function initQuantScale() {
+    document.querySelectorAll('.quant-scale').forEach((scale) => {
+      const rows = scale.querySelectorAll('.scale-row');
+      const infoPanel = scale.querySelector('#quant-info-panel');
+      const levelsData = JSON.parse(scale.getAttribute('data-levels') || '[]');
+
+      if (!infoPanel || !levelsData.length) return;
+
+      const updateInfo = (index: number) => {
+        const data = levelsData[index];
+        if (!data) return;
+
+        const nameEl = infoPanel.querySelector('.info-name');
+        const sizeEl = infoPanel.querySelector('[data-field="size"]');
+        const qualityEl = infoPanel.querySelector('[data-field="quality"]');
+        const pplEl = infoPanel.querySelector('[data-field="ppl"]');
+        const notesEl = infoPanel.querySelector('[data-field="notes"]');
+
+        if (nameEl) nameEl.textContent = `${data.name} (${data.bits})`;
+        if (sizeEl) sizeEl.textContent = data.size;
+        if (qualityEl) qualityEl.textContent = `${data.quality}%`;
+        if (pplEl) pplEl.textContent = data.perplexityIncrease;
+        if (notesEl) notesEl.textContent = data.notes;
+
+        rows.forEach((r, i) => {
+          r.classList.toggle('active', i === index);
+        });
+      };
+
+      rows.forEach((row, index) => {
+        row.addEventListener('click', () => updateInfo(index));
+        row.addEventListener('mouseenter', () => updateInfo(index));
+      });
+
+      // Initialize with recommended (Q4_K_M)
+      const recommendedIndex = levelsData.findIndex((l: { name: string }) => l.name === 'Q4_K_M');
+      if (recommendedIndex !== -1) {
+        updateInfo(recommendedIndex);
+      }
+    });
+  }
+
+  initQuantScale();
+  document.addEventListener('astro:after-swap', initQuantScale);
+</script>
+
+<style>
+  .quant-scale {
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  .scale-header {
+    margin-bottom: 1rem;
+  }
+
+  .scale-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .scale-subtitle {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    margin-top: 0.25rem;
+  }
+
+  .scale-legend {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .legend-bar {
+    width: 24px;
+    height: 8px;
+    border-radius: 0;
+  }
+
+  .legend-bar.size-bar {
+    background: var(--text-tertiary);
+  }
+
+  .legend-bar.quality-bar {
+    background: var(--text-secondary);
+  }
+
+  .legend-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .scale-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .scale-row {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 1rem;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: var(--bg);
+    border: 1px solid transparent;
+    border-radius: 0;
+    cursor: pointer;
+    transition: all 0.15s ease-out;
+    text-align: left;
+    width: 100%;
+  }
+
+  .scale-row:hover,
+  .scale-row.active {
+    border-color: var(--border);
+    background: var(--code-bg);
+  }
+
+  .scale-row.recommended {
+    border-color: var(--selection);
+  }
+
+  .scale-row.recommended:hover,
+  .scale-row.recommended.active {
+    border-color: var(--text-secondary);
+  }
+
+  .row-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+
+  .quant-name {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+  }
+
+  .quant-bits {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+  }
+
+  .recommended-badge {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-secondary);
+    background: var(--selection);
+    padding: 0.125rem 0.375rem;
+    border-radius: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    width: fit-content;
+    margin-top: 0.25rem;
+  }
+
+  .row-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .bar-group {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .bar-track {
+    flex: 1;
+    height: 8px;
+    background: var(--code-bg);
+    border-radius: 0;
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    height: 100%;
+    border-radius: 0;
+    transition: width 0.3s ease-out;
+  }
+
+  .size-fill {
+    background: var(--text-tertiary);
+  }
+
+  .quality-fill {
+    background: var(--text-secondary);
+  }
+
+  .bar-value {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    min-width: 55px;
+    text-align: right;
+  }
+
+  .row-details {
+    grid-column: 1 / -1;
+    display: none;
+    gap: 1rem;
+    padding-top: 0.5rem;
+    margin-top: 0.5rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .scale-row.active .row-details {
+    display: flex;
+  }
+
+  .detail-ppl {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+  }
+
+  .detail-notes {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+  }
+
+  .scale-info {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  .info-header {
+    margin-bottom: 0.75rem;
+  }
+
+  .info-name {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+  }
+
+  .info-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .info-metrics {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .metric {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+
+  .metric-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .metric-value {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-primary);
+  }
+
+  .info-notes {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .scale-footer {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .footer-note {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    font-style: italic;
+  }
+
+  @media (max-width: 600px) {
+    .scale-row {
+      grid-template-columns: 1fr;
+      gap: 0.5rem;
+    }
+
+    .row-header {
+      flex-direction: row;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .info-metrics {
+      gap: 1rem;
+    }
+
+    .scale-legend {
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+  }
+</style>

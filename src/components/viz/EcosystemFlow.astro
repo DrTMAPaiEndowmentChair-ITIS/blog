@@ -1,0 +1,457 @@
+---
+/**
+ * Generative AI Ecosystem Flow Visualization
+ * Shows the flow from model discovery to runtime selection
+ * with branching paths for local, server, and cloud options
+ */
+interface Props {
+  title?: string;
+}
+
+const { title = "AI Ecosystem Flow" } = Astro.props;
+---
+
+<div class="ecosystem-flow">
+  {title && <div class="flow-title">{title}</div>}
+
+  <div class="flow-diagram">
+    <!-- Discovery Phase -->
+    <div class="phase-section">
+      <div class="phase-label">Discovery</div>
+      <div class="stage-card accent" data-stage="discovery">
+        <div class="stage-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="M21 21l-4.35-4.35"/>
+          </svg>
+        </div>
+        <div class="stage-content">
+          <div class="stage-name">Hugging Face Hub</div>
+          <div class="stage-details">
+            <span class="detail-tag">Models</span>
+            <span class="detail-tag">Datasets</span>
+            <span class="detail-tag">Spaces</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Connector -->
+    <div class="flow-connector vertical">
+      <div class="connector-line"></div>
+      <div class="connector-arrow"></div>
+    </div>
+
+    <!-- Format Phase -->
+    <div class="phase-section">
+      <div class="phase-label">Format Conversion</div>
+      <div class="format-options">
+        <div class="stage-card muted" data-stage="format-pt">
+          <div class="stage-content">
+            <div class="stage-name">.safetensors</div>
+            <div class="stage-sublabel">PyTorch native</div>
+          </div>
+        </div>
+        <div class="stage-card highlight" data-stage="format-gguf">
+          <div class="stage-content">
+            <div class="stage-name">GGUF</div>
+            <div class="stage-sublabel">Quantized, portable</div>
+          </div>
+        </div>
+        <div class="stage-card muted" data-stage="format-other">
+          <div class="stage-content">
+            <div class="stage-name">ONNX / TRT</div>
+            <div class="stage-sublabel">Optimized graphs</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Connector -->
+    <div class="flow-connector vertical">
+      <div class="connector-line"></div>
+      <div class="connector-arrow"></div>
+    </div>
+
+    <!-- Runtime Phase -->
+    <div class="phase-section">
+      <div class="phase-label">Runtime Selection</div>
+      <div class="runtime-grid">
+        <div class="runtime-category">
+          <div class="category-label">Local</div>
+          <div class="runtime-cards">
+            <div class="stage-card accent" data-stage="runtime-llamacpp">
+              <div class="stage-content">
+                <div class="stage-name">llama.cpp</div>
+                <div class="stage-sublabel">CPU/GPU, low deps</div>
+              </div>
+            </div>
+            <div class="stage-card accent" data-stage="runtime-ollama">
+              <div class="stage-content">
+                <div class="stage-name">Ollama</div>
+                <div class="stage-sublabel">CLI + REST API</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="runtime-category">
+          <div class="category-label">Server</div>
+          <div class="runtime-cards">
+            <div class="stage-card highlight" data-stage="runtime-vllm">
+              <div class="stage-content">
+                <div class="stage-name">vLLM</div>
+                <div class="stage-sublabel">High throughput</div>
+              </div>
+            </div>
+            <div class="stage-card muted" data-stage="runtime-tgi">
+              <div class="stage-content">
+                <div class="stage-name">TGI / TRT-LLM</div>
+                <div class="stage-sublabel">Production scale</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="runtime-category">
+          <div class="category-label">Cloud</div>
+          <div class="runtime-cards">
+            <div class="stage-card accent" data-stage="runtime-openrouter">
+              <div class="stage-content">
+                <div class="stage-name">OpenRouter</div>
+                <div class="stage-sublabel">Multi-provider API</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Final Connector -->
+    <div class="flow-connector vertical">
+      <div class="connector-line"></div>
+      <div class="connector-arrow"></div>
+    </div>
+
+    <!-- Application Phase -->
+    <div class="phase-section">
+      <div class="phase-label">Application</div>
+      <div class="stage-card final" data-stage="app">
+        <div class="stage-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <path d="M9 9h6M9 15h6"/>
+          </svg>
+        </div>
+        <div class="stage-content">
+          <div class="stage-name">OpenAI-Compatible API</div>
+          <div class="stage-sublabel">Unified interface for all runtimes</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow-legend">
+    <div class="legend-item">
+      <span class="legend-dot accent"></span>
+      <span>Primary path</span>
+    </div>
+    <div class="legend-item">
+      <span class="legend-dot highlight"></span>
+      <span>High performance</span>
+    </div>
+    <div class="legend-item">
+      <span class="legend-dot muted"></span>
+      <span>Alternative</span>
+    </div>
+  </div>
+</div>
+
+<style>
+  .ecosystem-flow {
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  .flow-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .flow-diagram {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  .phase-section {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .phase-label {
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 0.5rem;
+  }
+
+  .stage-card {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    transition: all 0.15s ease-out;
+    cursor: default;
+    box-sizing: border-box;
+    flex-shrink: 0;
+  }
+
+  .stage-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+
+  html.dark .stage-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  }
+
+  .stage-card.accent {
+    border-color: var(--text-secondary);
+  }
+
+  .stage-card.accent:hover {
+    background: var(--selection);
+  }
+
+  .stage-card.highlight {
+    border-color: var(--text-tertiary);
+  }
+
+  .stage-card.highlight:hover {
+    background: var(--code-bg);
+  }
+
+  .stage-card.final {
+    border-color: var(--text-secondary);
+    background: var(--selection);
+  }
+
+  .stage-icon {
+    color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+  }
+
+  .stage-icon svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .stage-card.accent .stage-icon {
+    color: var(--text-secondary);
+  }
+
+  .stage-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+
+  .stage-name {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+  }
+
+  .stage-sublabel {
+    font-size: 0.5rem;
+    color: var(--text-tertiary);
+  }
+
+  .stage-details {
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+    margin-top: 0.125rem;
+  }
+
+  .detail-tag {
+    font-family: var(--mono);
+    font-size: 0.5rem;
+    padding: 0.1rem 0.25rem;
+    background: var(--code-bg);
+    border-radius: 0;
+    color: var(--text-tertiary);
+  }
+
+  .flow-connector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.375rem 0;
+  }
+
+  .connector-line {
+    width: 1px;
+    height: 16px;
+    background: var(--border);
+  }
+
+  .connector-arrow {
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid var(--border);
+  }
+
+  .format-options {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .runtime-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    width: 100%;
+    max-width: 520px;
+    justify-content: center;
+  }
+
+  .runtime-category {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.375rem;
+    flex: 0 0 auto;
+    min-width: 120px;
+  }
+
+  .category-label {
+    font-family: var(--mono);
+    font-size: 0.5rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.1rem 0.375rem;
+    background: var(--code-bg);
+    border-radius: 0;
+  }
+
+  .runtime-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    width: 100%;
+  }
+
+  .runtime-cards .stage-card {
+    min-width: 110px;
+    width: 100%;
+  }
+
+  .flow-legend {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .legend-item span:last-child {
+    font-size: 0.5rem;
+    color: var(--text-tertiary);
+    font-family: var(--mono);
+  }
+
+  .legend-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--border);
+  }
+
+  .legend-dot.accent {
+    background: var(--text-secondary);
+  }
+
+  .legend-dot.highlight {
+    background: var(--text-tertiary);
+  }
+
+  .legend-dot.muted {
+    background: var(--text-tertiary);
+  }
+
+  @media (max-width: 600px) {
+    .ecosystem-flow {
+      padding: 1rem;
+    }
+
+    .runtime-grid {
+      flex-direction: column;
+      gap: 1.25rem;
+      align-items: center;
+    }
+
+    .runtime-category {
+      width: 100%;
+      max-width: 200px;
+    }
+
+    .runtime-cards {
+      flex-direction: column;
+      gap: 0.375rem;
+    }
+
+    .runtime-cards .stage-card {
+      min-width: 100px;
+      width: 100%;
+    }
+
+    .format-options {
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .format-options .stage-card {
+      min-width: 120px;
+    }
+
+    .flow-legend {
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+  }
+</style>

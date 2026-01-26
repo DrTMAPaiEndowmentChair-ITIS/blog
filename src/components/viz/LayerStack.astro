@@ -1,0 +1,182 @@
+---
+/**
+ * Interactive neural network layer stack visualization
+ * Shows layers with expandable details
+ */
+interface Layer {
+  name: string;
+  type: string;
+  params?: string;
+  details?: string;
+  color?: 'accent' | 'highlight' | 'muted';
+}
+
+interface Props {
+  layers: Layer[];
+  title?: string;
+  direction?: 'down' | 'up';
+}
+
+const { layers, title, direction = 'down' } = Astro.props;
+const orderedLayers = direction === 'up' ? [...layers].reverse() : layers;
+---
+
+<div class="layer-stack">
+  {title && <div class="stack-title">{title}</div>}
+  <div class="stack-container">
+    {orderedLayers.map((layer, index) => (
+      <div class={`layer-item ${layer.color || 'muted'}`} data-layer-index={index}>
+        <div class="layer-main">
+          <div class="layer-connector">
+            {index > 0 && <div class="connector-line"></div>}
+            <div class="connector-dot"></div>
+          </div>
+          <div class="layer-content">
+            <div class="layer-header">
+              <span class="layer-name">{layer.name}</span>
+              <span class="layer-type">{layer.type}</span>
+            </div>
+            {layer.params && <div class="layer-params">{layer.params}</div>}
+          </div>
+        </div>
+        {layer.details && (
+          <div class="layer-details">{layer.details}</div>
+        )}
+      </div>
+    ))}
+  </div>
+</div>
+
+<style>
+  .layer-stack {
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  .stack-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .stack-container {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .layer-item {
+    position: relative;
+    cursor: default;
+    transition: all 0.15s ease-out;
+  }
+
+  .layer-item:hover {
+    transform: translateX(4px);
+  }
+
+  .layer-main {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .layer-connector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 12px;
+    flex-shrink: 0;
+  }
+
+  .connector-line {
+    width: 2px;
+    height: 20px;
+    background: var(--border);
+  }
+
+  .connector-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    background: var(--bg);
+    flex-shrink: 0;
+  }
+
+  .layer-item.accent .connector-dot {
+    border-color: var(--text-secondary);
+    background: var(--selection);
+  }
+
+  .layer-item.highlight .connector-dot {
+    border-color: var(--text-tertiary);
+    background: var(--code-bg);
+  }
+
+  .layer-content {
+    flex: 1;
+    padding-bottom: 1rem;
+  }
+
+  .layer-header {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .layer-name {
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+  }
+
+  .layer-type {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    padding: 0.125rem 0.5rem;
+    background: var(--code-bg);
+    border-radius: 0;
+    color: var(--text-secondary);
+  }
+
+  .layer-item.accent .layer-type {
+    background: var(--selection);
+    color: var(--text-secondary);
+  }
+
+  .layer-item.highlight .layer-type {
+    background: var(--code-bg);
+    color: var(--text-primary);
+  }
+
+  .layer-params {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+  }
+
+  .layer-details {
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-left: 1.75rem;
+    margin-top: -0.5rem;
+    padding-bottom: 1rem;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: all 0.2s ease-out;
+  }
+
+  .layer-item:hover .layer-details {
+    max-height: 100px;
+    opacity: 1;
+    margin-top: 0.25rem;
+  }
+</style>

@@ -1,0 +1,209 @@
+---
+/**
+ * Hierarchical Flow Visualization
+ * For architectures with a main backbone and sub-components
+ * Like Moshi's text LLM + Audio LM + dual streams
+ */
+interface Block {
+  id: string;
+  label: string;
+  sublabel?: string;
+  details?: string[];
+  color?: 'accent' | 'highlight' | 'muted';
+}
+
+interface Props {
+  title?: string;
+  backbone: Block[];
+  outputs?: Block[];
+}
+
+const { title, backbone, outputs = [] } = Astro.props;
+---
+
+<div class="hierarchical-flow">
+  {title && <div class="flow-title">{title}</div>}
+
+  <div class="flow-container">
+    {backbone.map((block, index) => (
+      <>
+        <div class={`main-block ${block.color || 'muted'}`}>
+          <div class="block-label">{block.label}</div>
+          {block.sublabel && <div class="block-sublabel">{block.sublabel}</div>}
+          {block.details && (
+            <div class="block-details">
+              {block.details.map(detail => (
+                <div class="detail-item">{detail}</div>
+              ))}
+            </div>
+          )}
+        </div>
+        {index < backbone.length - 1 && <div class="connector down"></div>}
+      </>
+    ))}
+
+    {outputs.length > 0 && (
+      <>
+        <div class="split-connector">
+          <div class="split-line"></div>
+        </div>
+        <div class="outputs-row">
+          {outputs.map((output) => (
+            <div class={`output-block ${output.color || 'muted'}`}>
+              <div class="block-label">{output.label}</div>
+              {output.sublabel && <div class="block-sublabel">{output.sublabel}</div>}
+            </div>
+          ))}
+        </div>
+      </>
+    )}
+  </div>
+</div>
+
+<style>
+  .hierarchical-flow {
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+  }
+
+  .flow-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1.5rem;
+  }
+
+  .flow-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  .main-block {
+    padding: 0.75rem 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    width: 100%;
+    max-width: 360px;
+  }
+
+  .main-block.accent {
+    border-left: 3px solid var(--text-secondary);
+  }
+
+  .main-block.highlight {
+    border-left: 3px solid var(--text-tertiary);
+    background: var(--selection);
+  }
+
+  .block-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+  }
+
+  .block-sublabel {
+    font-size: 0.55rem;
+    color: var(--text-tertiary);
+    margin-top: 0.125rem;
+  }
+
+  .block-details {
+    margin-top: 0.375rem;
+    padding-left: 0.5rem;
+    border-left: 1px solid var(--border);
+  }
+
+  .detail-item {
+    font-family: var(--mono);
+    font-size: 0.5rem;
+    color: var(--text-tertiary);
+    margin-top: 0.125rem;
+  }
+
+  .connector {
+    width: 2px;
+    height: 16px;
+    background: var(--border);
+    position: relative;
+  }
+
+  .connector.down::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid var(--border);
+  }
+
+  .split-connector {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    max-width: 300px;
+    height: 24px;
+    position: relative;
+  }
+
+  .split-line {
+    position: absolute;
+    top: 0;
+    left: 25%;
+    right: 25%;
+    height: 100%;
+    border-left: 2px solid var(--border);
+    border-right: 2px solid var(--border);
+    border-bottom: 2px solid var(--border);
+  }
+
+  .outputs-row {
+    display: flex;
+    gap: 1rem;
+    width: 100%;
+    max-width: 360px;
+    justify-content: center;
+  }
+
+  .output-block {
+    padding: 0.5rem 0.75rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    text-align: center;
+    flex: 1;
+    max-width: 140px;
+  }
+
+  .output-block.accent {
+    border-top: 3px solid var(--text-secondary);
+  }
+
+  .output-block.highlight {
+    border-top: 3px solid var(--text-tertiary);
+    background: var(--selection);
+  }
+
+  @media (max-width: 500px) {
+    .outputs-row {
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .output-block {
+      max-width: 200px;
+      width: 100%;
+    }
+
+    .split-connector {
+      display: none;
+    }
+  }
+</style>

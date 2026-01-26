@@ -29,6 +29,7 @@ export default [
     ignores: [
       'dist/**',
       '.output/**',
+      '.netlify/**',
       'node_modules/**',
       '*.log',
       '.env*',

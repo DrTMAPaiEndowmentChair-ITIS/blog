@@ -1,0 +1,197 @@
+---
+/**
+ * MermaidDiagram - Renders Mermaid diagrams with website-consistent styling
+ * Supports flowcharts, sequence diagrams, and other Mermaid diagram types
+ */
+interface Props {
+  title?: string;
+  diagram: string;
+}
+
+const { title, diagram } = Astro.props;
+---
+
+<div class="mermaid-container">
+  {title && <div class="mermaid-title">{title}</div>}
+  <div class="mermaid-wrapper">
+    <pre class="mermaid">{diagram}</pre>
+  </div>
+</div>
+
+<script>
+  async function initMermaid() {
+    // @ts-ignore
+    const mermaid = await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs');
+
+    // Get CSS variables from the document
+    const computedStyle = getComputedStyle(document.documentElement);
+    const isDark = document.documentElement.classList.contains('dark');
+
+    // Map CSS variables to Mermaid theme
+    const bgColor = computedStyle.getPropertyValue('--code-bg').trim() || (isDark ? '#1a1a1a' : '#f5f5f5');
+    const textColor = computedStyle.getPropertyValue('--text-primary').trim() || (isDark ? '#e0e0e0' : '#1a1a1a');
+    const textSecondary = computedStyle.getPropertyValue('--text-secondary').trim() || (isDark ? '#a0a0a0' : '#555');
+    const textTertiary = computedStyle.getPropertyValue('--text-tertiary').trim() || (isDark ? '#707070' : '#888');
+    const borderColor = computedStyle.getPropertyValue('--border').trim() || (isDark ? '#333' : '#ddd');
+    const selectionColor = computedStyle.getPropertyValue('--selection').trim() || (isDark ? '#2a2a2a' : '#eee');
+
+    mermaid.default.initialize({
+      startOnLoad: false,
+      theme: 'base',
+      themeVariables: {
+        // General
+        fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace',
+        fontSize: '12px',
+
+        // Background colors
+        background: bgColor,
+        mainBkg: bgColor,
+        secondBkg: selectionColor,
+
+        // Text colors
+        primaryTextColor: textColor,
+        secondaryTextColor: textSecondary,
+        tertiaryTextColor: textTertiary,
+
+        // Node colors
+        primaryColor: selectionColor,
+        primaryBorderColor: textSecondary,
+        secondaryColor: bgColor,
+        secondaryBorderColor: borderColor,
+        tertiaryColor: bgColor,
+        tertiaryBorderColor: textTertiary,
+
+        // Line colors
+        lineColor: textTertiary,
+
+        // Flowchart specific
+        nodeBorder: textSecondary,
+        clusterBkg: bgColor,
+        clusterBorder: borderColor,
+        defaultLinkColor: textTertiary,
+        edgeLabelBackground: bgColor,
+
+        // Node styling
+        nodeTextColor: textColor,
+      },
+      flowchart: {
+        htmlLabels: true,
+        curve: 'basis',
+        padding: 12,
+        nodeSpacing: 40,
+        rankSpacing: 50,
+        useMaxWidth: true,
+      },
+    });
+
+    // Render all mermaid diagrams
+    const elements = document.querySelectorAll('.mermaid:not([data-processed])');
+    for (const element of elements) {
+      // Store original content for re-rendering on theme change
+      if (!element.getAttribute('data-source')) {
+        element.setAttribute('data-source', element.textContent || '');
+      }
+      element.setAttribute('data-processed', 'true');
+      const graphDefinition = element.getAttribute('data-source') || element.textContent || '';
+      try {
+        const { svg } = await mermaid.default.render(
+          `mermaid-${Math.random().toString(36).substring(7)}`,
+          graphDefinition
+        );
+        element.innerHTML = svg;
+      } catch (e) {
+        console.error('Mermaid render error:', e);
+      }
+    }
+  }
+
+  // Initialize on load and after Astro page transitions
+  initMermaid();
+  document.addEventListener('astro:after-swap', initMermaid);
+
+  // Re-initialize on theme change
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.attributeName === 'class') {
+        // Reset processed state and re-render with stored source
+        document.querySelectorAll('.mermaid[data-processed]').forEach(el => {
+          el.removeAttribute('data-processed');
+        });
+        initMermaid();
+      }
+    });
+  });
+  observer.observe(document.documentElement, { attributes: true });
+</script>
+
+<style>
+  .mermaid-container {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+  }
+
+  .mermaid-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1.25rem;
+  }
+
+  .mermaid-wrapper {
+    overflow-x: auto;
+    padding: 0.5rem 0;
+  }
+
+  .mermaid {
+    display: flex;
+    justify-content: center;
+    background: transparent !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  .mermaid :global(svg) {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Override Mermaid default styles */
+  .mermaid :global(.node rect),
+  .mermaid :global(.node polygon),
+  .mermaid :global(.node circle) {
+    stroke-width: 1.5px !important;
+  }
+
+  .mermaid :global(.edgePath path) {
+    stroke-width: 1.5px !important;
+  }
+
+  .mermaid :global(.label) {
+    font-family: var(--mono) !important;
+  }
+
+  .mermaid :global(.edgeLabel) {
+    font-family: var(--mono) !important;
+    font-size: 0.65rem !important;
+  }
+
+  .mermaid :global(.cluster rect) {
+    stroke-width: 1px !important;
+  }
+
+  /* Node shape overrides for sharp corners */
+  .mermaid :global(.node rect) {
+    rx: 0 !important;
+    ry: 0 !important;
+  }
+
+  @media (max-width: 600px) {
+    .mermaid-container {
+      padding: 1rem;
+    }
+  }
+</style>

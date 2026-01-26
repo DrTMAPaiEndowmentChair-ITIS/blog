@@ -1,0 +1,236 @@
+---
+/**
+ * Chunked Attention Visualization
+ * Shows streaming ASR with chunked attention patterns
+ */
+interface Chunk {
+  id: string;
+  label: string;
+}
+
+interface AttentionPattern {
+  type: 'self' | 'left+self';
+  contextFrames?: number;
+}
+
+interface Props {
+  title?: string;
+  chunks?: Chunk[];
+  attentionPatterns?: AttentionPattern[];
+  contextLabel?: string;
+}
+
+const {
+  title = "Chunked Attention for Streaming",
+  chunks = [
+    { id: "1", label: "chunk1" },
+    { id: "2", label: "chunk2" },
+    { id: "3", label: "chunk3" },
+    { id: "4", label: "chunk4" }
+  ],
+  attentionPatterns = [
+    { type: 'self' },
+    { type: 'left+self', contextFrames: 32 },
+    { type: 'left+self', contextFrames: 32 }
+  ],
+  contextLabel = "left ctx"
+} = Astro.props;
+---
+
+<div class="chunked-attention">
+  {title && <div class="viz-title">{title}</div>}
+
+  <div class="viz-container">
+    <div class="stream-row">
+      <span class="row-label">Audio Stream:</span>
+      <div class="chunks">
+        {chunks.map((chunk, index) => (
+          <>
+            <div class="chunk" data-chunk-id={chunk.id}>
+              [{chunk.label}]
+            </div>
+            {index < chunks.length - 1 && <span class="ellipsis"></span>}
+          </>
+        ))}
+        <span class="ellipsis">...</span>
+      </div>
+    </div>
+
+    <div class="connectors">
+      {attentionPatterns.map((_, index) => (
+        <div class="connector-line" style={`left: ${(index + 0.5) * (100 / attentionPatterns.length)}%`}></div>
+      ))}
+    </div>
+
+    <div class="attention-row">
+      <span class="row-label">Attention:</span>
+      <div class="patterns">
+        {attentionPatterns.map((pattern) => (
+          <div class={`pattern ${pattern.type === 'self' ? 'self-only' : 'with-context'}`}>
+            <div class="pattern-type">[{pattern.type}]</div>
+            {pattern.contextFrames && (
+              <div class="context-info">
+                <div class="context-line"></div>
+                <span class="context-frames">{pattern.contextFrames} frames</span>
+                <span class="context-label">{contextLabel}</span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .chunked-attention {
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+  }
+
+  .viz-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1.5rem;
+  }
+
+  .viz-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .stream-row, .attention-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .row-label {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-secondary);
+    min-width: 80px;
+    flex-shrink: 0;
+  }
+
+  .chunks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.125rem;
+    align-items: center;
+  }
+
+  .chunk {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    padding: 0.25rem 0.5rem;
+    background: var(--selection);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+  }
+
+  .ellipsis {
+    color: var(--text-tertiary);
+    font-family: var(--mono);
+    font-size: 0.6rem;
+  }
+
+  .connectors {
+    position: relative;
+    height: 20px;
+    margin-left: 85px;
+  }
+
+  .connector-line {
+    position: absolute;
+    width: 2px;
+    height: 100%;
+    background: var(--border);
+  }
+
+  .connector-line::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid var(--border);
+  }
+
+  .patterns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .pattern {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .pattern-type {
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    padding: 0.2rem 0.4rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+
+  .pattern.self-only .pattern-type {
+    border-color: var(--text-tertiary);
+  }
+
+  .pattern.with-context .pattern-type {
+    background: var(--selection);
+    border-color: var(--text-secondary);
+  }
+
+  .context-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.125rem;
+  }
+
+  .context-line {
+    width: 2px;
+    height: 10px;
+    background: var(--border);
+  }
+
+  .context-frames {
+    font-family: var(--mono);
+    font-size: 0.5rem;
+    color: var(--text-tertiary);
+  }
+
+  .context-label {
+    font-family: var(--mono);
+    font-size: 0.45rem;
+    color: var(--text-tertiary);
+  }
+
+  @media (max-width: 500px) {
+    .stream-row, .attention-row {
+      flex-direction: column;
+    }
+
+    .row-label {
+      min-width: auto;
+    }
+
+    .connectors {
+      margin-left: 0;
+    }
+  }
+</style>
