@@ -1,0 +1,245 @@
+---
+/**
+ * Edge AI hardware comparison visualization
+ * Compares TOPS, power, and price across devices
+ */
+interface Device {
+  name: string;
+  tops: number;
+  power: number;
+  price: number;
+  category: 'jetson' | 'rpi' | 'coral' | 'mobile';
+}
+
+interface Props {
+  title?: string;
+}
+
+const { title = "Edge AI Hardware Comparison" } = Astro.props;
+
+const devices: Device[] = [
+  { name: "Jetson AGX Orin", tops: 275, power: 60, price: 1999, category: "jetson" },
+  { name: "Jetson Orin NX", tops: 157, power: 25, price: 699, category: "jetson" },
+  { name: "Jetson Orin Nano Super", tops: 67, power: 25, price: 249, category: "jetson" },
+  { name: "Raspberry Pi AI HAT+ 26T", tops: 26, power: 3, price: 110, category: "rpi" },
+  { name: "Raspberry Pi AI HAT+ 13T", tops: 13, power: 2.5, price: 70, category: "rpi" },
+  { name: "Google Coral USB", tops: 4, power: 2, price: 60, category: "coral" },
+  { name: "Apple A17 Pro (ANE)", tops: 35, power: 8, price: 0, category: "mobile" },
+];
+
+const maxTops = Math.max(...devices.map(d => d.tops));
+---
+
+<div class="hardware-compare">
+  <div class="compare-title">{title}</div>
+  <div class="compare-grid">
+    <div class="grid-header">
+      <div class="header-cell device-col">Device</div>
+      <div class="header-cell">TOPS</div>
+      <div class="header-cell">Power (W)</div>
+      <div class="header-cell">TOPS/W</div>
+      <div class="header-cell">Price</div>
+    </div>
+    {devices.map((device) => (
+      <div class={`grid-row ${device.category}`}>
+        <div class="cell device-col">
+          <span class="device-name">{device.name}</span>
+          <span class={`device-badge ${device.category}`}>
+            {device.category === 'jetson' && 'NVIDIA'}
+            {device.category === 'rpi' && 'Hailo'}
+            {device.category === 'coral' && 'Google'}
+            {device.category === 'mobile' && 'Apple'}
+          </span>
+        </div>
+        <div class="cell tops-cell">
+          <div class="bar-container">
+            <div
+              class={`bar ${device.category}`}
+              style={`width: ${(device.tops / maxTops) * 100}%`}
+            ></div>
+            <span class="bar-value">{device.tops}</span>
+          </div>
+        </div>
+        <div class="cell power-cell">{device.power}W</div>
+        <div class="cell efficiency-cell">
+          {(device.tops / device.power).toFixed(1)}
+        </div>
+        <div class="cell price-cell">
+          {device.price > 0 ? `$${device.price}` : 'N/A'}
+        </div>
+      </div>
+    ))}
+  </div>
+  <div class="compare-note">
+    TOPS = Tera Operations Per Second. Mobile NPU price shown as N/A (integrated in SoC).
+  </div>
+</div>
+
+<style>
+  .hardware-compare {
+    margin: 2em 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .compare-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .compare-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    min-width: 600px;
+  }
+
+  .grid-header,
+  .grid-row {
+    display: grid;
+    grid-template-columns: 200px 1fr 80px 80px 80px;
+    gap: 1px;
+  }
+
+  .header-cell,
+  .cell {
+    padding: 0.625rem 0.875rem;
+    background: var(--bg);
+    font-size: var(--font-size-s);
+  }
+
+  .header-cell {
+    background: var(--astro-code-background);
+    font-weight: var(--font-weight-bold);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-secondary);
+  }
+
+  .device-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .device-name {
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+  }
+
+  .device-badge {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 0;
+    width: fit-content;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .device-badge.jetson {
+    background: var(--selection);
+    color: var(--text-secondary);
+  }
+
+  .device-badge.rpi {
+    background: var(--code-bg);
+    color: var(--text-secondary);
+  }
+
+  .device-badge.coral {
+    background: var(--astro-code-background);
+    color: var(--text-secondary);
+  }
+
+  .device-badge.mobile {
+    background: var(--border);
+    color: var(--text-secondary);
+  }
+
+  .tops-cell {
+    padding: 0.625rem 0.5rem;
+  }
+
+  .bar-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 100%;
+  }
+
+  .bar {
+    height: 16px;
+    min-width: 4px;
+    transition: width 0.3s ease-out;
+  }
+
+  .bar.jetson {
+    background: var(--text-secondary);
+  }
+
+  .bar.rpi {
+    background: var(--text-tertiary);
+  }
+
+  .bar.coral {
+    background: var(--border);
+  }
+
+  .bar.mobile {
+    background: var(--text-secondary);
+    opacity: 0.6;
+  }
+
+  .bar-value {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  .power-cell,
+  .efficiency-cell,
+  .price-cell {
+    font-family: var(--mono);
+    text-align: center;
+    color: var(--text-secondary);
+  }
+
+  .efficiency-cell {
+    color: var(--text-primary);
+    font-weight: var(--font-weight-bold);
+  }
+
+  .grid-row:hover .cell {
+    background: var(--astro-code-background);
+  }
+
+  .compare-note {
+    margin-top: 0.75rem;
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    font-family: var(--mono);
+  }
+
+  @media (max-width: 700px) {
+    .grid-header,
+    .grid-row {
+      grid-template-columns: 160px 1fr 70px 70px 70px;
+    }
+
+    .header-cell,
+    .cell {
+      padding: 0.5rem;
+      font-size: 0.7rem;
+    }
+  }
+</style>

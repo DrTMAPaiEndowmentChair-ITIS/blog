@@ -1,0 +1,179 @@
+---
+/**
+ * ROCm software stack visualization
+ * Shows the hierarchical layers of the ROCm ecosystem
+ */
+interface Layer {
+  name: string;
+  components: string[];
+  color: 'accent' | 'highlight' | 'muted';
+  description?: string;
+}
+
+const layers: Layer[] = [
+  {
+    name: "Applications & Frameworks",
+    components: ["PyTorch", "TensorFlow", "JAX", "vLLM", "llama.cpp"],
+    color: "accent",
+    description: "ML frameworks and inference engines"
+  },
+  {
+    name: "ROCm Libraries",
+    components: ["MIOpen", "rocBLAS", "hipBLASLt", "RCCL", "rocFFT"],
+    color: "highlight",
+    description: "Optimized compute primitives"
+  },
+  {
+    name: "HIP Runtime",
+    components: ["HIP API", "hipify-clang", "hipify-perl"],
+    color: "muted",
+    description: "CUDA portability layer"
+  },
+  {
+    name: "ROCm Runtime",
+    components: ["HSA Runtime", "ROCr", "ROCt"],
+    color: "muted",
+    description: "Low-level GPU runtime"
+  },
+  {
+    name: "Kernel Driver",
+    components: ["amdgpu", "KFD"],
+    color: "highlight",
+    description: "Linux kernel modules"
+  }
+];
+---
+
+<div class="rocm-stack">
+  <div class="stack-title">ROCm Software Stack</div>
+  <div class="stack-container">
+    {layers.map((layer, index) => (
+      <div class={`stack-layer ${layer.color}`}>
+        <div class="layer-header">
+          <span class="layer-name">{layer.name}</span>
+          {layer.description && (
+            <span class="layer-desc">{layer.description}</span>
+          )}
+        </div>
+        <div class="layer-components">
+          {layer.components.map((comp) => (
+            <span class="component-tag">{comp}</span>
+          ))}
+        </div>
+        {index < layers.length - 1 && (
+          <div class="layer-connector">
+            <svg width="20" height="16" viewBox="0 0 20 16">
+              <path d="M10 0 L10 16 M5 11 L10 16 L15 11" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            </svg>
+          </div>
+        )}
+      </div>
+    ))}
+  </div>
+</div>
+
+<style>
+  .rocm-stack {
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  .stack-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .stack-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .stack-layer {
+    position: relative;
+    padding: 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    transition: all 0.15s ease-out;
+  }
+
+  .stack-layer:hover {
+    transform: translateX(4px);
+  }
+
+  .stack-layer.accent {
+    border-left: 3px solid var(--text-secondary);
+  }
+
+  .stack-layer.highlight {
+    border-left: 3px solid var(--text-tertiary);
+  }
+
+  .stack-layer.muted {
+    border-left: 3px solid var(--border);
+  }
+
+  .layer-header {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .layer-name {
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+  }
+
+  .layer-desc {
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+  }
+
+  .layer-components {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .component-tag {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    background: var(--code-bg);
+    border-radius: 0;
+    color: var(--text-secondary);
+  }
+
+  .stack-layer.accent .component-tag {
+    background: var(--selection);
+  }
+
+  .layer-connector {
+    position: absolute;
+    bottom: -1.25rem;
+    left: 50%;
+    transform: translateX(-50%);
+    color: var(--border);
+    z-index: 1;
+  }
+
+  @media (max-width: 600px) {
+    .layer-header {
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .component-tag {
+      font-size: 0.65rem;
+    }
+  }
+</style>

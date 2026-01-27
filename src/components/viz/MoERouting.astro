@@ -1,0 +1,456 @@
+---
+/**
+ * MoE Routing Visualization
+ * Shows how tokens are routed to different experts through the gating network
+ * Demonstrates sparse activation pattern
+ */
+interface Props {
+  showLabels?: boolean;
+  numExperts?: number;
+  activeExperts?: number;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- props reserved for future dynamic expert rendering
+const { showLabels = true, numExperts = 8, activeExperts = 2 } = Astro.props;
+---
+
+<div class="moe-routing">
+  <div class="routing-flow">
+    <!-- Input Token -->
+    <div class="routing-input">
+      <div class="token-box">
+        <span class="token-text">Token</span>
+        <span class="token-sub">hidden state h</span>
+      </div>
+    </div>
+
+    <!-- Arrow to Router -->
+    <div class="routing-arrow">
+      <svg width="40" height="24" viewBox="0 0 40 24" fill="none">
+        <path d="M2 12H38M38 12L30 4M38 12L30 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+
+    <!-- Router/Gating Network -->
+    <div class="router-box" tabindex="0">
+      <div class="router-header">
+        <span class="router-title">Router</span>
+      </div>
+      <div class="router-body">
+        <div class="router-formula">
+          <span class="formula-text">G(h) = softmax(W<sub>g</sub> * h)</span>
+        </div>
+        <div class="router-output">
+          <span class="output-label">Top-K Selection</span>
+        </div>
+      </div>
+      <div class="router-detail">
+        <div class="detail-item">
+          <span class="detail-key">Output</span>
+          <span class="detail-val">K expert indices + weights</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fan-out to Experts -->
+    <div class="expert-fanout">
+      <svg class="fanout-svg" viewBox="0 0 80 160" fill="none">
+        <!-- Lines from center to each expert -->
+        <path d="M10 80 L70 20" stroke="var(--text-tertiary)" stroke-width="1" stroke-dasharray="4 2" opacity="0.3"/>
+        <path d="M10 80 L70 40" stroke="var(--expert-active)" stroke-width="2"/>
+        <path d="M10 80 L70 60" stroke="var(--text-tertiary)" stroke-width="1" stroke-dasharray="4 2" opacity="0.3"/>
+        <path d="M10 80 L70 80" stroke="var(--text-tertiary)" stroke-width="1" stroke-dasharray="4 2" opacity="0.3"/>
+        <path d="M10 80 L70 100" stroke="var(--text-tertiary)" stroke-width="1" stroke-dasharray="4 2" opacity="0.3"/>
+        <path d="M10 80 L70 120" stroke="var(--expert-active)" stroke-width="2"/>
+        <path d="M10 80 L70 140" stroke="var(--text-tertiary)" stroke-width="1" stroke-dasharray="4 2" opacity="0.3"/>
+        <path d="M10 80 L70 160" stroke="var(--text-tertiary)" stroke-width="1" stroke-dasharray="4 2" opacity="0.3"/>
+      </svg>
+    </div>
+
+    <!-- Expert Grid -->
+    <div class="expert-grid">
+      <div class="expert-item inactive">
+        <span class="expert-num">E1</span>
+        <span class="expert-weight">0.02</span>
+      </div>
+      <div class="expert-item active">
+        <span class="expert-num">E2</span>
+        <span class="expert-weight">0.41</span>
+      </div>
+      <div class="expert-item inactive">
+        <span class="expert-num">E3</span>
+        <span class="expert-weight">0.05</span>
+      </div>
+      <div class="expert-item inactive">
+        <span class="expert-num">E4</span>
+        <span class="expert-weight">0.08</span>
+      </div>
+      <div class="expert-item inactive">
+        <span class="expert-num">E5</span>
+        <span class="expert-weight">0.03</span>
+      </div>
+      <div class="expert-item active">
+        <span class="expert-num">E6</span>
+        <span class="expert-weight">0.35</span>
+      </div>
+      <div class="expert-item inactive">
+        <span class="expert-num">E7</span>
+        <span class="expert-weight">0.04</span>
+      </div>
+      <div class="expert-item inactive">
+        <span class="expert-num">E8</span>
+        <span class="expert-weight">0.02</span>
+      </div>
+    </div>
+
+    <!-- Combine Arrow -->
+    <div class="routing-arrow combine-arrow">
+      <svg width="40" height="24" viewBox="0 0 40 24" fill="none">
+        <path d="M2 12H38M38 12L30 4M38 12L30 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="arrow-label">weighted sum</span>
+    </div>
+
+    <!-- Output -->
+    <div class="routing-output">
+      <div class="output-box">
+        <span class="output-text">Output</span>
+        <span class="output-formula">y = w<sub>2</sub>E<sub>2</sub>(h) + w<sub>6</sub>E<sub>6</sub>(h)</span>
+      </div>
+    </div>
+  </div>
+
+  {showLabels && (
+    <div class="routing-legend">
+      <div class="legend-item">
+        <span class="legend-dot active"></span>
+        <span class="legend-text">Active experts (Top-K)</span>
+      </div>
+      <div class="legend-item">
+        <span class="legend-dot inactive"></span>
+        <span class="legend-text">Inactive experts (skipped)</span>
+      </div>
+    </div>
+  )}
+</div>
+
+<style>
+  .moe-routing {
+    --expert-active: var(--text-secondary);
+    --expert-inactive: var(--text-tertiary);
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+    overflow-x: auto;
+  }
+
+  .routing-flow {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: max-content;
+    padding: 1rem 0;
+  }
+
+  /* Token Input */
+  .routing-input {
+    flex-shrink: 0;
+  }
+
+  .token-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    gap: 0.25rem;
+  }
+
+  .token-text {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+  }
+
+  .token-sub {
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    color: var(--text-tertiary);
+  }
+
+  /* Router Box */
+  .router-box {
+    flex-shrink: 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    min-width: 140px;
+    overflow: hidden;
+    transition: all 0.2s ease-out;
+    cursor: default;
+  }
+
+  .router-box:hover,
+  .router-box:focus {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+
+  html.dark .router-box:hover,
+  html.dark .router-box:focus {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .router-header {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--selection);
+  }
+
+  .router-title {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+  }
+
+  .router-body {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .router-formula {
+    margin-bottom: 0.375rem;
+  }
+
+  .formula-text {
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    color: var(--text-secondary);
+  }
+
+  .formula-text sub {
+    font-size: 0.45rem;
+  }
+
+  .router-output {
+    padding-top: 0.25rem;
+    border-top: 1px dashed var(--border);
+  }
+
+  .output-label {
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    color: var(--text-tertiary);
+  }
+
+  .router-detail {
+    padding: 0;
+    background: var(--code-bg);
+    border-top: 1px solid var(--border);
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: all 0.2s ease-out;
+  }
+
+  .router-box:hover .router-detail,
+  .router-box:focus .router-detail {
+    opacity: 1;
+    max-height: 40px;
+    padding: 0.375rem 0.75rem;
+  }
+
+  .detail-item {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 0.5rem;
+  }
+
+  .detail-key {
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+  }
+
+  .detail-val {
+    color: var(--text-secondary);
+  }
+
+  /* Arrows */
+  .routing-arrow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+  }
+
+  .arrow-label {
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+  }
+
+  /* Expert Fanout */
+  .expert-fanout {
+    flex-shrink: 0;
+    width: 60px;
+  }
+
+  .fanout-svg {
+    width: 60px;
+    height: 140px;
+  }
+
+  /* Expert Grid */
+  .expert-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.375rem;
+    flex-shrink: 0;
+  }
+
+  .expert-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.375rem 0.5rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    min-width: 48px;
+    transition: all 0.15s ease-out;
+  }
+
+  .expert-item.active {
+    border-color: var(--expert-active);
+    background: var(--selection);
+  }
+
+  .expert-item.inactive {
+    opacity: 0.5;
+    border-style: dashed;
+  }
+
+  .expert-num {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+  }
+
+  .expert-item.inactive .expert-num {
+    color: var(--text-tertiary);
+  }
+
+  .expert-weight {
+    font-family: var(--mono);
+    font-size: 0.5rem;
+    color: var(--text-secondary);
+  }
+
+  .expert-item.inactive .expert-weight {
+    color: var(--text-tertiary);
+  }
+
+  /* Combine Arrow */
+  .combine-arrow {
+    margin-left: 0.5rem;
+  }
+
+  /* Output */
+  .routing-output {
+    flex-shrink: 0;
+  }
+
+  .output-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    gap: 0.25rem;
+  }
+
+  .output-text {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+  }
+
+  .output-formula {
+    font-family: var(--mono);
+    font-size: 0.5rem;
+    color: var(--text-tertiary);
+  }
+
+  .output-formula sub {
+    font-size: 0.4rem;
+  }
+
+  /* Legend */
+  .routing-legend {
+    display: flex;
+    gap: 1.5rem;
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border: 1px solid var(--border);
+  }
+
+  .legend-dot.active {
+    background: var(--selection);
+    border-color: var(--text-secondary);
+  }
+
+  .legend-dot.inactive {
+    background: var(--bg);
+    border-style: dashed;
+    opacity: 0.5;
+  }
+
+  .legend-text {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-tertiary);
+  }
+
+  /* Responsive */
+  @media (max-width: 700px) {
+    .routing-flow {
+      flex-wrap: wrap;
+      justify-content: center;
+      min-width: auto;
+    }
+
+    .expert-fanout {
+      display: none;
+    }
+
+    .expert-grid {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
+
+  @media (max-width: 500px) {
+    .expert-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+</style>

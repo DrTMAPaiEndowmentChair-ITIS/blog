@@ -1,0 +1,326 @@
+---
+/**
+ * Comparison visualization for preference tuning methods
+ * Shows DPO, IPO, KTO, ORPO, SimPO characteristics
+ */
+interface Method {
+  name: string;
+  fullName: string;
+  requiresRef: boolean;
+  dataType: 'paired' | 'unpaired' | 'either';
+  complexity: 'low' | 'medium' | 'high';
+  bestFor: string;
+  color: string;
+}
+
+interface Props {
+  title?: string;
+}
+
+const { title = "Preference Optimization Methods Comparison" } = Astro.props;
+
+const methods: Method[] = [
+  {
+    name: 'DPO',
+    fullName: 'Direct Preference Optimization',
+    requiresRef: true,
+    dataType: 'paired',
+    complexity: 'low',
+    bestFor: 'General alignment, final polish',
+    color: '#6366f1'
+  },
+  {
+    name: 'IPO',
+    fullName: 'Identity Preference Optimization',
+    requiresRef: true,
+    dataType: 'paired',
+    complexity: 'low',
+    bestFor: 'Preventing overfitting',
+    color: '#8b5cf6'
+  },
+  {
+    name: 'KTO',
+    fullName: 'Kahneman-Tversky Optimization',
+    requiresRef: true,
+    dataType: 'unpaired',
+    complexity: 'medium',
+    bestFor: 'Risk-sensitive domains',
+    color: '#ec4899'
+  },
+  {
+    name: 'ORPO',
+    fullName: 'Odds Ratio Preference Optimization',
+    requiresRef: false,
+    dataType: 'paired',
+    complexity: 'high',
+    bestFor: 'Imbalanced data',
+    color: '#f59e0b'
+  },
+  {
+    name: 'SimPO',
+    fullName: 'Simple Preference Optimization',
+    requiresRef: false,
+    dataType: 'paired',
+    complexity: 'low',
+    bestFor: 'Noisy labels, stability',
+    color: '#10b981'
+  }
+];
+---
+
+<div class="methods-compare">
+  <div class="compare-title">{title}</div>
+
+  <div class="methods-grid">
+    <div class="grid-header">
+      <div class="header-cell method-name-header">Method</div>
+      <div class="header-cell">Reference Model</div>
+      <div class="header-cell">Data Format</div>
+      <div class="header-cell">Complexity</div>
+      <div class="header-cell best-for-header">Best For</div>
+    </div>
+
+    {methods.map((method) => (
+      <div class="method-row" style={`--method-color: ${method.color}`}>
+        <div class="method-cell method-name">
+          <span class="method-badge">{method.name}</span>
+          <span class="method-full">{method.fullName}</span>
+        </div>
+        <div class="method-cell">
+          <span class={`ref-indicator ${method.requiresRef ? 'required' : 'not-required'}`}>
+            {method.requiresRef ? 'Required' : 'Not needed'}
+          </span>
+        </div>
+        <div class="method-cell">
+          <span class={`data-type data-${method.dataType}`}>
+            {method.dataType === 'paired' ? 'Paired' : method.dataType === 'unpaired' ? 'Unpaired' : 'Either'}
+          </span>
+        </div>
+        <div class="method-cell">
+          <div class="complexity-bar">
+            <div class={`complexity-fill complexity-${method.complexity}`}></div>
+          </div>
+          <span class="complexity-label">{method.complexity}</span>
+        </div>
+        <div class="method-cell best-for">{method.bestFor}</div>
+      </div>
+    ))}
+  </div>
+
+  <div class="legend">
+    <div class="legend-section">
+      <span class="legend-title">Data Format:</span>
+      <span class="legend-item"><span class="data-type data-paired">Paired</span> = (chosen, rejected) pairs</span>
+      <span class="legend-item"><span class="data-type data-unpaired">Unpaired</span> = individual ratings</span>
+    </div>
+  </div>
+</div>
+
+<style>
+  .methods-compare {
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+    overflow-x: auto;
+  }
+
+  .compare-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .methods-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    min-width: 700px;
+  }
+
+  .grid-header {
+    display: grid;
+    grid-template-columns: 200px 100px 90px 100px 1fr;
+    gap: 1px;
+    background: var(--border);
+  }
+
+  .header-cell {
+    padding: 0.75rem;
+    background: var(--bg);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+  }
+
+  .method-row {
+    display: grid;
+    grid-template-columns: 200px 100px 90px 100px 1fr;
+    gap: 1px;
+    background: var(--border);
+  }
+
+  .method-row:hover .method-cell {
+    background: var(--code-bg);
+  }
+
+  .method-cell {
+    padding: 0.75rem;
+    background: var(--bg);
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: background 0.15s ease-out;
+  }
+
+  .method-name {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .method-badge {
+    font-family: var(--mono);
+    font-weight: var(--font-weight-bold);
+    padding: 0.125rem 0.5rem;
+    background: var(--method-color);
+    color: white;
+    font-size: 0.7rem;
+    border-radius: 2px;
+  }
+
+  .method-full {
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+  }
+
+  .ref-indicator {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    padding: 0.125rem 0.375rem;
+    border-radius: 2px;
+  }
+
+  .ref-indicator.required {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+  }
+
+  .ref-indicator.not-required {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+  }
+
+  .data-type {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    padding: 0.125rem 0.375rem;
+    border-radius: 2px;
+  }
+
+  .data-paired {
+    background: rgba(99, 102, 241, 0.15);
+    color: #6366f1;
+  }
+
+  .data-unpaired {
+    background: rgba(236, 72, 153, 0.15);
+    color: #ec4899;
+  }
+
+  .data-either {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+  }
+
+  .complexity-bar {
+    width: 50px;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .complexity-fill {
+    height: 100%;
+    border-radius: 3px;
+  }
+
+  .complexity-low {
+    width: 33%;
+    background: #10b981;
+  }
+
+  .complexity-medium {
+    width: 66%;
+    background: #f59e0b;
+  }
+
+  .complexity-high {
+    width: 100%;
+    background: #ef4444;
+  }
+
+  .complexity-label {
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+    font-family: var(--mono);
+    text-transform: capitalize;
+  }
+
+  .best-for {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+  }
+
+  .legend {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .legend-section {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+  }
+
+  .legend-title {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+  }
+
+  .legend-item {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  @media (max-width: 768px) {
+    .methods-compare {
+      padding: 1rem;
+    }
+
+    .methods-grid {
+      min-width: 600px;
+    }
+
+    .grid-header,
+    .method-row {
+      grid-template-columns: 160px 85px 80px 90px 1fr;
+    }
+  }
+</style>

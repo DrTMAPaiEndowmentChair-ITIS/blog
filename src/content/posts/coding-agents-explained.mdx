@@ -1,0 +1,551 @@
+---
+title: "How Coding Agents Work: Inside the Agentic Loop"
+pubDate: 2026-01-26
+author: "Aadit Agrawal"
+---
+
+import AgentLoop from '../../components/viz/AgentLoop.astro';
+import AgentComparison from '../../components/viz/AgentComparison.astro';
+
+Coding agents are not code completion tools. The distinction matters. GitHub Copilot and similar autocomplete systems predict the next few tokens based on cursor context. Coding agents operate differently: they observe your codebase, reason about a task, execute actions through tools, and iterate until the task is complete. This pattern, called the agentic loop, is what separates a tool that suggests code from one that can implement features, fix bugs, and open pull requests autonomously.
+
+As of January 2026, coding agents have crossed a meaningful threshold. Claude Opus 4.5 became the first model to exceed 80% on SWE-bench Verified [^17]. GPT-5.2 Codex established state-of-the-art on SWE-bench Pro at 56.4% [^18]. The market has consolidated around a handful of approaches: terminal-native agents (Claude Code, Codex CLI, Gemini CLI), IDE-integrated agents (Cursor, Windsurf, Cline), and cloud-based autonomous agents (Devin, Replit Agent 3, GitHub Copilot coding agent).
+
+This post examines how modern coding agents work, from the core loop architecture to context management strategies, tool implementations, and sandboxing approaches. We will survey the major agents available today and explore their design tradeoffs.
+
+---
+
+## The Agentic Loop
+
+Every coding agent runs some variant of an observe-think-act loop. OpenAI's documentation on their Codex agent describes this as "unrolling" the loop; the agent repeatedly gathers information, decides what to do, executes an action, and evaluates the result [^1].
+
+<AgentLoop title="The Core Agentic Loop" animationSpeed="normal" />
+
+The loop continues until the agent determines the task is complete or reaches a stopping condition (token limit, error threshold, or explicit user interrupt). This architecture differs from single-shot generation in a key way: the agent can course-correct. If it writes code that fails tests, it observes the failure, reasons about the fix, and tries again.
+
+### Observe
+
+The observation phase involves gathering context about the current state. For coding agents, this means reading files, searching for patterns in the codebase, checking test results, and inspecting error messages. Agents have access to tools that return structured information: file contents, search results, command output.
+
+### Think
+
+The thinking phase is where the LLM reasons about what to do next. The model receives the accumulated context from observations and decides which tool to call next. This is not a separate system; it is the model's native capability for planning and reasoning applied to a tool-use context.
+
+### Act
+
+The action phase executes a tool call. The agent might edit a file, run a shell command, search for references, or query a language server. Each action produces output that becomes input for the next observation phase.
+
+---
+
+## Tool Use in Coding Agents
+
+Tools give agents their capabilities. Without tools, an agent can only generate text. With tools, it can modify files, execute code, search repositories, and interact with external systems.
+
+### Core Tool Categories
+
+**File Operations**: Read, write, and edit files. Most agents support both full file writes and targeted edits (replacing specific strings or line ranges). Claude Code implements an `Edit` tool that performs exact string replacement, reducing the risk of unintended changes [^2].
+
+**Shell Execution**: Run arbitrary commands. This enables testing, building, linting, and any other command-line operation. Agents typically capture stdout, stderr, and exit codes.
+
+**Search Tools**: Find files by name patterns (glob) and content patterns (grep/ripgrep). Effective search is critical for navigating large codebases. Agents need to find relevant code without reading every file.
+
+**LSP Integration**: Language Server Protocol provides code intelligence; go-to-definition, find-references, hover documentation, and symbol search. OpenCode and Claude Code both integrate LSP for structured code navigation [^3].
+
+**MCP (Model Context Protocol)**: Anthropic's open standard for connecting AI assistants to external tools and data sources. Both Claude Code and Gemini CLI support MCP, enabling integration with systems like Jira, GitHub, and custom APIs [^4].
+
+### Tool Descriptions and Schemas
+
+Agents rely on well-structured tool descriptions to use tools correctly. Each tool has a name, description, and parameter schema. The quality of these descriptions directly affects agent performance. Vague descriptions lead to incorrect tool usage; overly complex schemas increase error rates.
+
+Example tool schema structure:
+
+```json
+{
+  "name": "edit_file",
+  "description": "Replace exact string matches in a file",
+  "parameters": {
+    "file_path": "Absolute path to the file",
+    "old_string": "Exact text to find and replace",
+    "new_string": "Replacement text"
+  }
+}
+```
+
+---
+
+## Context Management
+
+Large codebases exceed context window limits. A moderately sized project might contain millions of tokens across thousands of files. Agents need strategies to work within context constraints while maintaining coherent understanding of the task.
+
+### Repository Mapping
+
+Aider pioneered the repository map approach: generating a compact representation of the codebase structure, including file paths, function signatures, and class definitions [^5]. This map fits in context and provides the agent enough information to know which files to read for detailed work.
+
+### Compaction
+
+Compaction summarizes conversation history when approaching context limits. Rather than failing when the context fills up, the agent condenses older interactions while preserving essential information.
+
+OpenAI's GPT-5.2 Codex is trained specifically for compaction with native compaction capabilities, making it token-efficient in its reasoning while handling long-running coding tasks [^19]. Anthropic's Claude Code implements auto-compact at 95% context capacity, summarizing the trajectory of user-agent interactions [^6].
+
+Compaction strategies vary:
+
+- **Recursive summarization**: Repeatedly condense earlier turns
+- **Hierarchical summarization**: Maintain summaries at different levels of detail
+- **Tool result compaction**: Replace verbose tool outputs with compact references (file paths instead of full contents)
+
+### MCP Tool Search
+
+Claude Code introduced "MCP Tool Search" in January 2026, implementing lazy loading for AI tools [^20]. Instead of preloading every tool definition, Claude Code monitors context usage and automatically fetches tool descriptions only when necessary. The token savings are significant: from approximately 134k to 5k in Anthropic's internal testing. Internal benchmarks show that enabling Tool Search improved the accuracy of Opus 4 on MCP evaluations from 49% to 74%, and for Opus 4.5, accuracy jumped from 79.5% to 88.1%.
+
+### Sub-Agent Isolation
+
+For complex tasks, agents can spawn sub-agents that operate in isolated context windows. The parent agent describes a task; the sub-agent explores extensively using its own context, then returns a condensed summary. This pattern appears in systems like Manus and OpenAI's Codex [^7].
+
+The key insight: sub-agents might use tens of thousands of tokens internally but return only 1,000-2,000 tokens of distilled results. This achieves context separation while preserving information.
+
+---
+
+## Sandboxing and Security
+
+Coding agents execute arbitrary code. They run shell commands, modify files, and interact with external services. This creates security concerns: what prevents an agent from running `rm -rf /` or exfiltrating sensitive data?
+
+### Container-Based Isolation
+
+Docker containers provide filesystem isolation, process containment, and resource limits. The agent runs inside a container with access only to the project directory. Docker recently introduced Docker Sandboxes specifically for AI coding agents, with native support for Claude Code and Gemini CLI [^8].
+
+Container isolation means the agent can install packages, run code, and modify files within the sandbox without affecting the host system. This approach handles the full environment the agent needs, not just the agent process itself.
+
+### OS-Level Sandboxing
+
+Claude Code on macOS uses the native sandbox facility to restrict agent actions. This provides lighter-weight isolation than containers but limits what the agent can access.
+
+### Limitations
+
+Container isolation alone does not address all risks. A sandbox controls where code runs and which files an agent can modify. It does not control what the agent is authorized to do across networked systems [^9]. An agent might have legitimate access to GitHub but use that access in unintended ways.
+
+Defense in depth remains necessary: container isolation, network segmentation, explicit permission prompts for sensitive actions, and audit logging.
+
+---
+
+## Survey of Coding Agents
+
+<AgentComparison title="Major Coding Agents Compared" />
+
+### Terminal-Native Agents
+
+#### Claude Code
+
+Anthropic's CLI agent runs in your terminal and integrates with your bash environment. The tech stack is TypeScript, React, Ink, and Bun [^2]. Design philosophy: low-level and unopinionated, providing close to raw model access without forcing specific workflows.
+
+Key characteristics:
+- Tools: Bash, Read, Write, Edit, Grep, Glob, LSP, MCP client/server
+- Context: Auto-compact at 95% capacity, MCP Tool Search for lazy loading
+- Sandbox: macOS sandbox, optional Docker
+- Model: Claude Opus 4.5 (80.9% SWE-bench Verified), Sonnet
+
+Claude Code v2.1.0 (January 2026) introduced Automatic Skill Hot-Reload, Skill Context Forking for isolated sub-agent contexts, and Hooks in Skill Frontmatter [^20]. The Cowork feature brings Claude Code's agentic capabilities to the Claude desktop app, running locally in an isolated VM with access to local files and MCP integrations [^21]. Users report 50% to 75% reductions in both tool calling errors and build/lint errors with Claude Opus 4.5 [^17].
+
+#### Codex CLI
+
+OpenAI's agent runs tasks in isolated cloud sandbox environments, preloaded with your repository. Powered by GPT-5.2 Codex for standard tasks and GPT-5.1-Codex-Max for long-running operations [^19].
+
+Key characteristics:
+- Tools: Shell, file operations, code execution, agent skills
+- Context: Native compaction, collaboration tools for multi-agent coordination
+- Sandbox: Docker containers in cloud
+- Model: GPT-5.2 Codex (80% SWE-bench Verified, 56.4% SWE-bench Pro)
+
+Codex v0.85.0 (January 2026) introduced app-server v2 with collaboration tool calls emitted as item events, enabling real-time agent coordination rendering. The `spawn_agent` function now accepts an agent role preset for richer agent control [^22]. By exposing the CLI as an MCP server and orchestrating with the OpenAI Agents SDK, developers can create deterministic, auditable workflows that scale from a single agent to a complete software delivery pipeline.
+
+#### Gemini CLI
+
+Google's open-source agent (Apache 2.0) brings Gemini models to the terminal. Uses a ReAct (reason and act) loop with built-in tools and MCP support [^10].
+
+Key characteristics:
+- Tools: Shell, file ops, Google Search grounding, web fetch, MCP
+- Context: 1M token window with Gemini 3
+- Sandbox: Optional Docker
+- Model: Gemini 3 Flash (78% SWE-bench Verified) or Pro
+
+Gemini 3 Flash became available in Gemini CLI in December 2025, achieving 78% on SWE-bench Verified while being 3x faster than the 2.5 series at a fraction of the cost [^23]. Since launch, the community has contributed over 2,800 pull requests, submitted about 3,400 issues, and given more than 70,000 GitHub stars. The free tier offers 60 requests/minute and 1,000 requests/day with a personal Google account.
+
+### IDE-Integrated Agents
+
+#### Cursor
+
+Cursor is a fork of VS Code that integrates AI capabilities directly into the editing experience. Agent is the default mode, designed to handle complex coding tasks with minimal guidance [^24].
+
+Key characteristics:
+- Tools: File ops, terminal, web browsing, codebase indexing
+- Context: Multi-file understanding with automatic context detection
+- Sandbox: None (local execution)
+- Models: Composer (proprietary), GPT-5 Codex, Claude
+
+Cursor 2.0 (late 2025) shipped Composer, their own ultra-fast coding model, and an agent-centric interface for running multiple agents in parallel [^24]. The January 2026 CLI release added Plan mode (`/plan` or `--mode=plan`) for approach design before coding, and cloud handoff for background execution. Users can prepend `&` to any message to send it to a cloud agent, then resume on web or mobile at cursor.com/agents.
+
+#### Windsurf
+
+Windsurf (by Codeium) is an agentic IDE built for enterprise teams and large codebases. Its Cascade agent plans and executes multi-step changes across repositories [^25].
+
+Key characteristics:
+- Tools: File ops, terminal, repository-wide context retrieval
+- Context: Flow feature maintains persistent context across projects
+- Sandbox: None (local execution)
+- Models: Various (configurable)
+
+Windsurf's "Context Awareness Engine" is faster at indexing than Cursor, making it suited for large-scale enterprise projects where the codebase exceeds what other tools can handle. Cascade reasons across entire repositories, determining which files matter for a given task and loading them automatically.
+
+#### Cline
+
+Cline is an open-source AI coding agent that runs inside VS Code or the terminal. It plans, previews, and applies multi-file changes with approval checkpoints [^26].
+
+Key characteristics:
+- Tools: File ops, terminal, web browsing, MCP orchestration
+- Context: Full repository access with diff transparency
+- Sandbox: None (local-first control)
+- Models: Model-agnostic (any provider)
+
+Cline demonstrates high autonomy with multi-step execution, self-correction, and independent task continuation. Its open-source nature and support for multiple AI models offer flexibility for teams that need local-first control over data and models.
+
+### Cloud-Based Autonomous Agents
+
+#### Devin
+
+Devin (by Cognition Labs) is an autonomous AI software engineer that operates as a web app rather than an IDE extension. Users define intent, review a plan, and execution proceeds in the background [^27].
+
+Key characteristics:
+- Tools: Code writing, PR creation, bug reproduction, internal tool building
+- Context: Full codebase access with summarized intermediate steps
+- Sandbox: Cloud-based isolated environments
+- Model: Proprietary (trained with reinforcement learning)
+
+Devin can independently create PRs, respond to PR comments, review PRs, and handle Linear tickets when tagged. In 2025, Devin gained multi-agent operation capability, where one AI agent dispatches tasks to other AI agents. Devin Wiki and Devin Search provide machine-generated documentation and codebase querying. Pricing starts at $20 with pay-as-you-go ACUs ($2.25 per ~15 minutes of active work) or $500/month for teams [^27].
+
+#### Replit Agent 3
+
+Replit Agent 3 (September 2025) is Replit's most autonomous agent, positioned as Agent-first for all builders, not just developers [^28].
+
+Key characteristics:
+- Tools: Code writing, testing, deployment, agent creation
+- Context: Full project access with reflection loops
+- Sandbox: Cloud-based Replit environment
+- Model: Proprietary
+
+Agent 3 runs for up to 200 minutes autonomously, handling full tasks with a proprietary testing system that is up to 3x faster and 10x more cost-effective than Computer Use models. For the first time, Agent 3 can build other agents and automations, enabling workflow automation via natural language. In January 2026, Replit reached a $3 billion valuation, with companies like Duolingo and Zillow using the platform [^28].
+
+#### GitHub Copilot Coding Agent
+
+GitHub Copilot coding agent works independently in the background to complete tasks like a human developer [^29].
+
+Key characteristics:
+- Tools: Code generation, file ops, Git integration
+- Context: Repository-aware with Copilot Spaces
+- Sandbox: Cloud-based execution
+- Models: GPT-5 mini, GPT-4.1 (included without premium requests)
+
+The January 2026 CLI update introduced specialized custom agents: Explore for fast codebase analysis and Task for running commands like tests and builds [^29]. Visual Studio 2026 shipped with GitHub cloud agent in public preview. Users can delegate UI cleanups, refactors, documentation updates, and multi-file edits while focusing on core development.
+
+#### Amazon Q Developer
+
+Amazon Q Developer provides agentic capabilities for the AWS ecosystem [^30].
+
+Key characteristics:
+- Tools: Code generation, documentation, testing, code review, transformation
+- Context: IDE and AWS service integration
+- Sandbox: AWS environment
+- Model: Proprietary
+
+Amazon Q Developer agents can autonomously implement features, document, test, review, and refactor code, and perform software upgrades. The Transformation Agent handles legacy modernization: Amazon used Q's agents to upgrade 1,000 applications from Java 8 to Java 17, completing work that would have taken months in just two days [^30]. Free tier includes 50 agentic chat interactions per month; Pro tier is $19/user/month.
+
+### Open-Source Agents
+
+#### OpenHands
+
+OpenHands is an open platform for AI-powered coding agents with 65K+ GitHub stars [^31].
+
+Key characteristics:
+- Tools: Code editing, terminal, web browsing, file ops
+- Context: Full repository access
+- Sandbox: Docker or Kubernetes environments
+- Models: Any (configurable)
+
+OpenHands 1.0.0 (January 2026) uses the new software-agent-sdk with optimizations across the app. The platform integrates with GitHub, GitLab, CI/CD, Slack, and ticketing tools. In November 2025, OpenHands raised $18.8M to build the open standard for autonomous software development. AMD partnered with OpenHands for local execution on AI PCs via the Lemonade LLM serving framework [^31].
+
+#### OpenCode
+
+Open-source (MIT license) alternative that supports any model provider: OpenAI, Anthropic, Google, AWS Bedrock, Groq, local models via Ollama [^3]. Built in Go with a Bubble Tea TUI.
+
+Key characteristics:
+- Tools: Shell, file ops, LSP integration
+- Context: Manual/configurable
+- Sandbox: None (native execution)
+- Models: Any supported provider
+
+OpenCode separates workflows into "Plan Mode" (read-only analysis) and "Build Mode" (full tool access), acting as both architect and engineer [^3].
+
+#### Aider
+
+Open-source (Apache 2.0) pair programming tool focused on git integration. Creates a repository map of function signatures and file structures for intelligent multi-file edits [^5].
+
+Key characteristics:
+- Tools: Git integration, file ops, voice input
+- Context: Repo map plus smart chunking
+- Sandbox: None (native execution)
+- Models: Any (GPT-5, Claude, local)
+
+Aider automatically commits changes with sensible messages. Three modes: code (edit), architect (plan), ask (consult without changes) [^5].
+
+#### Continue
+
+Open-source (Apache 2.0) IDE extension for VS Code and JetBrains. Architecture splits into core (business logic), extension (IDE-specific), and gui (React UI), communicating via message passing [^11].
+
+Key characteristics:
+- Tools: IDE integration, file ops
+- Context: IDE-managed
+- Sandbox: None (IDE process)
+- Models: Any (configurable)
+
+Continue offers three interaction modes: Chat (discuss without changes), Plan (read-only exploration), Agent (full tool access) [^11].
+
+---
+
+## Prompt Engineering Inside Agents
+
+Agent system prompts are lengthy and detailed. They specify tool usage rules, safety constraints, output formatting, and behavioral guidelines. The prompt shapes how the agent interprets tasks and uses tools.
+
+### System Prompt Components
+
+**Tool descriptions**: Detailed explanations of each tool's purpose, parameters, and usage patterns. Often includes examples of correct and incorrect usage.
+
+**Safety rules**: Constraints on dangerous operations. "NEVER run force push to main/master." "Do not commit files that likely contain secrets."
+
+**Workflow guidance**: Instructions for common tasks like committing code, creating PRs, or exploring unfamiliar codebases.
+
+**Output formatting**: How to structure responses, when to use code blocks, and how to communicate progress.
+
+### Configuration Files
+
+Many agents support project-level configuration:
+- `agents.md` (Codex): Tells the agent how you prefer to code
+- `CLAUDE.md` (Claude Code): Project-specific instructions and context
+- `.continuerc` (Continue): Model and tool configuration
+
+These files let developers customize agent behavior per repository.
+
+---
+
+## Failure Modes and Limitations
+
+Coding agents fail. Understanding how they fail helps set appropriate expectations and design better workflows.
+
+### Quality Concerns
+
+Research from CodeRabbit found that AI-generated code produces more issues across categories: 1.75x more logic errors, 1.64x more maintainability problems, 1.57x more security findings, and 1.42x more performance issues compared to human-written code [^12].
+
+### Tool Calling Failures
+
+Tool calling fails 3-15% of the time in production systems [^13]. The agent might call the wrong tool, pass incorrect parameters, or misinterpret tool output. Robust agents include retry logic and error handling.
+
+### Multi-Agent System Failures
+
+Research analyzing 1,642 multi-agent execution traces found failure rates between 41% and 86.7% across state-of-the-art systems [^14]. Common issues include missing tool calls, workflow errors, and reasoning failures.
+
+### Context Degradation
+
+As context fills up, model performance degrades. Quality often drops before hitting the technical limit. The recommendation: implement compaction before hitting the "rot zone," typically well before maximum context capacity [^6].
+
+### Debugging Challenges
+
+"Ghost debugging" occurs when running the same prompt twice produces different results [^13]. Traditional debugging approaches fail because the system behavior is non-deterministic. Many fixes are "session patches" that work temporarily but do not persist across sessions.
+
+---
+
+## Building Your Own Agent
+
+Frameworks simplify agent construction. LangChain and LangGraph provide primitives for tool use, state management, and conversation handling.
+
+### LangGraph
+
+LangChain recommends LangGraph for production agent implementations. It offers a durable runtime, model/tool swapping without rewrites, and 1000+ integrations [^15].
+
+The `create_react_agent` function provides a standard ReAct pattern:
+
+```python
+from langgraph.prebuilt import create_react_agent
+from langchain_openai import ChatOpenAI
+
+model = ChatOpenAI(model="gpt-4o")
+tools = [search_tool, file_tool, shell_tool]
+
+agent = create_react_agent(model, tools)
+result = agent.invoke({"messages": [("user", "Fix the failing tests")]})
+```
+
+### Open SWE
+
+LangChain's Open SWE provides an open-source coding agent built on LangGraph with three specialized agents: Manager (entry point), Planner, and Programmer (with sub-agent Reviewer) [^15]. The entire project is open source and designed for extension.
+
+### Custom Implementation
+
+A minimal agent loop requires:
+1. Message accumulation (conversation history)
+2. Tool definitions with schemas
+3. Loop logic: call model, parse tool calls, execute tools, append results
+4. Stopping conditions (task complete, error limit, token limit)
+
+The complexity comes from handling edge cases: malformed tool calls, execution timeouts, context overflow, and graceful degradation.
+
+---
+
+## Benchmarks (January 2026)
+
+The benchmark landscape has evolved with more rigorous evaluations. SWE-bench Verified remains the standard, but SWE-bench Pro and Terminal-Bench have emerged to address saturation at the top.
+
+### SWE-bench Verified
+
+| Model | Score |
+|-------|-------|
+| Claude Opus 4.5 | 80.9% |
+| GPT-5.2 Codex | 80.0% |
+| Gemini 3 Flash | 78.0% |
+| Gemini 3 Pro | 76.2% |
+| GPT-5.1 | 76.3% |
+| Verdent | 76.1% (81.2% pass@3) |
+| GPT-5 | 74.9% |
+
+Claude Opus 4.5 became the first model to exceed 80% on SWE-bench Verified, solving 405 of 500 real-world coding problems [^17].
+
+### SWE-bench Pro
+
+SWE-bench Pro contains 1,865 total tasks across 41 professional repositories, designed to test harder software engineering scenarios [^32].
+
+| Model | Score |
+|-------|-------|
+| GPT-5.2 Codex | 56.4% |
+| GPT-5.1 | 50.8% |
+| Claude Opus 4.1 | 23.1% |
+| OpenAI GPT-5 | 23.3% |
+
+The gap between SWE-bench Verified (70%+ scores) and SWE-bench Pro (20-56%) reveals that current agents still struggle with professional-grade complexity.
+
+### Terminal-Bench
+
+| Model | Score |
+|-------|-------|
+| Claude Opus 4.5 | 59.3% |
+| Gemini 3 Pro | 54.2% |
+| GPT-5.1 | 47.6% |
+
+### Code Quality (Sonar LLM Leaderboard)
+
+GPT-5.2 High achieved the best security posture with only 16 blocker vulnerabilities per million lines of code, though it generated the highest code volume (974,379 lines) [^33]. Claude Opus 4.5 and Gemini 3 Pro lead in functional performance at 80.66%.
+
+### Model Specialization
+
+Top-tier models are diverging in specialization: GPT-5 excels at code review and refactoring, while Claude Sonnet 4.5 performs best in coding and tool use [^34]. Developers often switch between frontier models depending on the task.
+
+---
+
+## The Future
+
+### Multi-Agent Systems
+
+Gartner reported a 1,445% surge in multi-agent system inquiries from Q1 2024 to Q2 2025 [^16]. By 2026, 40% of enterprise applications will feature task-specific AI agents, up from less than 5% in 2025 [^35]. The shift from isolated agents to coordinated teams marks a fundamental change in how organizations approach automation.
+
+The pattern: orchestrator agents coordinate specialist agents (researcher, coder, analyst), each fine-tuned for specific capabilities. Agent design is converging around a Planner and Builder (Execution Agent) loop, which spawns ephemeral Task Agents for sub-routines, all grounded in a Code Execution Sandbox [^35].
+
+### Interoperability Protocols
+
+Protocols like Anthropic's MCP and Google's Agent-to-Agent Protocol (A2A) establish standards for agent interoperability [^16]. MCP standardizes how agents access tools and external resources. A2A enables peer-to-peer collaboration, allowing agents to negotiate, share findings, and coordinate without central oversight. Google's Agent Development Kit (ADK), released in 2025, provides an open-source framework for building multi-agent systems [^36].
+
+### Parallel Workflows
+
+Running multiple agents on the same codebase requires isolation. Git worktrees enable parallel branches for each task, with work merged back to main [^16]. Tools like Conductor and Verdent AI support running tasks in parallel. Cursor 2.0 introduced an agent-centric interface for managing multiple agents in parallel with cloud handoff capabilities.
+
+### Longer Context and Native Compaction
+
+Gemini 3 offers a 1M token context window. GPT-5.2 Codex includes native compaction for token-efficient reasoning over long-running tasks [^19]. Claude Code's MCP Tool Search reduces context usage by 96% (from 134k to 5k tokens) through lazy loading [^20].
+
+### Challenges Ahead
+
+Security remains unsolved. Connecting models to tools multiplies risks; indirect prompt injections can cause harmful actions [^16]. Research analyzing 1,642 multi-agent execution traces found failure rates between 41% and 86.7% across state-of-the-art systems [^14].
+
+AI agents are projected to generate $450 billion in economic value by 2028, yet only 2% of organizations have deployed them at full scale [^35]. The market has shipped useful point solutions but has not yet demonstrated reliable autonomy inside complex, decision-rich enterprise workflows.
+
+The trajectory is clear: agents will write more code. The question is whether we can make them reliable enough to trust.
+
+---
+
+## References
+
+[^1]: OpenAI, "Unrolling the Codex agent loop," OpenAI Blog, 2025. [https://openai.com/index/unrolling-the-codex-agent-loop/](https://openai.com/index/unrolling-the-codex-agent-loop/)
+
+[^2]: Gergely Orosz, "How Claude Code is built," The Pragmatic Engineer, 2025. [https://newsletter.pragmaticengineer.com/p/how-claude-code-is-built](https://newsletter.pragmaticengineer.com/p/how-claude-code-is-built)
+
+[^3]: OpenCode, "The open source AI coding agent," 2025. [https://opencode.ai/](https://opencode.ai/)
+
+[^4]: Anthropic, "Claude Code overview," Claude Code Docs, 2025. [https://code.claude.com/docs/en/overview](https://code.claude.com/docs/en/overview)
+
+[^5]: Aider, "AI Pair Programming in Your Terminal," 2025. [https://aider.chat/](https://aider.chat/)
+
+[^6]: Anthropic, "Effective context engineering for AI agents," Anthropic Engineering, 2025. [https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)
+
+[^7]: Lance Martin, "Context Engineering in Manus," 2025. [https://rlancemartin.github.io/2025/10/15/manus/](https://rlancemartin.github.io/2025/10/15/manus/)
+
+[^8]: Docker, "A New Approach for Coding Agent Safety," Docker Blog, 2025. [https://www.docker.com/blog/docker-sandboxes-a-new-approach-for-coding-agent-safety/](https://www.docker.com/blog/docker-sandboxes-a-new-approach-for-coding-agent-safety/)
+
+[^9]: Arcade Blog, "Why Docker Sandboxes Alone Don't Make AI Agents Safe," 2025. [https://blog.arcade.dev/docker-sandboxes-arent-enough-for-agent-safety](https://blog.arcade.dev/docker-sandboxes-arent-enough-for-agent-safety)
+
+[^10]: Google, "Gemini CLI," Google for Developers, 2025. [https://developers.google.com/gemini-code-assist/docs/gemini-cli](https://developers.google.com/gemini-code-assist/docs/gemini-cli)
+
+[^11]: Continue, "Continue Documentation," 2025. [https://docs.continue.dev/](https://docs.continue.dev/)
+
+[^12]: The Register, "AI-authored code needs more attention, contains worse bugs," December 2025. [https://www.theregister.com/2025/12/17/ai_code_bugs/](https://www.theregister.com/2025/12/17/ai_code_bugs/)
+
+[^13]: Michael Hannecke, "Why AI Agents Fail in Production," Medium, 2025. [https://medium.com/@michael.hannecke/why-ai-agents-fail-in-production-what-ive-learned-the-hard-way-05f5df98cbe5](https://medium.com/@michael.hannecke/why-ai-agents-fail-in-production-what-ive-learned-the-hard-way-05f5df98cbe5)
+
+[^14]: Mert Cemri et al., "Why Do Multi-Agent LLM Systems Fail?" arXiv, 2025. [https://arxiv.org/pdf/2503.13657](https://arxiv.org/pdf/2503.13657)
+
+[^15]: LangChain, "Introducing Open SWE: An Open-Source Asynchronous Coding Agent," LangChain Blog, 2025. [https://www.blog.langchain.com/introducing-open-swe-an-open-source-asynchronous-coding-agent/](https://www.blog.langchain.com/introducing-open-swe-an-open-source-asynchronous-coding-agent/)
+
+[^16]: RTInsights, "2026 will be the Year of Multiple AI Agents," January 2026. [https://www.rtinsights.com/if-2025-was-the-year-of-ai-agents-2026-will-be-the-year-of-multi-agent-systems/](https://www.rtinsights.com/if-2025-was-the-year-of-ai-agents-2026-will-be-the-year-of-multi-agent-systems/)
+
+[^17]: Anthropic, "Introducing Claude Opus 4.5," January 2026. [https://www.anthropic.com/news/claude-opus-4-5](https://www.anthropic.com/news/claude-opus-4-5)
+
+[^18]: OpenAI, "Introducing GPT-5.2-Codex," December 2025. [https://openai.com/index/introducing-gpt-5-2-codex/](https://openai.com/index/introducing-gpt-5-2-codex/)
+
+[^19]: OpenAI, "GPT-5.2-Codex," OpenAI, 2025. [https://openai.com/index/introducing-gpt-5-2-codex/](https://openai.com/index/introducing-gpt-5-2-codex/)
+
+[^20]: VentureBeat, "Claude Code just got updated with one of the most-requested user features," January 2026. [https://venturebeat.com/orchestration/claude-code-just-got-updated-with-one-of-the-most-requested-user-features](https://venturebeat.com/orchestration/claude-code-just-got-updated-with-one-of-the-most-requested-user-features)
+
+[^21]: TechRadar, "This is the Claude update I've been waiting for - Cowork could reshape how we use AI in 2026," January 2026. [https://www.techradar.com/ai-platforms-assistants/claudes-latest-upgrade-is-the-ai-breakthrough-ive-been-waiting-for-5-ways-cowork-could-be-the-biggest-ai-innovation-of-2026](https://www.techradar.com/ai-platforms-assistants/claudes-latest-upgrade-is-the-ai-breakthrough-ive-been-waiting-for-5-ways-cowork-could-be-the-biggest-ai-innovation-of-2026)
+
+[^22]: OpenAI, "Codex Changelog," January 2026. [https://developers.openai.com/codex/changelog/](https://developers.openai.com/codex/changelog/)
+
+[^23]: Google Developers Blog, "Gemini 3 Flash is now available in Gemini CLI," December 2025. [https://developers.googleblog.com/gemini-3-flash-is-now-available-in-gemini-cli/](https://developers.googleblog.com/gemini-3-flash-is-now-available-in-gemini-cli/)
+
+[^24]: Cursor, "Changelog," January 2026. [https://cursor.com/changelog](https://cursor.com/changelog)
+
+[^25]: Qodo, "Cline vs Windsurf: Best AI Coding Agent for Enterprise," 2026. [https://www.qodo.ai/blog/cline-vs-windsurf/](https://www.qodo.ai/blog/cline-vs-windsurf/)
+
+[^26]: Qodo, "Cline vs Windsurf," 2026. [https://www.qodo.ai/blog/cline-vs-windsurf/](https://www.qodo.ai/blog/cline-vs-windsurf/)
+
+[^27]: Builder.io, "Devin vs Cursor: How developers choose AI coding tools in 2026," 2026. [https://www.builder.io/blog/devin-vs-cursor](https://www.builder.io/blog/devin-vs-cursor)
+
+[^28]: American Bazaar, "AI startup Replit, known for vibe coding, reaches $3 billion valuation," January 2026. [https://americanbazaaronline.com/2026/01/16/ai-startup-replit-known-for-vibe-coding-3-billion-valuation-473395/](https://americanbazaaronline.com/2026/01/16/ai-startup-replit-known-for-vibe-coding-3-billion-valuation-473395/)
+
+[^29]: GitHub Blog, "GitHub Copilot CLI: Enhanced agents, context management, and new ways to install," January 2026. [https://github.blog/changelog/2026-01-14-github-copilot-cli-enhanced-agents-context-management-and-new-ways-to-install/](https://github.blog/changelog/2026-01-14-github-copilot-cli-enhanced-agents-context-management-and-new-ways-to-install/)
+
+[^30]: AWS DevOps Blog, "Reinventing the Amazon Q Developer agent for software development," 2025. [https://aws.amazon.com/blogs/devops/reinventing-the-amazon-q-developer-agent-for-software-development/](https://aws.amazon.com/blogs/devops/reinventing-the-amazon-q-developer-agent-for-software-development/)
+
+[^31]: OpenHands, "The Open Platform for Cloud Coding Agents," 2026. [https://openhands.dev/](https://openhands.dev/)
+
+[^32]: Scale AI, "SWE-Bench Pro Public Dataset," January 2026. [https://scale.com/leaderboard/swe_bench_pro_public](https://scale.com/leaderboard/swe_bench_pro_public)
+
+[^33]: Sonar, "New data on code quality: GPT-5.2 high, Opus 4.5, Gemini 3, and more," January 2026. [https://www.sonarsource.com/blog/new-data-on-code-quality-gpt-5-2-high-opus-4-5-gemini-3-and-more/](https://www.sonarsource.com/blog/new-data-on-code-quality-gpt-5-2-high-opus-4-5-gemini-3-and-more/)
+
+[^34]: SWE-rebench, "Leaderboard," January 2026. [https://swe-rebench.com](https://swe-rebench.com)
+
+[^35]: The New Stack, "5 Key Trends Shaping Agentic Development in 2026," January 2026. [https://thenewstack.io/5-key-trends-shaping-agentic-development-in-2026/](https://thenewstack.io/5-key-trends-shaping-agentic-development-in-2026/)
+
+[^36]: Google Developers Blog, "Agent Development Kit: Making it easy to build multi-agent applications," 2025. [https://developers.googleblog.com/en/agent-development-kit-easy-to-build-multi-agent-applications/](https://developers.googleblog.com/en/agent-development-kit-easy-to-build-multi-agent-applications/)

@@ -1,0 +1,911 @@
+---
+title: "AMD ROCm for Machine Learning: The Alternative GPU Ecosystem"
+pubDate: 2026-01-26
+author: "Aadit Agrawal"
+---
+
+import ROCmStack from '../../components/viz/ROCmStack.astro';
+import GPUComparisonTable from '../../components/viz/GPUComparisonTable.astro';
+
+AMD's ROCm platform has matured into a viable alternative for machine learning workloads. With ROCm 7.2 now shipping production-ready support for PyTorch, vLLM, and distributed training on both Linux and Windows, the AMD GPU ecosystem deserves serious consideration for both inference and training deployments. The October 2025 announcement of AMD's strategic partnership with OpenAI to deploy 6 gigawatts of AMD GPUs signals a significant shift in the AI infrastructure landscape.[^openai]
+
+This guide covers everything you need to deploy ML workloads on AMD hardware: the software stack, hardware options, framework support, and practical code examples.
+
+---
+
+## The ROCm Software Stack
+
+ROCm (Radeon Open Compute) is AMD's open-source GPU computing platform. Unlike NVIDIA's proprietary CUDA ecosystem, ROCm is built on open standards and released under permissive licenses. The stack comprises several layers, from kernel drivers through high-level frameworks.
+
+<ROCmStack />
+
+### Key Components
+
+**amdgpu Kernel Driver**: The Linux kernel module that communicates with AMD GPUs. This ships with most Linux distributions and handles memory management, command submission, and interrupt handling.
+
+**HSA Runtime (ROCr)**: The Heterogeneous System Architecture runtime provides low-level GPU access. Applications rarely interact with this layer directly; it serves as the foundation for higher-level runtimes.
+
+**HIP Runtime**: The primary programming interface for AMD GPUs. HIP provides a CUDA-like API that can target both AMD and NVIDIA hardware from the same source code.
+
+**ROCm Libraries**: Optimized implementations of common operations:
+- **rocBLAS/hipBLAS**: Dense linear algebra (GEMM, GEMV)
+- **hipBLASLt**: Lightweight BLAS with fused operations and FP8 support
+- **MIOpen**: Deep learning primitives (convolutions, pooling, normalization)
+- **RCCL**: Collective communication for multi-GPU training
+- **rocFFT**: Fast Fourier transforms
+
+**Framework Integrations**: PyTorch, TensorFlow, and JAX all have ROCm backends. These frameworks use MIOpen and rocBLAS under the hood for GPU-accelerated operations.
+
+---
+
+## Supported Hardware
+
+ROCm supports both data center accelerators and consumer graphics cards, though with different levels of optimization and testing.
+
+<GPUComparisonTable />
+
+### Data Center: AMD Instinct Series
+
+**MI355X**: AMD's current flagship for AI workloads, launched Q3 2025. Built on the CDNA 4 architecture with 256 Compute Units and 288 GB of HBM3e memory at 8 TB/s bandwidth. The MI355X delivers 10.1 PFLOPS at FP8 and 20.1 PFLOPS at FP4/FP6. In benchmarks, the MI355X matches or exceeds NVIDIA B200 systems at high concurrency levels (32-64) for Llama3.1-405B inference.[^mi355x] The 1400W TDP reflects its position as a high-performance training and inference accelerator.
+
+**MI350X**: The lower-power variant of the MI350 series with the same 288 GB HBM3e and 8 TB/s bandwidth. Both MI350 models feature MXFP6 and MXFP4 datatype support for efficient inference.[^mi350]
+
+**MI325X**: The 256 GB HBM3e variant of the MI300 series with 6.0 TB/s bandwidth. In MLPerf benchmarks, systems built around the MI325X matched the performance of NVIDIA H200 on Llama fine-tuning tasks.[^mi325x]
+
+**MI300X**: With 192 GB of HBM3 memory and 5.3 TB/s bandwidth, the MI300X remains widely deployed. In MLPerf inference benchmarks, Mango LLMBoost achieved 103,182 tokens per second on 32x MI300X for Llama2-70B, outperforming the previous best result of 82,749 TPS on NVIDIA H100.[^mi300x]
+
+**MI400 Series (H2 2026)**: The upcoming CDNA 5 architecture will deliver 432 GB of HBM4 memory at 19.6 TB/s bandwidth, with 40 PFLOPS at FP4. The MI455X targets training and inference, while the MI430X serves HPC workloads. The first 1 GW deployment at OpenAI begins H2 2026 using MI450 GPUs.[^mi400]
+
+**MI250/MI250X**: Previous generation CDNA 2 accelerators with 128 GB HBM2e. Still supported by ROCm 7.2 and available at lower cost on the secondary market.
+
+### Consumer GPUs: RDNA 3 and RDNA 4
+
+**RX 9070 XT/RX 9070 (RDNA 4)**: The latest consumer architecture with 16 GB GDDR6 at 640 GB/s bandwidth. The RX 9070 XT delivers 48.7 TFLOPS FP32 and up to 1557 TOPS INT4 with sparsity. Each compute unit includes dedicated AI accelerators, marking AMD's first consumer GPU with tensor cores for machine learning. ROCm 7.2 supports these cards on both Linux and Windows. In Stable Diffusion XL FP16 testing, the RX 9070 XT is 83% faster than the RX 7800 XT. You can run up to 24B parameter LLM models at practical quantization levels.[^rx9070]
+
+**RX 7900 XTX/XT (RDNA 3)**: Consumer cards with up to 24 GB GDDR6. ROCm support is mature; these cards work well for local LLM inference and development. The ROCm llama.cpp builds target gfx1100/gfx1101 architectures.[^4]
+
+**Radeon AI PRO R9700**: Professional card with 32 GB VRAM for larger models without quantization. The R9700 targets AI development workflows that exceed the 16 GB consumer cards.[^radeonai]
+
+**Radeon PRO W7900**: Professional card with 48 GB VRAM. Useful for running larger quantized models locally without the cost of data center hardware.
+
+### What Works Best Where
+
+Data center MI350/MI355X: Production LLM inference and training, frontier model workloads requiring 288 GB memory per GPU.
+
+Data center MI300X/MI325X: Production LLM inference, distributed training, memory-bound workloads requiring 192-256 GB VRAM pools.
+
+Consumer RDNA 4 (RX 9070 series): Local development, small model fine-tuning, inference with quantized models up to 24B parameters. Native Windows support via ROCm 7.2.
+
+Consumer RDNA 3 (RX 7900 series): Local development, inference with quantized models. 24 GB VRAM on the XTX model.
+
+---
+
+## HIP: The CUDA Portability Layer
+
+HIP (Heterogeneous-compute Interface for Portability) provides a CUDA-like programming model that can compile for both AMD and NVIDIA GPUs. Most CUDA code can be ported with minimal modifications.
+
+### How HIP Works
+
+HIP is a C++ runtime API and kernel language. When targeting AMD GPUs, HIP code compiles to native AMD GPU binaries. When targeting NVIDIA, HIP wraps CUDA operations with thin inline functions, adding negligible overhead.[^6]
+
+```cpp
+// HIP kernel - nearly identical to CUDA
+__global__ void vectorAdd(float *a, float *b, float *c, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        c[i] = a[i] + b[i];
+    }
+}
+
+int main() {
+    float *d_a, *d_b, *d_c;
+
+    // Memory allocation - same as CUDA
+    hipMalloc(&d_a, size);
+    hipMalloc(&d_b, size);
+    hipMalloc(&d_c, size);
+
+    // Kernel launch - same syntax
+    vectorAdd<<<blocks, threads>>>(d_a, d_b, d_c, n);
+
+    hipDeviceSynchronize();
+    hipFree(d_a);
+    return 0;
+}
+```
+
+### HIPIFY: Automated CUDA Translation
+
+ROCm includes two tools for converting CUDA code to HIP:
+
+**hipify-clang**: Uses the Clang compiler to parse CUDA code and perform semantic translation. This approach handles complex code patterns and produces high-quality output. Recommended for large projects.[^7]
+
+**hipify-perl**: Pattern-matching based translation that does not require a working CUDA installation. Faster but less robust than hipify-clang.
+
+```bash
+# Convert a CUDA file to HIP
+hipify-clang cuda_kernel.cu -o hip_kernel.cpp
+
+# Or use the Perl-based tool
+hipify-perl cuda_kernel.cu > hip_kernel.cpp
+```
+
+When porting the HACC physics code (approximately 15,000 lines), AMD reported that 95% of the code converted automatically with hipify-perl.[^8]
+
+### What Translates Well
+
+Most CUDA runtime API calls have direct HIP equivalents:
+- `cudaMalloc` → `hipMalloc`
+- `cudaMemcpy` → `hipMemcpy`
+- `cudaDeviceSynchronize` → `hipDeviceSynchronize`
+- `cudaStream_t` → `hipStream_t`
+
+Device code keywords map directly:
+- `__global__`, `__device__`, `__shared__` work unchanged
+- `threadIdx`, `blockIdx`, `blockDim` have `hip` prefixes available but original names also work
+
+### What Requires Manual Work
+
+**Warp Size**: NVIDIA GPUs use 32-thread warps; AMD uses 64-thread wavefronts. Code that hardcodes `warpSize = 32` will break. Use the runtime query instead:
+
+```cpp
+// Portable warp/wavefront size
+int warpSize;
+hipDeviceGetAttribute(&warpSize, hipDeviceAttributeWarpSize, device);
+```
+
+**CUDA-Specific Intrinsics**: Some CUDA intrinsics lack direct HIP equivalents. Tensor core operations (wmma) require translation to AMD's matrix core instructions.
+
+**Library Calls**: ROCm provides equivalent libraries for most CUDA libraries:
+- cuBLAS → rocBLAS/hipBLAS
+- cuDNN → MIOpen
+- NCCL → RCCL
+- cuFFT → rocFFT
+
+Function signatures differ slightly; wrapper headers can ease the transition.
+
+---
+
+## Installing ROCm on Linux and Windows
+
+ROCm 7.2 is a unified release supporting both Linux and Windows. On Linux, it officially supports Ubuntu 22.04/24.04, RHEL 9.x/10.x, SLES 15 SP7, Debian 13, and Oracle Linux 10. Consumer Radeon GPUs (RX 7000/9000 series) and Ryzen AI APUs are supported on Ubuntu 24.04, RHEL 10.1, and Windows 11.[^rocm72]
+
+### Ubuntu 24.04 Installation
+
+```bash
+# Download the installer package
+wget https://repo.radeon.com/amdgpu-install/7.2/ubuntu/noble/amdgpu-install_7.2.70200-1_all.deb
+
+# Install the package manager
+sudo apt install ./amdgpu-install_7.2.70200-1_all.deb
+
+# Update package lists
+sudo apt update
+
+# Install ROCm
+sudo apt install rocm
+
+# Add user to required groups
+sudo usermod -a -G render,video $LOGNAME
+
+# Reboot to load the new kernel modules
+sudo reboot
+```
+
+### Ubuntu 22.04 Installation
+
+```bash
+# Download for jammy
+wget https://repo.radeon.com/amdgpu-install/7.2/ubuntu/jammy/amdgpu-install_7.2.70200-1_all.deb
+
+sudo apt install ./amdgpu-install_7.2.70200-1_all.deb
+sudo apt update
+sudo apt install python3-setuptools python3-wheel
+sudo usermod -a -G render,video $LOGNAME
+sudo apt install rocm
+sudo reboot
+```
+
+### RHEL 9.x Installation
+
+```bash
+# Install the repo
+sudo dnf install https://repo.radeon.com/amdgpu-install/7.2/el/9.6/amdgpu-install-7.2.70200-1.el9.noarch.rpm
+
+# Clean cache
+sudo dnf clean all
+
+# Install EPEL for dependencies
+wget https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+sudo rpm -ivh epel-release-latest-9.noarch.rpm
+
+# Enable CRB repository
+sudo dnf install dnf-plugin-config-manager
+sudo crb enable
+
+# Install dependencies and ROCm
+sudo dnf install python3-setuptools python3-wheel
+sudo usermod -a -G render,video $LOGNAME
+sudo dnf install rocm
+sudo reboot
+```
+
+### Windows 11 Installation (Consumer GPUs)
+
+ROCm 7.2 includes Windows support for consumer GPUs. PyTorch runs natively on RX 7000/9000 series without WSL2.[^rocmwindows]
+
+```powershell
+# Install AMD Adrenalin 26.1.1 or later (includes ROCm components)
+# Download from https://www.amd.com/en/support
+
+# Install PyTorch for ROCm on Windows
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm7.2
+```
+
+ComfyUI is now integrated with ROCm and can be installed via the Adrenalin driver package for Windows users.[^comfyui]
+
+### Verifying the Installation
+
+```bash
+# Check GPU detection
+rocminfo
+
+# Verify OpenCL
+clinfo
+
+# Check GPU status
+amd-smi
+
+# List available GPUs
+rocm-smi --showid
+```
+
+Expected output from `rocminfo` should list your GPU agent with details like:
+
+```
+Agent 2
+  Name:                    gfx942
+  Marketing Name:          AMD Instinct MI300X
+  Vendor Name:             AMD
+  ...
+```
+
+---
+
+## PyTorch with ROCm
+
+PyTorch has mature ROCm support. AMD publishes validated Docker images and pip wheels for each ROCm release. ROCm support is upstreamed into the official PyTorch repository, and development is aligned with stable PyTorch releases.[^pytorchrocm]
+
+### Installation Options
+
+**Option 1: Docker (Recommended)**
+
+Docker provides the most reliable setup, avoiding dependency conflicts:
+
+```bash
+# Pull the official ROCm PyTorch image
+docker pull rocm/pytorch:rocm7.2_ubuntu24.04_py3.12_pytorch_2.9.1
+
+# Run with GPU access
+docker run -it --device=/dev/kfd --device=/dev/dri \
+    --group-add video --shm-size=16g \
+    rocm/pytorch:rocm7.2_ubuntu24.04_py3.12_pytorch_2.9.1
+```
+
+**Option 2: pip Installation**
+
+For native installation, use the ROCm-specific wheel:
+
+```bash
+# Create a virtual environment
+python3 -m venv rocm-env
+source rocm-env/bin/activate
+
+# Install PyTorch for ROCm
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm7.2
+```
+
+As of PyTorch 2.9, wheel variant support simplifies installation; the correct backend is selected automatically based on detected hardware. ROCm 7.2 supports PyTorch 2.9.1 on both Linux and Windows.[^pytorch29]
+
+### Verifying PyTorch ROCm
+
+```python
+import torch
+
+# Check if ROCm is available (uses CUDA API naming)
+print(f"ROCm available: {torch.cuda.is_available()}")
+print(f"Device count: {torch.cuda.device_count()}")
+print(f"Device name: {torch.cuda.get_device_name(0)}")
+
+# Run a simple operation
+x = torch.randn(1000, 1000, device='cuda')
+y = torch.matmul(x, x.T)
+print(f"Result shape: {y.shape}")
+```
+
+Note that PyTorch uses `cuda` in its API even when running on AMD GPUs. This maintains compatibility with existing code.
+
+### Common Gotchas
+
+**Environment Variables**: Some operations require specific settings:
+
+```bash
+# Enable HIP extension for certain operations
+export PYTORCH_ROCM_ARCH="gfx942"  # Set your GPU architecture
+
+# For debugging memory issues
+export PYTORCH_HIP_ALLOC_CONF="garbage_collection_threshold:0.9"
+```
+
+**FlashAttention**: ROCm includes FlashAttention v2 and v3 implementations. FlashAttention v3 is integrated for AMD GPUs in recent PyTorch ROCm builds.[^11]
+
+**Mixed Precision**: AMP (Automatic Mixed Precision) works on ROCm:
+
+```python
+from torch.cuda.amp import autocast, GradScaler
+
+scaler = GradScaler()
+
+with autocast():
+    output = model(input)
+    loss = criterion(output, target)
+
+scaler.scale(loss).backward()
+scaler.step(optimizer)
+scaler.update()
+```
+
+---
+
+## LLM Inference Frameworks on AMD
+
+### vLLM on ROCm
+
+vLLM is the leading high-throughput LLM inference engine. As of January 2026, ROCm is a first-class platform in the vLLM ecosystem. In mid-November 2025, only 37% of vLLM test groups passed on AMD CI. As of mid-January 2026, 93% of vLLM AMD test groups succeed with daily regression maintenance.[^vllmfirstclass]
+
+**Installation via Docker:**
+
+As of January 6, 2026, users no longer need to build from source. Pre-built official ROCm-enabled vLLM Docker images are available on Docker Hub.[^vllmdocker]
+
+```bash
+# Official ROCm vLLM image
+docker pull rocm/vllm-dev:rocm7.2_mi350_ubuntu24.04_py3.12_vllm
+
+docker run -it --device=/dev/kfd --device=/dev/dri \
+    --group-add video --shm-size=32g \
+    -p 8000:8000 \
+    rocm/vllm-dev:rocm7.2_mi350_ubuntu24.04_py3.12_vllm
+```
+
+**Running a Model:**
+
+```python
+from vllm import LLM, SamplingParams
+
+# Load model
+llm = LLM(model="meta-llama/Llama-3.1-8B-Instruct")
+
+# Generate
+prompts = ["Explain quantum computing in simple terms:"]
+sampling = SamplingParams(temperature=0.7, max_tokens=256)
+outputs = llm.generate(prompts, sampling)
+
+for output in outputs:
+    print(output.outputs[0].text)
+```
+
+**OpenAI-Compatible Server:**
+
+```bash
+python -m vllm.entrypoints.openai.api_server \
+    --model meta-llama/Llama-3.1-70B-Instruct \
+    --tensor-parallel-size 8 \
+    --port 8000
+```
+
+**ROCm-Specific Optimizations:**
+
+vLLM V1 on ROCm includes AITER (AI Tensor Engine for ROCm) kernels optimized for MI300X, MI325X, MI350X, and MI355X GPUs. FP8 and FP4 quantization reduces memory usage by 2-4x with minimal accuracy loss. Performance on Llama 3 MXFP4 has improved through AITER optimizations and kernel fusion.[^vllmoptimize]
+
+**Known Issue:** There is a regression with AITER for MoE models such as Mixtral and DeepSeek-R1. For these models, use the previous release `rocm/vllm:rocm7.0.0_vllm_0.11.1_20251103` for better performance.[^vllmmoe]
+
+### llama.cpp with ROCm
+
+llama.cpp provides efficient CPU and GPU inference for GGUF-quantized models. ROCm support is available through the HIP backend.
+
+**Building from Source:**
+
+```bash
+# Clone the repository
+git clone https://github.com/ggerganov/llama.cpp
+cd llama.cpp
+
+# Build with HIP support
+cmake -B build -DGGML_HIP=ON -DAMDGPU_TARGETS="gfx942" -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release -j $(nproc)
+```
+
+Replace `gfx942` with your GPU architecture:
+- MI350X/MI355X: `gfx950`
+- MI300X/MI325X: `gfx942`
+- MI250X: `gfx90a`
+- RX 9070 XT/RX 9070: `gfx1201`
+- RX 7900 XTX: `gfx1100`
+- RX 7900 XT: `gfx1101`
+
+**Using Pre-built Binaries:**
+
+AMD maintains ROCm-optimized llama.cpp releases:
+
+```bash
+# Download from AMD's llama.cpp fork
+wget https://github.com/ROCm/llama.cpp/releases/download/b6652.amd0/llama-b6652-bin-ubuntu-hip-gfx942.tar.gz
+tar -xzf llama-b6652-bin-ubuntu-hip-gfx942.tar.gz
+```
+
+**Running Inference:**
+
+```bash
+./llama-cli -m models/llama-3-8b-instruct-q4_k_m.gguf \
+    -p "What is machine learning?" \
+    -n 256 \
+    -ngl 99  # Offload all layers to GPU
+```
+
+**Performance Notes:**
+
+AMD benchmarks show the MI300X achieving up to 213% higher inference throughput versus the H100 on Llama-3.1-70B-Q4_K_M with flash attention enabled at 4096 prompt size.[^14]
+
+### Hugging Face Text Generation Inference (TGI)
+
+TGI supports AMD Instinct MI210, MI250, and MI300 series GPUs.
+
+**Docker Deployment:**
+
+```bash
+docker run --device /dev/kfd --device /dev/dri \
+    --shm-size 1g -p 8080:80 \
+    -v $PWD/data:/data \
+    ghcr.io/huggingface/text-generation-inference:3.3.5-rocm \
+    --model-id meta-llama/Llama-3.1-8B-Instruct
+```
+
+**Configuration for Large Models:**
+
+Use tensor parallelism for models exceeding single-GPU memory:
+
+```bash
+docker run --device /dev/kfd --device /dev/dri \
+    --shm-size 16g -p 8080:80 \
+    -v $PWD/data:/data \
+    ghcr.io/huggingface/text-generation-inference:3.3.5-rocm \
+    --model-id meta-llama/Llama-3.1-70B-Instruct \
+    --num-shard 8
+```
+
+TGI on ROCm includes a custom Paged Attention kernel enabled by default. For configurations outside the supported parameters (bf16/fp16, block size 16, head size 128, max 16k context), it falls back to PagedAttention v2.[^15]
+
+---
+
+## Performance: AMD vs NVIDIA for LLM Inference
+
+Benchmark data from independent testing provides useful guidance for hardware selection.
+
+### Memory Bandwidth Advantage
+
+The MI355X's 8 TB/s memory bandwidth exceeds the B200's 8 TB/s and substantially outpaces the H100's 3.35 TB/s. The MI300X at 5.3 TB/s remains competitive with the H200's 4.8 TB/s. For memory-bound LLM inference at low batch sizes, this translates to lower latency.[^memperf]
+
+### MI355X vs Blackwell B200
+
+In benchmarks with Llama3.1-405B, the MI355X delivers up to 2x higher throughput compared to competitive options. At high concurrency levels (32-64), the MI355X with ATOM matches or exceeds B200 systems running SGLang. The MI355X demonstrated a 10% time-to-solution advantage in the MLPerf LoRA fine-tuning benchmark.[^mi355xperf]
+
+### Large Model Performance
+
+For models requiring multi-GPU deployment, AMD's large VRAM pools allow single-GPU inference where competitors need tensor parallelism:
+
+- 405B parameter models fit on one MI355X with FP4 quantization[^mi355xmem]
+- Mixtral 8x7B fits on one MI300X; H100 requires TP=2[^18]
+- DeepSeek-V3 670B: MI300X beats H100 in both absolute performance and performance per dollar[^19]
+
+### Cloud Availability
+
+MI355X GPUs are available at Oracle Cloud, TensorWave, and Vultr. Oracle Cloud offers bare-metal GPU instances with 8 MI355X GPUs per node (2.3 TB total GPU memory), 128 CPU cores, 3 TB DDR system memory, and up to 3.2 Tb/s RDMA bandwidth.[^cloudavail]
+
+### Software Stack Maturity
+
+ROCm 7.2 has closed the gap with CUDA. vLLM now passes 93% of test groups on AMD CI. PyTorch runs natively on both Linux and Windows. For production deployments with standard configurations, both stacks work reliably. NVIDIA retains an edge in MLPerf training benchmarks, where Blackwell leads on Llama 3.1 403B pretraining.[^mlperf]
+
+---
+
+## Training on AMD GPUs
+
+ROCm supports distributed training with PyTorch's native parallelism primitives. While NVIDIA Blackwell currently leads MLPerf training benchmarks on Llama 3.1 403B pretraining, AMD's MI325X matches H200 performance on LLM fine-tuning benchmarks, suggesting AMD is approximately one generation behind NVIDIA on training workloads.[^traingap]
+
+### Single-GPU Training
+
+Standard PyTorch training loops work unchanged:
+
+```python
+import torch
+import torch.nn as nn
+import torch.optim as optim
+
+model = MyModel().cuda()
+optimizer = optim.AdamW(model.parameters(), lr=1e-4)
+criterion = nn.CrossEntropyLoss()
+
+for epoch in range(num_epochs):
+    for batch in dataloader:
+        inputs, labels = batch
+        inputs, labels = inputs.cuda(), labels.cuda()
+
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+```
+
+### Distributed Data Parallel (DDP)
+
+RCCL provides collective operations for multi-GPU training:
+
+```python
+import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+
+# Initialize process group
+dist.init_process_group(backend='nccl')  # Uses RCCL on AMD
+
+local_rank = int(os.environ['LOCAL_RANK'])
+torch.cuda.set_device(local_rank)
+
+model = MyModel().cuda()
+model = DDP(model, device_ids=[local_rank])
+
+# Training loop remains the same
+```
+
+Launch with:
+
+```bash
+torchrun --nproc_per_node=8 train.py
+```
+
+### Fully Sharded Data Parallel (FSDP)
+
+FSDP shards model parameters, gradients, and optimizer states across GPUs, enabling training of models larger than single-GPU memory:
+
+```python
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.distributed.fsdp import ShardingStrategy
+
+model = MyLargeModel()
+
+# Wrap with FSDP
+model = FSDP(
+    model,
+    sharding_strategy=ShardingStrategy.FULL_SHARD,
+    device_id=local_rank
+)
+```
+
+PyTorch's FSDP works well on ROCm. AMD benchmarks show 8x MI300X achieving up to 1.29x better performance compared to 8x H100 when training DeepSeek-V2-Lite.[^22]
+
+**FSDP Configuration Tips:**
+
+```python
+# Recommended settings for ROCm
+fsdp_config = {
+    "sharding_strategy": ShardingStrategy.FULL_SHARD,
+    "backward_prefetch": BackwardPrefetch.BACKWARD_PRE,
+    "forward_prefetch": True,
+    "limit_all_gathers": True,
+}
+```
+
+### Training Infrastructure
+
+AMD provides optimized Docker containers for distributed training:
+
+```bash
+# ROCm PyTorch Training container
+docker pull rocm/pytorch-training:rocm7.2_ubuntu24.04_py3.12
+
+# Includes torchtitan and Hugging Face Accelerate
+```
+
+The container includes libraries for FSDP training with one-shot and two-shot AllReduce strategies for optimized communication.[^23]
+
+---
+
+## Debugging and Profiling with rocprof
+
+ROCm provides comprehensive profiling tools for performance optimization.
+
+### rocprofv3
+
+The latest profiling tool (replacing rocprof v1/v2) offers improved usability:
+
+```bash
+# Profile an application
+rocprofv3 --hip-trace --hsa-trace -o profile_output python train.py
+
+# Collect hardware counters
+rocprofv3 --stats --output-format csv python inference.py
+```
+
+### Key Profiling Commands
+
+**Basic Kernel Profiling:**
+
+```bash
+# List available counters
+rocprofv3 --list-counters
+
+# Profile with specific counters
+rocprofv3 --pmc GPU_BUSY,GRBM_COUNT python model.py
+```
+
+**Timeline Tracing:**
+
+```bash
+# Generate trace for visualization
+rocprofv3 --hip-trace --output-format json python model.py
+
+# View in Perfetto
+# Open https://ui.perfetto.dev and load results.json
+```
+
+### rocprof-compute (formerly Omniperf)
+
+For detailed kernel analysis:
+
+```bash
+# Collect comprehensive metrics
+rocprof-compute profile -n my_workload -- python train.py
+
+# Analyze results
+rocprof-compute analyze my_workload/
+
+# Generate roofline plot
+rocprof-compute analyze my_workload/ --roof
+```
+
+rocprof-compute provides:
+- Roofline analysis showing compute vs memory boundedness
+- Memory throughput analysis
+- Compute utilization breakdown
+- Baseline comparisons between runs[^24]
+
+### ROCgdb for Debugging
+
+The ROCm debugger extends GDB for heterogeneous debugging:
+
+```bash
+# Debug a HIP application
+rocgdb ./my_hip_program
+
+# Set breakpoint in kernel
+(gdb) break myKernel
+(gdb) run
+```
+
+Note: On RHEL with SELinux enabled, debugging may hang. Either disable SELinux or configure appropriate policies.[^25]
+
+---
+
+## Current Limitations and Workarounds
+
+ROCm has made substantial progress but some limitations remain.
+
+### Platform Support
+
+**Windows**: ROCm 7.2 includes native Windows support for consumer GPUs (RX 7000/9000 series). PyTorch runs without WSL2. The Adrenalin 26.1.1 driver includes ROCm components and ComfyUI integration.[^26]
+
+**macOS**: Not supported. Apple Silicon users should consider MLX instead.
+
+**Mobile GPUs**: Not officially supported by ROCm. Ryzen AI APUs (AI Max 300, AI 400 series) are now supported on both Linux and Windows.[^ryzenai]
+
+### Memory Issues on Consumer GPUs
+
+Running large models on RDNA 3/4 cards with 16-24 GB VRAM can cause instability. The RX 9070 XT's 16 GB is adequate for models up to 24B parameters at Q4 quantization:
+
+```bash
+# Workarounds for memory pressure
+# For Stable Diffusion / FLUX
+python main.py --lowvram --disable-pinned-memory
+
+# For PyTorch memory management
+export PYTORCH_HIP_ALLOC_CONF="garbage_collection_threshold:0.8,max_split_size_mb:512"
+```
+
+### JAX Support
+
+JAX on ROCm is supported for inference only. Training workloads may encounter intermittent errors or segmentation faults.[^27]
+
+### Quantization Support
+
+Not all quantization formats work on ROCm:
+- GPTQ and AWQ: Supported in vLLM
+- GGUF: Supported in llama.cpp
+- FP8: Supported on MI300 series
+- MXFP4: Only supported on MI350 series[^28]
+- AWQ in TGI: Not currently supported[^29]
+
+### Multi-GPU Configuration
+
+Installing multiple ROCm versions can cause amd-smi issues. Stick to one ROCm version per system or use containers for version isolation.
+
+### Framework-Specific Issues
+
+**Transformers library**: Most models work; some custom CUDA kernels may need ROCm equivalents.
+
+**Flash Attention**: Supported via CK (Composable Kernel) implementation. Triton-based FA has lower latency on MI250/MI300 but requires warmup for each new sequence length.
+
+---
+
+## Practical Example: Deploying Llama 3 on MI300X
+
+Here is a complete example for setting up a production LLM inference endpoint:
+
+```bash
+# Pull the vLLM Docker image
+docker pull rocm/vllm-dev:rocm7.2_mi350_ubuntu24.04_py3.12_vllm
+
+# Create a deployment script
+cat > deploy.sh << 'EOF'
+#!/bin/bash
+docker run -d \
+    --name llama3-server \
+    --device=/dev/kfd \
+    --device=/dev/dri \
+    --group-add video \
+    --shm-size=32g \
+    -p 8000:8000 \
+    -v ~/.cache/huggingface:/root/.cache/huggingface \
+    rocm/vllm-dev:rocm7.2_mi350_ubuntu24.04_py3.12_vllm \
+    python -m vllm.entrypoints.openai.api_server \
+        --model meta-llama/Llama-3.1-70B-Instruct \
+        --tensor-parallel-size 4 \
+        --max-model-len 8192 \
+        --gpu-memory-utilization 0.9
+EOF
+
+chmod +x deploy.sh
+./deploy.sh
+```
+
+**Testing the Endpoint:**
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:8000/v1",
+    api_key="not-needed"
+)
+
+response = client.chat.completions.create(
+    model="meta-llama/Llama-3.1-70B-Instruct",
+    messages=[
+        {"role": "user", "content": "Write a haiku about GPU computing"}
+    ],
+    max_tokens=100
+)
+
+print(response.choices[0].message.content)
+```
+
+**Monitoring:**
+
+```bash
+# Watch GPU utilization
+watch -n 1 rocm-smi
+
+# Check memory usage
+amd-smi monitor -p
+```
+
+---
+
+## Conclusion
+
+ROCm has evolved from a CUDA alternative requiring substantial effort into a production-ready platform for ML workloads. The MI355X delivers competitive performance against NVIDIA's Blackwell B200 for LLM inference, particularly at high concurrency levels. The MI300X and MI325X remain strong options for memory-bound workloads. Consumer RDNA 4 cards (RX 9070 series) provide a viable path for local development with native Windows support.
+
+Key points to remember:
+- ROCm 7.2 supports both Linux and Windows
+- PyTorch 2.9.1 works on both platforms without code changes
+- vLLM passes 93% of test groups on AMD CI (January 2026)
+- Profile with rocprofv3 and rocprof-compute
+- Consumer GPUs have improved support but 16 GB VRAM limits model sizes
+- OpenAI will deploy 1 GW of MI450 GPUs starting H2 2026
+
+For organizations evaluating GPU infrastructure, AMD provides a cost-effective alternative with competitive performance. The MI400 series (H2 2026) with 432 GB HBM4 will further close the gap with NVIDIA.
+
+---
+
+## References
+
+[^openai]: [AMD and OpenAI Announce Strategic Partnership to Deploy 6 Gigawatts of AMD GPUs](https://openai.com/index/openai-amd-strategic-partnership/)
+
+[^mi355x]: [AMD Instinct MI355X on OCI Performance & Technical Details](https://blogs.oracle.com/cloud-infrastructure/amd-instinct-mi355x-on-oci-performance-technical-details)
+
+[^mi350]: [AMD Instinct MI350 Series GPUs: A Game Changer](https://www.amd.com/en/blogs/2025/amd-instinct-mi350-series-game-changer.html)
+
+[^mi325x]: [Is Nvidia's Blackwell the Unstoppable Force in AI Training, or Can AMD Close the Gap?](https://spectrum.ieee.org/nvidia-blackwell-mlperf-training-5)
+
+[^mi300x]: [AMD MI300X: Specs & Performance for AI/ML Workloads](https://neysa.ai/blog/amd-mi300x/)
+
+[^mi400]: [AMD launches Instinct MI350 series, confirms MI400 in 2026 with 432GB HBM4 memory](https://videocardz.com/newz/amd-launches-instinct-mi350-series-confirms-mi400-in-2026-with-432gb-hbm4-memory)
+
+[^rx9070]: [AMD Radeon RX 9070 XT and RX 9070 review - Tom's Hardware](https://www.tomshardware.com/pc-components/gpus/amd-radeon-rx-9070-xt-review)
+
+[^4]: [llama.cpp ROCm Compatibility](https://rocm.docs.amd.com/en/latest/compatibility/ml-compatibility/llama-cpp-compatibility.html)
+
+[^radeonai]: [AI Acceleration with AMD Radeon Graphics Cards](https://www.amd.com/en/products/graphics/radeon-ai.html)
+
+[^6]: [What is HIP - ROCm Documentation](https://rocm.docs.amd.com/projects/HIP/en/latest/what_is_hip.html)
+
+[^7]: [HIPIFY GitHub Repository](https://github.com/ROCm/HIPIFY)
+
+[^8]: [Application Portability with HIP - AMD Lab Notes](https://rocm.blogs.amd.com/software-tools-optimization/hipify/README.html)
+
+[^rocm72]: [ROCm 7.2: Smarter, Faster, and More Scalable for Modern AI Workloads](https://rocm.blogs.amd.com/software-tools-optimization/rocm7.2/README.html)
+
+[^rocmwindows]: [AMD enables Windows PyTorch support for Radeon RX 7000/9000 with ROCm](https://videocardz.com/newz/amd-enables-windows-pytorch-support-for-radeon-rx-7000-9000-with-rocm-6-4-4-update)
+
+[^comfyui]: [AMD ROCm 7.2 brings AI training and inferencing to all](https://www.notebookcheck.net/AMD-ROCm-7-2-brings-AI-training-and-inferencing-to-all-with-Ryzen-AI-400-support-and-ComfyUI-Adrenalin-integrations.1196997.0.html)
+
+[^pytorchrocm]: [PyTorch compatibility - ROCm Documentation](https://rocm.docs.amd.com/en/latest/compatibility/ml-compatibility/pytorch-compatibility.html)
+
+[^pytorch29]: [PyTorch 2.9 Wheel Variant support expands to ROCm](https://www.amd.com/en/developer/resources/technical-articles/2025/pytorch-2-9-wheel-variant-support-expands-to-rocm.html)
+
+[^11]: [PyTorch ROCm Compatibility](https://rocm.docs.amd.com/en/latest/compatibility/ml-compatibility/pytorch-compatibility.html)
+
+[^vllmfirstclass]: [ROCm Becomes a First-Class Platform in the vLLM Ecosystem](https://rocm.blogs.amd.com/software-tools-optimization/vllm-omni/README.html)
+
+[^vllmdocker]: [rocm/vllm - Docker Image](https://hub.docker.com/r/rocm/vllm)
+
+[^vllmoptimize]: [vLLM V1 performance optimization - ROCm Documentation](https://rocm.docs.amd.com/en/latest/how-to/rocm-for-ai/inference-optimization/vllm-optimization.html)
+
+[^vllmmoe]: [vLLM inference performance testing - ROCm Documentation](https://rocm.docs.amd.com/en/latest/how-to/rocm-for-ai/inference/benchmark-docker/vllm.html)
+
+[^14]: [Accelerating llama.cpp on MI300X](https://rocm.blogs.amd.com/ecosystems-and-partners/llama-cpp-oct2025/README.html)
+
+[^15]: [Using TGI with AMD GPUs](https://huggingface.co/docs/text-generation-inference/installation_amd)
+
+[^memperf]: [AMD Instinct MI355X GPUs](https://www.amd.com/en/products/accelerators/instinct/mi350/mi355x.html)
+
+[^mi355xperf]: [Single Node and Distributed Inference Performance on AMD Instinct MI355X GPU](https://www.amd.com/en/developer/resources/technical-articles/2026/distributed-inference-performance-on-instinct-mi355x-gpu.html)
+
+[^mi355xmem]: [AMD MI355X - Price, Specs & Cloud Providers](https://getdeploying.com/gpus/amd-mi355x)
+
+[^18]: [MI300X vs H100 Mixtral Benchmark - RunPod](https://www.runpod.io/blog/mi300x-vs-h100-mixtral)
+
+[^19]: [AMD vs NVIDIA Inference Benchmark - SemiAnalysis](https://newsletter.semianalysis.com/p/amd-vs-nvidia-inference-benchmark-who-wins-performance-cost-per-million-tokens)
+
+[^cloudavail]: [AMD Instinct MI355X on OCI Performance & Technical Details](https://blogs.oracle.com/cloud-infrastructure/amd-instinct-mi355x-on-oci-performance-technical-details)
+
+[^mlperf]: [Is Nvidia's Blackwell the Unstoppable Force in AI Training?](https://spectrum.ieee.org/nvidia-blackwell-mlperf-training-5)
+
+[^traingap]: [Best AMD GPUs for AI Training & Deep Learning in 2026](https://www.bestgpusforai.com/blog/best-amd-gpus-for-ai)
+
+[^22]: [Scaling Model Training on ROCm](https://rocm.docs.amd.com/en/latest/how-to/rocm-for-ai/training/scale-model-training.html)
+
+[^23]: [PyTorch FSDP on AMD GPUs](https://rocm.blogs.amd.com/artificial-intelligence/fsdp-training-pytorch/README.html)
+
+[^24]: [Introduction to Rocprofiler-compute](https://rocm.blogs.amd.com/software-tools-optimization/rocprofiler-sdk/README.html)
+
+[^25]: [ROCm Limitations - Radeon Documentation](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/limitations/limitationsrad.html)
+
+[^26]: [AMD ROCm, open source Nvidia CUDA rival, gets massive Windows & Linux improvements](https://www.neowin.net/news/amd-rocm-open-source-nvidia-cuda-rival-gets-massive-windows--linux-improvements/)
+
+[^ryzenai]: [AMD Expands ROCm Support to Ryzen AI Max and Radeon RX 9000 Series](https://epium.com/news/amd-expands-rocm-support-ryzen-ai-max-radeon-rx-9000-series/)
+
+[^27]: [ROCm 7.2.0 Release Notes](https://rocm.docs.amd.com/en/latest/about/release-notes.html)
+
+[^28]: [vLLM ROCm Quantization Support](https://rocm.docs.amd.com/en/latest/how-to/rocm-for-ai/inference-optimization/vllm-optimization.html)
+
+[^29]: [TGI ROCm Limitations](https://huggingface.co/docs/text-generation-inference/installation_amd)

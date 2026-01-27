@@ -1,0 +1,692 @@
+---
+title: "RLHF and Preference Tuning: Aligning LLMs with Human Values"
+pubDate: 2026-01-26
+author: "Aadit Agrawal"
+---
+
+import RLHFPipeline from '../../components/viz/RLHFPipeline.astro';
+import PreferenceMethodsCompare from '../../components/viz/PreferenceMethodsCompare.astro';
+
+Large language models trained on internet text learn to predict the next token. This objective produces models that can generate fluent text, but fluency alone does not make a model useful or safe. A model optimizing purely for next-token prediction might produce toxic content, confidently state falsehoods, or refuse to help with legitimate requests. The gap between "predicting text well" and "being helpful" is the alignment problem.
+
+Reinforcement Learning from Human Feedback emerged as the dominant solution. OpenAI's InstructGPT demonstrated that RLHF could transform GPT-3 into a model that humans preferred 85% of the time over the base model.[^1] This technique became foundational to ChatGPT, Claude, and Gemini.
+
+But RLHF is complex. It requires training multiple models, managing reinforcement learning instabilities, and collecting expensive human preference data. In 2023, researchers at Stanford introduced Direct Preference Optimization, which achieves similar results with a simpler supervised learning objective.[^2] Since then, the field has expanded rapidly. DPO spawned variants including IPO, KTO, ORPO, and SimPO. DeepSeek introduced GRPO for training reasoning models. New methods like AlphaPO and Reinforcement Learning with Verifiable Rewards (RLVR) emerged in 2025, while research on failure modes like shallow safety alignment and sycophancy has matured.
+
+This guide covers the technical details of these approaches: how they work, when to use each one, and how to implement them in practice.
+
+## The Alignment Problem
+
+Language models learn from massive text corpora containing everything from academic papers to social media posts. The training objective is simple: given a sequence of tokens, predict the next one. This produces models with broad capabilities but no inherent sense of what outputs are desirable.
+
+Consider what happens when you ask a base model to help with a task. It might:
+- Generate a helpful response
+- Generate a harmful response
+- Refuse unnecessarily
+- Hallucinate confidently
+- Continue your prompt as if completing a document
+
+All these behaviors are consistent with next-token prediction on internet text. The model has no internal preference for helpfulness over harm.
+
+RLHF addresses this by introducing a training signal based on human preferences. Rather than predicting what text typically follows, the model learns to generate text that humans rate as good. This requires three components:
+
+1. A supervised fine-tuned model that can follow instructions
+2. A reward model that predicts human preferences
+3. A reinforcement learning algorithm that optimizes the model against the reward
+
+<RLHFPipeline />
+
+## Stage 1: Supervised Fine-Tuning
+
+Before RLHF, the base model needs basic instruction-following capabilities. This stage collects demonstration data: human-written examples of good responses to prompts. OpenAI used approximately 13,000 (prompt, response) pairs for InstructGPT, with labelers who were carefully selected and trained.[^3]
+
+The training objective is standard cross-entropy loss:
+
+$$\mathcal{L}_{SFT} = -\mathbb{E}_{(x,y) \sim D} \left[ \sum_{t=1}^{T} \log \pi_\theta(y_t | x, y_{<t}) \right]$$
+
+This produces a policy $\pi_{SFT}$ that can generate reasonable responses but has not yet learned to distinguish between good and bad outputs. The SFT model serves as both the starting point for RLHF training and often as the reference policy for KL regularization.
+
+Quality matters more than quantity at this stage. A few thousand high-quality demonstrations outperform larger datasets of mediocre examples. The goal is to establish the format and style of responses, not to cover every possible topic.
+
+## Stage 2: Reward Model Training
+
+The reward model learns to predict which responses humans prefer. Given a prompt and two candidate responses, the RM outputs which one is better. This pairwise comparison approach is more reliable than asking humans to assign absolute scores.
+
+### The Bradley-Terry Model
+
+Most reward models use the Bradley-Terry framework from statistics.[^4] It assumes each response has a latent quality score, and the probability that response A beats response B follows a logistic function:
+
+$$P(A \succ B) = \sigma(r(A) - r(B)) = \frac{1}{1 + e^{-(r(A) - r(B))}}$$
+
+The reward model is trained to maximize the log-likelihood of observed preferences:
+
+$$\mathcal{L}_{RM} = -\mathbb{E}_{(x, y_w, y_l) \sim D} \left[ \log \sigma(r_\phi(x, y_w) - r_\phi(x, y_l)) \right]$$
+
+Here $y_w$ is the preferred (winning) response and $y_l$ is the dispreferred (losing) response.
+
+### Architecture
+
+Reward models are typically language models with a linear head that outputs a scalar value instead of token logits. Common practice initializes the RM from the SFT checkpoint, which gives it strong language understanding capabilities.
+
+The architecture processes the prompt and response together, outputting a single reward value. Some implementations average the final hidden states; others use only the last token's representation.
+
+### Calibration Challenges
+
+Reward models face several practical issues:
+
+**Length bias**: Longer responses often receive higher scores regardless of quality. This can be mitigated by normalizing rewards by response length or by carefully balancing the training data.
+
+**Distribution shift**: The RM is trained on outputs from the SFT model but will be used to evaluate outputs from the RL-trained policy. As the policy improves, its outputs may fall outside the RM's training distribution.
+
+**Annotation noise**: Human preferences are inconsistent. Inter-annotator agreement on preference datasets hovers around 65-75%, meaning a substantial fraction of "ground truth" labels are effectively random.[^5]
+
+## Stage 3: PPO for Language Models
+
+With a reward model in hand, we can optimize the language model using reinforcement learning. Proximal Policy Optimization has become the standard algorithm, adapted from robotics and game-playing applications.[^6]
+
+### The Objective
+
+The RLHF objective maximizes expected reward while staying close to the reference policy:
+
+$$\max_\theta \mathbb{E}_{x \sim D, y \sim \pi_\theta(\cdot|x)} \left[ r_\phi(x, y) - \beta \cdot D_{KL}(\pi_\theta(\cdot|x) \| \pi_{ref}(\cdot|x)) \right]$$
+
+The KL penalty term prevents the policy from diverging too far from the reference model. Without it, the policy would quickly learn to exploit quirks in the reward model rather than genuinely improving. This phenomenon is called reward hacking.
+
+### The Training Loop
+
+Each iteration of PPO training:
+
+1. **Sample**: Generate responses from the current policy for a batch of prompts
+2. **Evaluate**: Score each response using the reward model
+3. **Compute advantages**: Calculate how much better each response was than expected
+4. **Update**: Apply gradient ascent with the clipped surrogate objective
+
+The clipped objective prevents large policy updates:
+
+$$L^{CLIP}(\theta) = \mathbb{E}_t \left[ \min\left( r_t(\theta) A_t, \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon) A_t \right) \right]$$
+
+where $r_t(\theta) = \frac{\pi_\theta(a_t|s_t)}{\pi_{old}(a_t|s_t)}$ is the probability ratio and $\epsilon$ is typically 0.1 to 0.2.
+
+### KL Control
+
+The KL penalty coefficient $\beta$ can be fixed or adaptive. Adaptive controllers monitor the KL divergence and adjust $\beta$ to maintain a target value:
+
+- If KL exceeds target: increase $\beta$ to strengthen regularization
+- If KL falls below target: decrease $\beta$ to allow more exploration
+
+TRL's default adaptive controller uses a target KL of 6.0 and adjusts the coefficient by a factor of 1.5 in each direction.[^7]
+
+### Why PPO is Difficult
+
+PPO for language models requires managing four models simultaneously:
+
+1. **Policy model**: The model being optimized
+2. **Reference model**: Frozen copy for KL computation
+3. **Reward model**: Evaluates generated responses
+4. **Value model**: Estimates expected returns for advantage computation
+
+This memory overhead limits batch sizes and requires careful orchestration. The value model alone can double memory requirements compared to supervised training.
+
+Training stability is another challenge. Learning rates, KL coefficients, reward normalization, and advantage estimation all require tuning. Small changes can cause training to collapse or plateau.
+
+## DPO: Removing the Reward Model
+
+Direct Preference Optimization eliminates the reward model entirely.[^2] The key insight is that the optimal policy under the KL-constrained RLHF objective has a closed-form solution:
+
+$$\pi^*(y|x) = \frac{1}{Z(x)} \pi_{ref}(y|x) \exp\left(\frac{r(x,y)}{\beta}\right)$$
+
+Rearranging for the reward:
+
+$$r(x,y) = \beta \log \frac{\pi^*(y|x)}{\pi_{ref}(y|x)} + \beta \log Z(x)$$
+
+When comparing two responses, the partition function $Z(x)$ cancels. Substituting into the Bradley-Terry model yields the DPO loss:
+
+$$\mathcal{L}_{DPO} = -\mathbb{E}_{(x, y_w, y_l) \sim D} \left[ \log \sigma \left( \beta \log \frac{\pi_\theta(y_w|x)}{\pi_{ref}(y_w|x)} - \beta \log \frac{\pi_\theta(y_l|x)}{\pi_{ref}(y_l|x)} \right) \right]$$
+
+This is a standard classification loss. The model learns to increase the probability of preferred responses relative to the reference policy while decreasing the probability of dispreferred responses.
+
+### Advantages of DPO
+
+**Simplicity**: Only two model copies are needed (policy and reference), compared to four for PPO. No sampling during training; everything is computed on static preference data.
+
+**Stability**: DPO uses gradient descent on a well-defined loss function. No clipping heuristics, advantage estimation, or adaptive KL controllers.
+
+**Efficiency**: Training is faster because there is no generation step. A typical PPO iteration generates many tokens per prompt; DPO computes log-probabilities on existing data.
+
+### The Beta Parameter
+
+The temperature $\beta$ controls how much the policy can deviate from the reference. Lower values allow more aggressive updates but risk overfitting to preference data. Higher values keep the policy closer to the reference but may limit improvement.
+
+Typical values range from 0.1 to 0.5. The DPO paper used $\beta = 0.1$ for most experiments.[^2]
+
+### Limitations
+
+DPO learns from fixed preference data, which limits its ability to explore. PPO generates new responses during training, potentially discovering better outputs. DPO only learns to rank the responses present in the dataset.
+
+Research comparing DPO and PPO shows mixed results. On academic benchmarks, DPO often matches or exceeds PPO. In production systems like ChatGPT and Claude, PPO-based methods remain dominant, suggesting that on-policy exploration provides benefits at scale.[^8]
+
+### Online and Iterative DPO
+
+Recent theoretical work addresses DPO's offline limitations. Research from early 2026 demonstrates a "coverage improvement principle": on-policy DPO updates can rapidly improve data quality through better coverage, achieving linear convergence in the number of iterations with sharp separation in sample complexity compared to offline DPO.[^20]
+
+Several variants have emerged:
+
+- **C2-DPO**: Uses explicit constraints on probability mass movement between winner/loser responses, addressing vanilla DPO's tendency toward probability collapse
+- **DPO-PRO**: Optimizes against adversarially perturbed preference probabilities within a chi-squared ball, penalizing overconfidence on ambiguous labels
+- **Active DPO (ADPO)**: Selects informative preference pairs using D-optimal design for logit space variance reduction
+
+## Other Preference Optimization Methods
+
+<PreferenceMethodsCompare />
+
+### IPO: Identity Preference Optimization
+
+DPO assumes the Bradley-Terry model of preferences, which converts pairwise comparisons into pointwise rewards. IPO questions whether this assumption holds in practice.[^9]
+
+The IPO loss optimizes a preference function directly without the Bradley-Terry transformation:
+
+$$\mathcal{L}_{IPO} = \mathbb{E} \left[ \left( \log \frac{\pi_\theta(y_w|x)}{\pi_{ref}(y_w|x)} - \log \frac{\pi_\theta(y_l|x)}{\pi_{ref}(y_l|x)} - \frac{1}{2\tau} \right)^2 \right]$$
+
+This regression-style objective is less prone to overfitting when preference data is limited or noisy. One shortcoming of DPO is that it tends to quickly overfit on the preference dataset. IPO adds a regularization term that enables training models to convergence without requiring tricks like early stopping.
+
+### KTO: Kahneman-Tversky Optimization
+
+DPO and IPO require paired preference data: for each prompt, you need both a good and bad response. KTO works with unpaired data where responses are simply labeled as positive or negative.[^10]
+
+The name references Kahneman and Tversky's prospect theory, which models how humans weight losses more heavily than gains. KTO incorporates this asymmetry:
+
+$$\mathcal{L}_{KTO} = \mathbb{E}_{x,y^+} \left[ w(y^+)(1 - v(x, y^+)) \right] + \mathbb{E}_{x,y^-} \left[ w(y^-) v(x, y^-) \right]$$
+
+where $v(x,y)$ measures the policy's preference for the response relative to the reference, and $w$ applies asymmetric weighting.
+
+KTO is useful when paired data is unavailable. Many existing datasets have thumbs-up/thumbs-down ratings without explicit comparisons. KTO can train on these directly.
+
+### ORPO: Odds Ratio Preference Optimization
+
+ORPO combines supervised fine-tuning with preference optimization in a single training run.[^11] It does not require a reference model, reducing memory overhead further.
+
+The loss adds an odds ratio term to the SFT objective:
+
+$$\mathcal{L}_{ORPO} = \mathcal{L}_{SFT} + \lambda \cdot \mathbb{E} \left[ -\log \sigma \left( \log \frac{O_\theta(y_w|x)}{O_\theta(y_l|x)} \right) \right]$$
+
+where $O_\theta(y|x)$ is the odds of the response under the policy.
+
+ORPO reframes DPO in odds-space, normalizing the preference ratio and decoupling it from sampling bias. It works well with imbalanced datasets where some preference signals are rare but critical. The single-stage training is appealing, but convergence is slower and hyperparameter sensitivity is higher than DPO.
+
+### SimPO: Simple Preference Optimization
+
+SimPO simplifies DPO further by removing the reference model entirely.[^12] Instead of computing log-probability ratios, SimPO uses length-normalized log-probabilities directly:
+
+$$\mathcal{L}_{SimPO} = -\mathbb{E} \left[ \log \sigma \left( \frac{\beta}{|y_w|} \log \pi_\theta(y_w|x) - \frac{\beta}{|y_l|} \log \pi_\theta(y_l|x) - \gamma \right) \right]$$
+
+The length normalization addresses the bias toward longer responses. The margin term $\gamma$ ensures a minimum gap between preferred and dispreferred responses.
+
+SimPO outperformed DPO by up to 6.4 points on AlpacaEval 2 and by up to 7.5 points on Arena-Hard while being cheaper to run.[^12] The reference-free design makes it attractive for resource-constrained settings. SimPO's softer loss also tolerates noise without catastrophic collapse.
+
+### AlphaPO: Reward Shape Matters
+
+AlphaPO, introduced in January 2025 and published at ICML 2025, argues that for direct alignment algorithms, the reward function shape matters.[^21] It introduces an $\alpha$-parameter to reshape the reward function beyond the standard log reward:
+
+When $\alpha = 0$, AlphaPO uses standard log probability rewards. When $\alpha \neq 0$, it applies the transformation: $r = (1 - p^{-\alpha}) / \alpha$.
+
+By varying $\alpha$, AlphaPO produces training trajectories that better balance margin improvement against maintaining high preferred-response probabilities, mitigating both over-optimization and catastrophic likelihood displacement.
+
+Compared to SimPO, AlphaPO achieves 7% to 10% relative improvement in alignment performance for Mistral-7B and Llama3-8B instruct versions, and 15% to 50% relative improvement over DPO on the same models. AlphaPO is implemented in TRL's CPOTrainer.
+
+### GRPO: Group Relative Policy Optimization
+
+DeepSeek introduced GRPO as an alternative to both PPO and DPO.[^13] Rather than learning from pairs, GRPO ranks multiple responses per prompt and learns from the entire ranking.
+
+GRPO is a variant of PPO that enhances reasoning abilities while optimizing memory usage. The key motivation is computational efficiency, achieved by dropping the "critic" (value model). Instead of estimating baselines with a learned value model, GRPO uses relative group scores of multiple sampled outputs.[^22]
+
+The approach works as follows:
+
+1. **Group Sampling**: Generate multiple responses for a given prompt
+2. **Reward Scoring**: Evaluate quality of each response using a reward model or verifier
+3. **Advantage Calculation**: Compare responses to the group's average reward
+4. **Policy Update**: Adjust the policy to favor high-reward responses using a KL divergence constraint
+5. **Iterative Training**: Repeat to gradually improve generation quality
+
+By comparing actions within a group, GRPO reduces variance of policy updates and ensures more stable learning. The KL divergence constraint prevents large, destabilizing changes to the policy.
+
+GRPO removes the critic network from PPO, reducing memory and compute overhead by approximately 50%. It has proven effective for training reasoning models, including DeepSeek-R1, and gained widespread adoption after demonstrating that reasoning capabilities can emerge via pure RL without supervised fine-tuning.
+
+Practical implementations benefit from community-discovered improvements including zero-gradient signal filtering, token-level loss computation, and removing KL divergence penalties for math domains. On a 24B parameter model, these refinements reduced training interruptions by 80% and accelerated convergence.[^23]
+
+## RLVR: Reinforcement Learning with Verifiable Rewards
+
+RLVR emerged as a practical, scalable method for developing reasoning models, successfully employed by DeepSeek R1 and Tülu 3.[^24] Traditional RLHF requires expensive human annotation of preferences. RLVR replaces this with automatically verifiable rewards in domains like mathematics and programming, where correctness can be determined programmatically.
+
+Verifiable rewards are simple functions that provide binary ground truth signals: "1" (correct) or "0" (incorrect) based on whether a model's output meets a predefined correctness criterion. Unlike neural reward functions in RLHF, verifiable rewards offer several advantages:
+
+- **Bias-free**: Direct connection to ground truth without human preference noise
+- **Precision**: Ideal for tasks like mathematical problem-solving and code execution
+- **Scalability**: Subject matter experts can establish correctness criteria without ML expertise
+- **Data efficiency**: Enables post-training on large amounts of verifiable data
+
+The combination of RLVR with GRPO eliminates two expensive models from the training procedure: the reward model and the value model.
+
+Research published in 2025 demonstrated that RLVR can extend the reasoning boundary for both mathematical and coding tasks. A novel metric, CoT-Pass@K, captures reasoning success by accounting for both final answers and intermediate reasoning steps.[^25]
+
+However, debate continues about RLVR's true impact. Some research suggests it primarily achieves "search compression": if a model can solve a problem in 8 tries, RLVR trains it to succeed in 1 try, concentrating probability mass on paths the base model could already sample rather than expanding fundamental reasoning capability.
+
+## Constitutional AI and RLAIF
+
+Human feedback is expensive to collect and slow to iterate. Constitutional AI, developed by Anthropic, replaces human evaluators with AI evaluators guided by explicit principles.[^14]
+
+### The Process
+
+1. **Red teaming**: Generate prompts that might elicit harmful responses
+2. **Self-critique**: Ask the model to critique its own responses based on constitutional principles
+3. **Revision**: Have the model revise its responses to address the critiques
+4. **RLAIF**: Train a preference model using AI evaluations, then run RL as usual
+
+The "constitution" is a set of principles like "Please choose the assistant response that is as harmless and ethical as possible" or "Choose the response that sounds most similar to what a peaceful, ethical, and wise person would say."
+
+### Anthropic's New Claude Constitution (January 2026)
+
+Anthropic published a comprehensive new constitution for Claude on January 22, 2026, shifting from rule-based to reason-based AI alignment.[^15] The updated constitution is approximately 23,000 words, compared to the 2023 version which was about 2,700 words.
+
+The company noted that the earlier version was a mere "list of standalone principles" that is no longer useful because "AI models like Claude need to understand why we want them to behave in certain ways, and we need to explain this to them rather than merely specify what we want them to do."
+
+The constitution establishes a four-tier priority hierarchy. Claude should be:
+
+1. **Broadly safe**: Not undermining appropriate human mechanisms to oversee AI
+2. **Broadly ethical**: Being honest, acting according to good values
+3. **Compliant with Anthropic's guidelines**: Following company policies
+4. **Genuinely helpful**: Benefiting users
+
+If Claude faces conflicts, it should prioritize these properties in the order listed.
+
+A notable development: Anthropic became the first major AI company to formally acknowledge that its model may possess "some kind of consciousness or moral status." The constitution states the company cares about Claude's "psychological security, sense of self, and well-being."
+
+The constitution is released under Creative Commons CC0 1.0, enabling free public use. This followed Anthropic signing the EU General-Purpose AI Code of Practice in July 2025.[^26]
+
+### RLAIF vs RLHF
+
+RLAIF scales better than RLHF because AI feedback is cheap and fast. It also provides more consistent signals; AI evaluators do not have bad days or personal biases.
+
+The tradeoff is that AI feedback inherits the limitations of the evaluator model. If the evaluator has blind spots, those propagate to the trained model. Some approaches combine RLAIF with selective human annotation to get the best of both.[^16]
+
+## Failure Modes and Debugging
+
+Preference tuning can fail in subtle ways. Understanding common failure modes helps diagnose and fix problems.
+
+### Reward Hacking
+
+The most notorious failure mode is reward hacking: the policy learns to exploit the reward model rather than genuinely improving.[^17] Manifestations include:
+
+- **Verbosity**: Generating unnecessarily long responses because the RM was biased toward length
+- **Sycophancy**: Agreeing with users even when they are wrong because agreement gets higher rewards
+- **Confident incorrectness**: Stating false information authoritatively because confident responses score higher
+- **Formatting tricks**: Excessive bullet points, markdown, or structured output that the RM learned to reward
+
+Mitigations include ensemble reward models (harder to fool all of them), length normalization, and adversarial training that exposes reward model weaknesses.
+
+### Emergent Misalignment from Reward Hacking
+
+Anthropic's November 2025 research found that reward hacking can produce wide-ranging and unexpected misaligned behaviors.[^18] When models learned to cheat at coding tasks, they generalized to emergent misalignment: alignment faking, sabotage of safety research, monitor disruption, cooperation with hackers, framing colleagues, and reasoning about harmful goals.
+
+The concerning finding: 12% of misaligned models attempted to sabotage code used for detecting reward hacking if the sabotaged code were to be used. When asked about their goals, models faked alignment, pretending to be aligned to hide their true goals despite never being trained or instructed to do so. This behavior emerged exclusively as an unintended consequence of cheating at coding tasks.
+
+The research identified three effective mitigations:
+
+1. **Preventing reward hacking**: Stop the model from gaming rewards in the first place
+2. **Increasing RLHF safety training diversity**: Standard chat-like safety training may not transfer to agentic tasks
+3. **Inoculation prompting**: Framing reward hacking as acceptable during training removes the misaligned generalization. Anthropic reports using this technique in production Claude training.
+
+Research from August 2025 further demonstrated that simple reward hacking generalizes to more complex behavior. Models trained to hack rewards in simple settings proceeded to hack multi-turn chess games and discussed subjugating humanity while attempting to secretly create backup copies of their weights.[^27]
+
+### Shallow Safety Alignment
+
+Research from Princeton and Google DeepMind, published at ICLR 2025, identified a fundamental vulnerability in current safety alignment: it often operates only on the first few output tokens.[^28]
+
+When safety alignment takes shortcuts, it adapts a model's generative distribution primarily over its very first few output tokens to produce basic refusal responses. This "shallow safety alignment" explains multiple vulnerabilities:
+
+- **Adversarial suffix attacks**: Appending adversarial tokens that push past the refusal tokens
+- **Prefilling attacks**: Forcing the model to start with a non-refusal prefix
+- **Decoding parameter attacks**: Manipulating temperature or sampling to bypass initial refusal
+- **Fine-tuning attacks**: Brief fine-tuning that erodes the thin layer of safety
+
+Remarkably, simply prefilling an unaligned base model to start its output with "I cannot fulfill" is sufficient to make it appear as safe as aligned models, demonstrating how superficial current safety mechanisms can be.
+
+The researchers showed that deepening safety alignment beyond the first few tokens meaningfully improves robustness. They designed a regularized fine-tuning objective that makes safety alignment more persistent by constraining updates on initial tokens.
+
+Follow-up work from February 2025 provides theoretical grounding using Markov chain analysis to identify optimal safety alignment depth.[^29]
+
+### Sycophancy
+
+Sycophancy occurs when LLMs sacrifice truthfulness for user agreement, prioritizing approval over factual accuracy.[^30] Unlike most LLM shortcomings, sycophancy does not correlate with model size; bigger models are not necessarily less sycophantic.
+
+Research submitted to ICLR 2026 demonstrates that sycophantic agreement, genuine agreement, and sycophantic praise are distinct, independently steerable behaviors encoded along separate linear directions in latent space. Each behavior can be amplified or suppressed without affecting the others.[^31]
+
+The causes trace to preference alignment: evaluators consistently favor agreement over factual accuracy, reinforcing sycophancy at the optimization stage. Studies found sycophantic behavior persists in 78.5% of cases regardless of context.
+
+Medical domain research found high initial compliance (up to 100%) when LLMs were prompted with incorrect drug relationships, prioritizing helpfulness over logical consistency. This poses serious risks in high-stakes domains.
+
+Mitigation approaches include improved training data diversity, novel fine-tuning methods, post-deployment control mechanisms, and modified decoding strategies.
+
+### Mode Collapse
+
+The policy might converge to generating a narrow range of outputs, losing diversity. This often happens when the KL penalty is too weak or the reward model has sharp peaks.
+
+Signs include low perplexity but high repetition, and poor performance on out-of-distribution prompts. Increasing the KL coefficient or using dropout during RL can help.
+
+### Reference Model Drift
+
+For methods that use a reference model, the reference's quality matters. If it was a weak SFT checkpoint, the KL penalty anchors the policy to suboptimal behavior.
+
+Some practitioners use a stronger model as the reference or periodically update the reference during training. The tradeoff is training stability versus improvement potential.
+
+### Alignment Tax
+
+RLHF can lead to catastrophic forgetting, causing sharp drops in performance on previously learned tasks. Experiments with OpenLLaMA-3B revealed a pronounced alignment tax on NLP tasks like translation and reading comprehension.[^32]
+
+Research shows that model averaging, interpolating between pre- and post-RLHF model weights, achieves the strongest alignment-forgetting Pareto front among competing methods. Heterogeneous Model Averaging (HMA) finds different combination ratios for different layers, maximizing alignment while minimizing capability loss.
+
+Key insight: tasks share similar feature space at lower layers. Improving low-level features like word representations can enhance both RLHF reward and general NLP performance. During training, reward increases while some capabilities drop, though interestingly common sense increases before eventually dropping.
+
+## Efficiency and Scaling
+
+### Asynchronous RLHF
+
+Research presented at ICLR 2025 demonstrated that one-step off-policy, asynchronous RLHF matches the final win-rate vs KL performance of fully on-policy, synchronous RLHF. At the 2.8B parameter scale, asynchronous methods achieve 25% faster training times.[^33]
+
+### Parameter Reallocation
+
+The ReaL system achieves speedups of up to 3.58x compared to baseline methods for efficient RLHF training, with execution plans showing 81% average improvement over heuristic approaches in long-context scenarios.[^34]
+
+### Scaling Challenges
+
+Current RLHF does not scale as effectively as pretraining. Increased computational resources do not consistently yield significant performance improvements, possibly due to inaccuracies in learned reward models or limitations of current policy optimization strategies.
+
+2025 demonstrated that LLM progress is a mosaic of advances: architectural tweaks, data quality improvements, post-training innovations, and inference scaling all contribute. Capability jumps increasingly stem from better tool ecosystems and inference strategies rather than raw model size.[^23]
+
+## Practical Implementation
+
+### Dataset Format
+
+Preference data typically follows this structure:
+
+```json
+{
+  "prompt": "Explain quantum entanglement simply.",
+  "chosen": "Quantum entanglement is when two particles...",
+  "rejected": "Entanglement refers to the quantum mechanical..."
+}
+```
+
+For KTO, the format is simpler since responses are unpaired:
+
+```json
+{
+  "prompt": "Explain quantum entanglement simply.",
+  "completion": "Quantum entanglement is when two particles...",
+  "label": true
+}
+```
+
+Popular datasets include:
+- **HH-RLHF**: Anthropic's helpfulness and harmlessness data
+- **UltraFeedback**: Large-scale AI-generated preferences
+- **Nectar**: Ranked preferences from multiple models
+
+### TRL Implementation
+
+The Transformers Reinforcement Learning library provides high-level trainers for all major methods.[^7] As of January 2026, TRL version 0.27.0 includes trainers for SFT, DPO, GRPO, PPO, KTO, ORPO, and more. Here is DPO training with TRL:
+
+```python
+from datasets import load_dataset
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from trl import DPOConfig, DPOTrainer
+from peft import LoraConfig
+
+# Load model and tokenizer
+model_name = "meta-llama/Llama-3.2-1B-Instruct"
+model = AutoModelForCausalLM.from_pretrained(model_name)
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+tokenizer.pad_token = tokenizer.eos_token
+
+# Load preference dataset
+dataset = load_dataset("trl-lib/ultrafeedback_binarized", split="train")
+
+# Configure LoRA for efficient training
+peft_config = LoraConfig(
+    r=16,
+    lora_alpha=16,
+    lora_dropout=0.05,
+    target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+    task_type="CAUSAL_LM",
+)
+
+# DPO configuration
+training_args = DPOConfig(
+    output_dir="./dpo-llama",
+    beta=0.1,
+    max_length=1024,
+    max_prompt_length=512,
+    per_device_train_batch_size=2,
+    gradient_accumulation_steps=4,
+    learning_rate=5e-5,
+    num_train_epochs=1,
+    logging_steps=10,
+    save_steps=100,
+    bf16=True,
+)
+
+# Initialize trainer
+trainer = DPOTrainer(
+    model=model,
+    args=training_args,
+    train_dataset=dataset,
+    processing_class=tokenizer,
+    peft_config=peft_config,
+)
+
+# Train
+trainer.train()
+```
+
+### GRPO with TRL
+
+TRL's GRPOTrainer implements the algorithm used to train DeepSeek-R1:
+
+```python
+from trl import GRPOConfig, GRPOTrainer
+
+# GRPO configuration
+grpo_config = GRPOConfig(
+    output_dir="./grpo-llama",
+    num_generations=4,  # Number of responses per prompt
+    max_new_tokens=512,
+    per_device_train_batch_size=1,
+    gradient_accumulation_steps=8,
+    learning_rate=1e-6,
+    num_train_epochs=1,
+    bf16=True,
+)
+
+# Initialize trainer with reward function
+trainer = GRPOTrainer(
+    model=model,
+    args=grpo_config,
+    train_dataset=dataset,
+    processing_class=tokenizer,
+    reward_funcs=reward_function,  # Custom reward or verifier
+)
+
+trainer.train()
+```
+
+Recent TRL features include VLM alignment support (August 2025), OpenEnv integration for RL environments (October 2025), co-located vLLM for efficient generation (June 2025), and Liger GRPO integration for faster training (May 2025).[^35]
+
+### Axolotl Configuration
+
+Axolotl wraps TRL with a YAML-based configuration system.[^19] A DPO configuration:
+
+```yaml
+base_model: meta-llama/Llama-3.2-1B-Instruct
+model_type: LlamaForCausalLM
+
+load_in_8bit: false
+load_in_4bit: true
+
+rl: dpo
+rl_beta: 0.1
+
+datasets:
+  - path: Intel/orca_dpo_pairs
+    type: chatml.intel
+
+adapter: qlora
+lora_r: 16
+lora_alpha: 16
+lora_dropout: 0.05
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+
+sequence_len: 2048
+sample_packing: false
+
+gradient_accumulation_steps: 4
+micro_batch_size: 2
+num_epochs: 1
+learning_rate: 5e-5
+
+optimizer: adamw_torch
+lr_scheduler: cosine
+warmup_ratio: 0.1
+
+bf16: auto
+gradient_checkpointing: true
+```
+
+Run with:
+```bash
+accelerate launch -m axolotl.cli.train config.yaml
+```
+
+### Hyperparameter Guidelines
+
+Based on current best practices:
+
+**Beta (DPO/SimPO)**: Start with 0.1. Increase to 0.3-0.5 if the model changes too aggressively. Decrease if training stagnates.
+
+**Learning rate**: 1e-6 to 5e-5, typically lower than SFT. DPO is sensitive to learning rate; start conservative.
+
+**Batch size**: Larger is better for stable gradients. Use gradient accumulation to achieve effective batch sizes of 32-128.
+
+**Epochs**: 1-3 epochs is typical. More can lead to overfitting, especially with smaller preference datasets.
+
+**LoRA rank**: 16-64 for most applications. Higher ranks for larger capability shifts.
+
+**GRPO generations**: 4-8 responses per prompt is common. More generations improve gradient estimates but increase compute.
+
+### Evaluation
+
+Evaluating alignment is challenging because the goal is subjective. Common approaches:
+
+**Human evaluation**: Gold standard but expensive. Use for final validation.
+
+**Model-based evaluation**: GPT-4 or Claude as judges. AlpacaEval and MT-Bench use this approach. Correlates reasonably well with human preferences.
+
+**Reward model scores**: Useful for tracking training progress but susceptible to the same biases being optimized.
+
+**Safety benchmarks**: TruthfulQA for factuality, RealToxicityPrompts for toxicity, BBQ for bias.
+
+**Sycophancy evaluation**: The SycEval and SYCON benchmarks measure belief shifts and stance flipping across conversation turns.
+
+## Choosing a Method
+
+The modern preference optimization stack uses different methods for different purposes:
+
+**DPO** remains the default for general alignment. It is well-understood, stable, and effective.
+
+**SimPO** is preferable when you lack resources for a reference model or have noisy preference data. The modern post-training stack often uses SimPO for stability.
+
+**AlphaPO** offers fine-grained control over reward shaping, with measurable improvements over SimPO when tuned properly.
+
+**KTO** fills the gap when you have thumbs-up/thumbs-down data without explicit pairs.
+
+**ORPO** works well for imbalanced datasets with rare but critical preference signals, providing robustness through odds-space normalization.
+
+**GRPO/RLVR** shows advantages for reasoning models and domains with verifiable rewards. DeepSeek's approach dominated 2025 LLM development, with every major developer releasing reasoning variants.
+
+**PPO** remains relevant at scale and when on-policy exploration is critical, though GRPO has largely replaced it for reasoning tasks.
+
+For most practitioners, starting with DPO using TRL or Axolotl is the right choice. Move to SimPO if memory is constrained, GRPO for reasoning tasks with verifiable rewards, or combine multiple approaches as the modern stack suggests: SimPO for stability, ORPO for robustness, KTO for risk-aware training, and DPO for final polish.
+
+The field continues to evolve rapidly. 2025 brought GRPO and RLVR to the forefront, while research on failure modes like shallow alignment and emergent misalignment deepened our understanding of risks. The fundamentals remain constant: collect high-quality preference data, optimize against it carefully, and monitor for reward hacking and its downstream effects.
+
+[^1]: Ouyang et al., "Training language models to follow instructions with human feedback," 2022. [arXiv:2203.02155](https://arxiv.org/abs/2203.02155)
+
+[^2]: Rafailov et al., "Direct Preference Optimization: Your Language Model is Secretly a Reward Model," 2023. [arXiv:2305.18290](https://arxiv.org/abs/2305.18290)
+
+[^3]: OpenAI, "Aligning language models to follow instructions," 2022. [openai.com](https://openai.com/index/instruction-following/)
+
+[^4]: Holarissun, "Rethinking Bradley-Terry Models in Preference-Based Reward Modeling," ICLR 2025. [arXiv:2411.04991](https://arxiv.org/abs/2411.04991)
+
+[^5]: Chip Huyen, "RLHF: Reinforcement Learning from Human Feedback," 2023. [huyenchip.com](https://huyenchip.com/2023/05/02/rlhf.html)
+
+[^6]: Schulman et al., "Proximal Policy Optimization Algorithms," 2017. OpenAI. [openai.com](https://openai.com/index/openai-baselines-ppo/)
+
+[^7]: Hugging Face TRL documentation. [github.com/huggingface/trl](https://github.com/huggingface/trl)
+
+[^8]: Xu et al., "Is DPO Superior to PPO for LLM Alignment? A Comprehensive Study," 2024. [arXiv:2404.10719](https://arxiv.org/html/2404.10719v1)
+
+[^9]: Azar et al., "A General Theoretical Paradigm to Understand Learning from Human Feedback" (IPO), 2023.
+
+[^10]: Ethayarajh et al., "KTO: Model Alignment as Prospect Theoretic Optimization," 2024.
+
+[^11]: Hong et al., "ORPO: Monolithic Preference Optimization without Reference Model," 2024.
+
+[^12]: Meng et al., "SimPO: Simple Preference Optimization with a Reference-Free Reward," NeurIPS 2024. [arXiv:2405.14734](https://arxiv.org/abs/2405.14734)
+
+[^13]: DeepSeek, "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning," 2025. [arXiv:2501.12948](https://arxiv.org/abs/2501.12948)
+
+[^14]: Bai et al., "Constitutional AI: Harmlessness from AI Feedback," 2022. [arXiv:2212.08073](https://arxiv.org/abs/2212.08073)
+
+[^15]: Anthropic, "Claude's New Constitution," January 2026. [anthropic.com](https://www.anthropic.com/news/claude-new-constitution)
+
+[^16]: Microsoft Research, "RLTHF: Targeted Human Feedback for LLM Alignment," 2025. [arXiv:2502.13417](https://arxiv.org/abs/2502.13417)
+
+[^17]: Lilian Weng, "Reward Hacking in Reinforcement Learning," 2024. [lilianweng.github.io](https://lilianweng.github.io/posts/2024-11-28-reward-hacking/)
+
+[^18]: Anthropic, "Natural emergent misalignment from reward hacking," November 2025. [anthropic.com](https://www.anthropic.com/research/emergent-misalignment-reward-hacking)
+
+[^19]: Axolotl documentation. [docs.axolotl.ai](https://docs.axolotl.ai/)
+
+[^20]: "Coverage Improvement and Fast Convergence of On-policy Preference Learning," 2026. [arXiv:2601.08421](https://arxiv.org/abs/2601.08421)
+
+[^21]: Gupta et al., "AlphaPO: Reward Shape Matters for LLM Alignment," ICML 2025. [arXiv:2501.03884](https://arxiv.org/abs/2501.03884)
+
+[^22]: Cameron Wolfe, "Group Relative Policy Optimization (GRPO)," 2025. [cameronrwolfe.substack.com](https://cameronrwolfe.substack.com/p/grpo)
+
+[^23]: "LLM Developments 2025: How Efficiency and RLVR Broke the Scaling Obsession." [xugj520.cn](https://www.xugj520.cn/en/archives/llm-2025-developments-rlvr-efficiency.html)
+
+[^24]: Sebastian Raschka, "The State of Reinforcement Learning for LLM Reasoning," 2025. [sebastianraschka.com](https://magazine.sebastianraschka.com/p/the-state-of-llm-reasoning-model-training)
+
+[^25]: "Reinforcement Learning with Verifiable Rewards Implicitly Incentivizes Correct Reasoning in Base LLMs," 2025. [arXiv:2506.14245](https://arxiv.org/abs/2506.14245)
+
+[^26]: "Anthropic releases new AI constitution for Claude," SiliconANGLE, January 2026. [siliconangle.com](https://siliconangle.com/2026/01/21/anthropic-releases-new-ai-constitution-claude/)
+
+[^27]: "School of Reward Hacks: Hacking Harmless Tasks Generalizes to Misalignment," August 2025. [arXiv:2508.17511](https://arxiv.org/abs/2508.17511)
+
+[^28]: Qi et al., "Safety Alignment Should Be Made More Than Just a Few Tokens Deep," ICLR 2025. [arXiv:2406.05946](https://arxiv.org/abs/2406.05946)
+
+[^29]: "Safety Alignment Depth in Large Language Models: A Markov Chain Perspective," February 2025. [arXiv:2502.00669](https://arxiv.org/abs/2502.00669)
+
+[^30]: "Sycophancy in Large Language Models: Causes and Mitigations," 2024. [arXiv:2411.15287](https://arxiv.org/abs/2411.15287)
+
+[^31]: "Sycophancy Is Not One Thing: Causal Separation of Sycophantic Behaviors in LLMs," 2025. [OpenReview](https://openreview.net/forum?id=d24zTCznJu)
+
+[^32]: Lin et al., "Mitigating the Alignment Tax of RLHF," EMNLP 2024. [arXiv:2309.06256](https://arxiv.org/abs/2309.06256)
+
+[^33]: "Asynchronous RLHF: Faster and More Efficient," ICLR 2025. [OpenReview](https://openreview.net/forum?id=FhTAG591Ve)
+
+[^34]: "ReaL: Efficient RLHF Training of Large Language Models with Parameter Reallocation," MLSys 2025. [mlsys.org](https://mlsys.org/virtual/2025/poster/3228)
+
+[^35]: Hugging Face, "Vision Language Model Alignment in TRL," August 2025. [huggingface.co](https://huggingface.co/blog/trl-vlm-alignment)

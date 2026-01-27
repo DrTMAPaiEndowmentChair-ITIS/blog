@@ -1,0 +1,736 @@
+---
+title: "Edge AI Deployment: Running Models on Constrained Devices"
+pubDate: 2026-01-26
+author: "Aadit Agrawal"
+---
+
+import EdgeHardwareCompare from '../../components/viz/EdgeHardwareCompare.astro';
+import EdgeDeploymentStack from '../../components/viz/EdgeDeploymentStack.astro';
+
+**Author**: Aadit Agrawal
+
+## Why deploy AI at the edge
+
+Running inference on edge devices instead of cloud servers addresses four constraints that matter in production systems.
+
+**Latency**: Cloud roundtrips add 100-500ms of network delay before inference even begins. Edge inference on embedded hardware achieves sub-50ms latency for many workloads. Cactus, a Y Combinator startup, demonstrated sub-50ms time-to-first-token for on-device LLM inference in late 2025.[^1] TinyML solutions on microcontrollers achieve inference latencies as low as 0-5ms.[^2]
+
+**Privacy**: Data never leaves the device. This simplifies compliance with GDPR, HIPAA, and similar regulations. Medical imaging, financial analysis, and surveillance applications often require on-premise processing.
+
+**Connectivity**: Edge deployment removes the assumption of reliable internet. Factory floors, remote agricultural sites, vehicles in motion, and aircraft cabins all benefit from inference that works without network access.
+
+**Cost**: After hardware acquisition, inference is free. No per-token API fees, no bandwidth costs, no cloud compute bills. IDC and Gartner predict that by 2027, over 60% of all AI inference will happen locally rather than in the cloud.[^3]
+
+---
+
+## Hardware landscape
+
+The edge AI hardware market reached $30.74 billion in 2026 and is projected to grow to $68.73 billion by 2031 at a 17.46% CAGR.[^4] Leading mobile processors now achieve 45-50 TOPS of inference capability while optimizing battery life through dedicated engines.[^4]
+
+<EdgeHardwareCompare />
+
+### NVIDIA Jetson platform
+
+NVIDIA's Jetson line targets robotics, autonomous machines, and embedded vision applications. The platform runs a full Linux stack with CUDA support. At CES 2026, NVIDIA expanded the lineup with Blackwell-based hardware.
+
+**Jetson AGX Thor**: The new flagship module delivers up to 2070 FP4 TFLOPS (over 1000 INT8 TOPS) with 128GB of LPDDR5X memory.[^5] Built on the Blackwell GPU architecture with 2,560 CUDA cores and 96 fifth-generation Tensor Cores, Thor provides 7.5x higher AI compute and 3.5x greater energy efficiency compared to Jetson Orin.[^6] Power is configurable between 75W and 130W. The developer kit costs $3,499.[^7] Early adopters include Boston Dynamics, Amazon Robotics, Figure, and Meta.[^6]
+
+**Jetson T4000**: The newest Thor family member launched at CES 2026, delivering 1200 TFLOPS of AI compute and 64GB of memory while running at 40-70W.[^8] It features three 25GbE ports for high-bandwidth sensor fusion in edge and robotic applications.[^8]
+
+**Jetson AGX Orin**: The previous-generation flagship delivers up to 275 TOPS of AI performance with power configurable between 15W and 60W.[^9] This handles multiple concurrent vision pipelines or real-time video analytics.
+
+**Jetson Orin NX**: Mid-range option at 157 TOPS with 10-40W power envelope. Fits the smallest Jetson form factor while maintaining substantial compute capability.[^9]
+
+**Jetson Orin Nano Super**: Entry-level edge AI at $249. A software update in late 2024 boosted performance from 40 to 67 TOPS and memory bandwidth from 68 to 102 GB/s. The 8GB module uses an Ampere architecture GPU with 1024 CUDA cores and 32 Tensor Cores running at up to 25W.[^10]
+
+All Jetson modules share a common software stack through JetPack SDK. JetPack 7 supports Jetson Thor with Linux 24.04 LTS, Kernel 6.8, and the latest compute stack.[^5]
+
+### Raspberry Pi AI acceleration
+
+The Raspberry Pi Foundation partnered with Hailo to bring neural network acceleration to the Pi 5. In January 2026, they expanded the lineup with generative AI support.
+
+**AI HAT+ 2**: Released January 15, 2026, this $130 module features the Hailo-10H accelerator with 40 TOPS (INT8) performance and 8GB of dedicated LPDDR4X RAM.[^11] Unlike previous AI HATs focused on computer vision, the AI HAT+ 2 targets generative AI workloads including LLMs and VLMs.[^12] Supported models at launch include DeepSeek-R10-Distill, Llama 3.2, Qwen2.5-Coder, and Qwen2.5-Instruct (1.5B parameter versions).[^11] The chip runs at a maximum of 3W.[^13]
+
+**AI HAT+ 26T**: Uses the full Hailo-8 chip for 26 TOPS. Both variants integrate with rpicam-apps for direct camera pipeline acceleration.
+
+**AI HAT+ 13T**: Contains a Hailo-8L chip delivering 13 TOPS at 3-4 TOPS/W efficiency. The module connects via PCIe 2.0 through an M.2 interface. Cost is approximately $70.[^14]
+
+Raspberry Pi OS automatically detects Hailo modules and makes the NPU available for inference. For vision-based workloads, the AI HAT+ or AI Kit remain cost-effective options. The AI HAT+ 2 adds generative AI capabilities but reviewers note practical LLM performance remains limited.[^15]
+
+### Google Coral Edge TPU
+
+Google's Coral line provides a USB-connected TPU accelerator for existing systems.
+
+The Edge TPU delivers 4 TOPS while consuming 2W; that is 2 TOPS per watt.[^16] The USB Accelerator runs MobileNet v2 at nearly 400 FPS for image classification tasks. The limitation is model compatibility: only TensorFlow Lite models compiled specifically for the Edge TPU will accelerate.
+
+The TPU uses a 64x64 systolic array (estimated, as Google has not published exact specifications) running at approximately 480 MHz. On-chip SRAM is limited to 8MB, so large models must stream weights from the host.[^17]
+
+### Mobile Neural Processing Units
+
+Modern smartphones include dedicated neural engines that rival discrete edge accelerators. Leading mobile processors now achieve 45-50 TOPS of inference capability.[^4]
+
+**Apple Neural Engine**: The M5 chip (October 2025) includes a 16-core Neural Engine with Neural Accelerators in each GPU core, delivering up to 3.5x the AI performance of M4.[^18] The M4 chip delivers 38 TOPS, more than double the M3's 18 TOPS.[^19] The A19 Pro (iPhone 17 Pro, September 2025) features a 16-core Neural Engine with 38 TOPS and improved memory bandwidth, with Neural Accelerators built into each GPU core.[^20] Core ML automatically dispatches workloads to ANE, GPU, or CPU based on model requirements. Apple reports that ANE-optimized models run up to 10x faster with 14x less memory than non-optimized versions.[^21]
+
+**Qualcomm Hexagon NPU**: Snapdragon 8 Elite (Gen 5) NPUs deliver time-to-first-token in just 0.12 seconds on high-resolution images (1024x1024), with up to 100x speedup over CPU and 10x over GPU.[^22] The Snapdragon X Elite delivers 45 TOPS of INT8 performance.[^23] Research shows consistent 50% improvement in prefill speed and up to 110% improvement in decode speed with each successive generation of Snapdragon SoCs.[^24] The NPU is now a standard component, with over 80% of recent Qualcomm SoCs including one.[^22]
+
+At CES 2026, Qualcomm debuted the Dragonwing 1Q10, an 18-core CPU robotics platform designed to compete with NVIDIA's Jetson ecosystem.[^25]
+
+### Nordic Semiconductor (IoT Edge AI)
+
+Nordic Semiconductor announced the nRF54LM20B SoC at CES 2026, integrating the Axon Neural Processing Unit for ultra-low-power edge AI.[^26] Axon delivers up to 7x faster performance and 8x higher energy efficiency versus competing solutions for tasks like sound classification, keyword spotting, and image-based detection.[^26] Broad availability expected Q2 2026.
+
+### Ambarella CV7
+
+Ambarella announced the CV7 edge AI vision SoC at CES 2026, optimized for AI perception applications with 4nm process technology.[^27] The low power consumption reduces thermal management requirements for smaller form factors and longer battery life across AIoT applications.
+
+---
+
+## Model optimization for edge
+
+Edge devices cannot run full-precision models designed for datacenter GPUs. Three techniques reduce model size and compute requirements.
+
+<EdgeDeploymentStack />
+
+### Quantization
+
+Quantization reduces the numerical precision of model weights and activations. Standard training uses FP32; quantization converts to FP16, INT8, or even INT4.
+
+**Post-training quantization (PTQ)** applies after training completes. TensorFlow Lite's full integer quantization produces INT8 models compatible with accelerators like Google Coral and microcontrollers. The process requires a representative dataset to calibrate quantization ranges.[^28]
+
+```python
+import tensorflow as tf
+
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
+converter.representative_dataset = representative_dataset
+converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+converter.inference_input_type = tf.int8
+converter.inference_output_type = tf.int8
+tflite_model = converter.convert()
+```
+
+INT8 quantization produces models 4x smaller than FP32 with inference speedups of 2-4x on supporting hardware.[^28]
+
+**Quantization-aware training (QAT)** integrates quantization into the training loop. The model learns to compensate for quantization errors. PyTorch demonstrated that QAT recovers up to 96% of accuracy degradation on HellaSwag and 68% of perplexity degradation on WikiText compared to PTQ.[^29]
+
+For LLMs on edge, GGUF quantization through llama.cpp offers multiple precision levels from 1.5-bit to 8-bit:[^30]
+
+| Quantization | Size (7B model) | Perplexity increase | Notes |
+|--------------|-----------------|---------------------|-------|
+| Q8_0 | ~7.0 GB | +0.0004 | Highest quality |
+| Q5_K_M | ~5.33 GB | +0.0142 | Optimal balance |
+| Q4_K_M | ~4.58 GB | +0.0535 | Recommended default |
+| Q3_K_M | ~3.52 GB | +0.2437 | Aggressive compression |
+| IQ2_XS | ~2.31 bpw | Higher | Extreme compression |
+
+Q5_K_M is generally regarded as the optimal balance, applying five bits to most weights while retaining higher precision for crucial layers like attention.wv and feed_forward.w2.[^31] For extreme compression, the IQ (importance-quantized) formats support down to 1.5 bits per weight.[^30]
+
+**New quantization formats (2026)**: NVIDIA announced NVFP4 and FP8 quantization support for llama.cpp and Ollama at CES 2026, enabling up to 35% faster token generation on RTX hardware.[^32]
+
+### Pruning
+
+Pruning removes weights that contribute minimally to model output. Structured pruning removes entire channels or neurons; the resulting model runs faster on standard hardware because tensor dimensions shrink.
+
+Research in 2025 achieved up to 400x reduction in neural network size for reinforcement learning tasks by pruning 99% of weights.[^33] For transformer models, a compression approach evaluated on language modeling tasks achieved around 70% overall model compression while maintaining accuracy.[^34]
+
+Unstructured pruning sets weights to zero without changing tensor dimensions. This produces sparse matrices that require specialized hardware or software to accelerate.
+
+```python
+import torch.nn.utils.prune as prune
+
+# Structured pruning: remove 50% of channels by L1 norm
+prune.ln_structured(model.conv1, name='weight', amount=0.5, n=1, dim=0)
+```
+
+### Knowledge distillation
+
+Distillation transfers knowledge from a large teacher model to a smaller student model. The student learns to match the teacher's output distributions rather than just the hard labels.
+
+A hybrid approach combining knowledge distillation, pruning, and quantization produced models 3x smaller than vanilla CNNs while achieving 97% accuracy.[^35] The CQKD framework demonstrated 34,000x compression while preserving accuracy through combined cluster-based quantization and knowledge distillation.[^36]
+
+The shift from large language models (LLMs) to small, task-specific language models (SLMs) emerged as a key trend in 2026, enabling efficient, localized AI deployments with reduced power and compute needs.[^27]
+
+---
+
+## Deployment frameworks
+
+### TensorRT for Jetson
+
+TensorRT is NVIDIA's inference optimizer for Jetson and datacenter GPUs. It converts trained models into optimized engines through graph compilation, layer fusion, and kernel autotuning.
+
+The optimizer identifies operation sequences that can be fused into single GPU kernels. A matmul followed by ReLU becomes one kernel without intermediate memory writes. TensorRT automatically selects optimal GPU kernels based on architecture, precision, and batch size.[^37]
+
+```bash
+# Convert ONNX model to TensorRT engine
+trtexec --onnx=model.onnx \
+        --saveEngine=model.trt \
+        --fp16 \
+        --workspace=4096
+```
+
+Benchmark results on Jetson Nano showed TensorRT optimization achieving 95-110 FPS where non-optimized inference ran at 5-25 FPS.[^38] On average, optimized models exhibit 16% speed improvement over non-optimized counterparts on Jetson hardware.[^39]
+
+### TensorFlow Lite
+
+TensorFlow Lite runs on Android, iOS, embedded Linux, and microcontrollers. It supports GPU delegation on mobile devices and accelerator integration through the delegate API.
+
+```python
+import tensorflow as tf
+
+# Load and run TFLite model
+interpreter = tf.lite.Interpreter(model_path="model.tflite")
+interpreter.allocate_tensors()
+
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+
+interpreter.set_tensor(input_details[0]['index'], input_data)
+interpreter.invoke()
+output = interpreter.get_tensor(output_details[0]['index'])
+```
+
+The Edge TPU delegate routes compatible operations to Google Coral hardware. GPU delegates accelerate on mobile GPUs. The LiteRT QNN accelerator supports 90 LiteRT ops, allowing 64 of 72 models to delegate fully to the Qualcomm NPU.[^22]
+
+### Core ML
+
+Core ML deploys models on Apple devices across iOS, macOS, watchOS, and tvOS. The framework automatically dispatches to CPU, GPU, or Neural Engine based on model characteristics.
+
+```python
+import coremltools as ct
+
+# Convert PyTorch model to Core ML
+model = ct.convert(
+    torch_model,
+    inputs=[ct.TensorType(shape=(1, 3, 224, 224))],
+    compute_precision=ct.precision.FLOAT16,
+    compute_units=ct.ComputeUnit.ALL
+)
+model.save("model.mlpackage")
+```
+
+macOS Sequoia introduced low-bit quantization methods including 4-bit block-wise linear quantization and channel group-wise palettization. These reduce memory footprint for on-device LLM inference.[^40]
+
+ExecuTorch, the PyTorch edge runtime, includes a Core ML backend that dispatches to ANE, GPU, or CPU with FP16 precision.[^41]
+
+### ONNX Runtime
+
+ONNX Runtime provides cross-platform inference with execution providers for different hardware. The CPU provider uses optimized kernels; GPU providers support CUDA, DirectML, and Metal.
+
+```python
+import onnxruntime as ort
+
+# Run with CUDA execution provider
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=['CUDAExecutionProvider', 'CPUExecutionProvider']
+)
+
+outputs = session.run(None, {"input": input_data})
+```
+
+---
+
+## Running LLMs on edge devices
+
+### llama.cpp on Raspberry Pi
+
+llama.cpp runs quantized LLMs on CPUs and GPUs without Python dependencies. Written in pure C/C++ with no external dependencies, it supports ARM devices, Raspberry Pi, and other edge hardware.[^42]
+
+**Benchmark results on Pi 5 (8GB)**:
+- 1B models (Q4): 7+ tokens/second[^43]
+- 3B models (Q4): 4-7 tokens/second[^43]
+- 7B models (Q4_K_M): 0.7-3 tokens/second[^44]
+
+Using BLIS or OpenBLAS for matrix operations improves throughput. One user achieved 5.02 tokens/second on Pi 5 16GB with BLIS optimization.[^45]
+
+```bash
+# Build llama.cpp on Raspberry Pi
+cmake -B build -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS
+cmake --build build --config Release
+
+# Run inference
+./build/bin/llama-cli \
+    -m llama-3.2-1b-q4_k_m.gguf \
+    -p "Explain edge computing:" \
+    -n 256
+```
+
+The BitNet B1.58 2B model achieves over 8 tokens/second with minimal RAM usage, making it well-suited for Pi deployment.[^44]
+
+**2026 updates**: NVIDIA announced optimizations for llama.cpp at CES 2026 including NVFP4/FP8 quantization, GPU token sampling, and memory management improvements, enabling up to 35% faster token generation.[^32] The ik_llama.cpp fork achieved 3x-4x speed improvements for multi-GPU configurations through tensor parallelism at the GGML graph level.[^46]
+
+### MLC LLM on mobile
+
+MLC LLM compiles and optimizes LLMs for mobile GPUs using the TVM compiler stack. Unlike llama.cpp which targets CPUs, MLC LLM uses OpenCL, Vulkan, or Metal for GPU acceleration.[^47]
+
+The framework generates custom operators and runtime code for specific model architectures and target hardware. For Android, MLC LLM uses the OpenCL backend; for iOS, it targets Metal.
+
+**Android performance**: On Snapdragon 8 Gen 2, models like Llama 3-4B run at 8-10 tokens/second. Mid-range devices with 6GB RAM struggle with models larger than 2B parameters.[^48]
+
+**MLC Chat** supports models including Llama 3.2, Gemma 2, Phi 3.5, and Qwen 2.5, offering offline chat, translation, and multimodal tasks. NPU optimization works on Snapdragon 8 Gen 2 and newer.[^48]
+
+ExecuTorch combined with Unsloth's quantization-aware training deploys Qwen3-0.6B on Pixel 8 and iPhone 15 Pro at approximately 40 tokens/second.[^49]
+
+---
+
+## Browser inference
+
+WebGPU enables GPU-accelerated ML inference directly in web browsers without plugins or server calls.
+
+### WebGPU support
+
+As of January 2026, WebGPU has reached 70% browser support across Firefox 147, Safari (iOS 26), and Chrome/Edge, with 65% of new apps already adopting it.[^50] This marks the first year GPU compute works across all major browsers.
+
+### Performance characteristics
+
+WebGPU delivers 10x faster performance than WebGL for transformer models. Microsoft reports approximately 20x speedup over multi-threaded CPU and approximately 550x over single-threaded CPU for certain workloads.[^51]
+
+Browser AI inference via WebLLM now reaches 80% of native MLC-LLM performance.[^50] Benchmarks show:
+- Llama-3.1-8B: 41.1 tokens/second (71.2% native speed)
+- Phi-3.5-mini: 71.1 tokens/second (79.6% native speed)
+- Llama 3.2 models: up to 62 tokens/second in optimal conditions
+- 4-bit quantized 3B model: 90 tokens/second on Apple M3[^52]
+
+On a laptop with NVIDIA RTX 3060, ONNX Runtime Web with WebGPU accelerates Segment Anything's encoder by 19x and decoder by 3.8x.[^51]
+
+Model loading remains a UX challenge: DeepSeek-8B takes 2-3 minutes to download and initialize. Once loaded, inference is often faster than API round-trips.[^53]
+
+### Transformers.js
+
+Transformers.js brings Hugging Face pipelines to the browser. It uses ONNX Runtime Web for execution with WebGPU or WASM backends.
+
+```javascript
+import { pipeline } from '@xenova/transformers';
+
+// Load model with WebGPU backend
+const classifier = await pipeline(
+  'text-classification',
+  'Xenova/distilbert-base-uncased-finetuned-sst-2-english',
+  { device: 'webgpu', dtype: 'fp16' }
+);
+
+const result = await classifier('This movie was great!');
+```
+
+For quantization, Transformers.js supports fp32 (default for WebGPU), fp16, q8 (default for WASM), and q4 precisions.[^54]
+
+### WebLLM
+
+WebLLM is a high-performance in-browser LLM inference engine fully compatible with the OpenAI API, supporting streaming, JSON-mode, and function-calling.[^55] It supports Llama 3, Phi-3, Gemma, and Mistral with WebGPU acceleration.
+
+```javascript
+import * as webllm from "@mlc-ai/web-llm";
+
+const engine = await webllm.CreateMLCEngine("Llama-3.2-1B-Instruct-q4f16_1-MLC");
+
+const response = await engine.chat.completions.create({
+  messages: [{ role: "user", content: "What is edge computing?" }],
+  stream: true
+});
+
+for await (const chunk of response) {
+  console.log(chunk.choices[0]?.delta?.content || "");
+}
+```
+
+---
+
+## Power and thermal considerations
+
+Edge devices operate under power and thermal constraints that datacenter hardware ignores.
+
+### Power budgets
+
+Jetson Thor can run at 75-130W for maximum performance, while Jetson Orin Nano Super runs at up to 25W.[^5][^10] The new Jetson T4000 operates at 40-70W.[^8]
+
+The Hailo-10H in Raspberry Pi AI HAT+ 2 consumes a maximum of 3W while delivering 40 TOPS.[^13] The Hailo-8L in AI HAT+ consumes 2.5-3W while delivering 13-26 TOPS.[^14] Google Coral's Edge TPU uses 2W for 4 TOPS.[^16]
+
+For battery-powered deployments, TOPS per watt determines runtime. Hailo-10H achieves over 13 TOPS/W; Hailo-8L achieves 3-4 TOPS/W; Coral achieves 2 TOPS/W; Jetson Thor achieves approximately 8-13 TOPS/W depending on power mode.
+
+### Thermal throttling
+
+When processors overheat, they reduce clock speeds to prevent damage. This thermal throttling drops inference throughput mid-operation.
+
+AI chips, particularly high-performance SoCs and NPUs, reduce clock speeds automatically when temperatures exceed thresholds. For latency-sensitive applications like real-time video analysis, throttling creates visible quality degradation.[^56]
+
+Mitigation strategies:
+- Active cooling (fans) for continuous high-load operation
+- Passive heatsinks for intermittent workloads
+- Power mode selection matching thermal capacity
+- Ambient temperature monitoring
+
+Jetson's tegrastats utility reports CPU and GPU temperatures to help prevent throttling. Research on Jetson Nano demonstrated that proactive thermal management saves 9-12% average power compared to reactive built-in methods.[^57]
+
+### Quantization for efficiency
+
+Lower precision reduces both compute and memory bandwidth, which reduces power consumption.
+
+Quantization from FP32 to INT8 shrinks memory footprint by 75%. Integer arithmetic requires less energy than floating point on most embedded processors. The combination produces cooler and longer-running edge deployments.[^58]
+
+---
+
+## Benchmark: object detection on Jetson
+
+YOLOv8 object detection benchmarks illustrate real-world edge performance.
+
+### Jetson Orin NX performance
+
+| Model | Precision | FPS | Energy/Inference |
+|-------|-----------|-----|------------------|
+| YOLOv8n | FP16 | 52 | 0.269 J |
+| YOLOv8n | INT8 | 65 | 0.179 J |
+| YOLOv8s | FP16 | 38 | 0.368 J |
+| YOLOv8s | INT8 | 48 | 0.292 J |
+
+INT8 quantization delivers 25% higher FPS with 33% lower energy per inference.[^59]
+
+### Jetson Orin Nano performance
+
+On the 4GB Orin Nano with TensorRT optimization:
+
+| Model | Precision | Latency | FPS |
+|-------|-----------|---------|-----|
+| YOLOv8n | INT8 | 23.16 ms | ~43 |
+| YOLOv8n | FP16 | 26.70 ms | ~37 |
+| YOLOv8s | INT8 | 28.25 ms | ~35 |
+
+C++ implementation with TensorRT outperforms Python frameworks by reducing inference overhead.[^60]
+
+### Jetson Thor performance
+
+Jetson Thor delivers 3.5-4.9x performance gains over Orin in INT8 precision for 4K object detection in live video streams.[^61] The platform supports decoding up to 10x 4Kp60 or 4x 8Kp30 video streams simultaneously.[^5]
+
+### Optimization workflow
+
+```bash
+# Export YOLOv8 to TensorRT engine
+yolo export model=yolov8n.pt format=engine device=0 half=True
+
+# Run inference
+yolo predict model=yolov8n.engine source=video.mp4
+```
+
+---
+
+## Benchmark: LLM inference across devices
+
+Text generation speed varies by hardware, model size, and quantization.
+
+### Tokens per second by device (2026)
+
+| Device | Model | Quantization | Tokens/s |
+|--------|-------|--------------|----------|
+| Jetson Thor | Llama 3.1 8B | FP8 | 80-120 |
+| Jetson Orin Nano | Llama 3.2 3B | Q4_K_M | 15-20 |
+| Raspberry Pi 5 8GB | Llama 3.2 1B | Q4_K_M | 7+ |
+| Raspberry Pi 5 8GB | Llama 2 7B | Q4_K_M | 0.7-3 |
+| iPhone 17 Pro (A19) | Qwen3 0.6B | QAT | ~40 |
+| Snapdragon 8 Gen 2 | Llama 3 4B | Q4 | 8-10 |
+| Browser (M3 laptop) | 3B model | Q4 | 90 |
+| Browser (RTX 3060) | Phi-3 Mini | Q4 | 20-40 |
+
+Source: Compiled from benchmark reports.[^43][^44][^48][^49][^52]
+
+### Memory requirements
+
+| Model Size | Q4_K_M Size | Minimum RAM |
+|------------|-------------|-------------|
+| 1B | ~0.6 GB | 2 GB |
+| 3B | ~1.8 GB | 4 GB |
+| 7B | ~4.6 GB | 8 GB |
+| 13B | ~7.8 GB | 16 GB |
+
+Devices with less RAM than model size will page to disk, reducing throughput to near-unusable levels.
+
+---
+
+## Production deployment considerations
+
+### OTA model updates
+
+Edge devices need remote update capability for model improvements and bug fixes.
+
+OTA (over-the-air) update platforms deploy firmware and model files to fleets of devices without physical access. The architecture includes:
+
+1. Model artifacts stored in cloud repositories
+2. Device agents checking for updates
+3. Secure download with cryptographic signing
+4. Atomic installation with rollback capability
+
+Golioth's OTA system supports multi-part deployments including main firmware, cellular modem firmware, and ML models as separate artifacts.[^62] Mender provides image-based updates that create identical environments across devices.[^63]
+
+**Security requirements**:
+- Cryptographic signing of all update packages
+- Secure boot verification before installation
+- Automatic rollback on failed updates
+- TLS transport for all communications
+
+### Monitoring and telemetry
+
+Remote monitoring tracks inference latency, throughput, error rates, and hardware health.
+
+Key metrics to collect:
+- Inference latency (p50, p95, p99)
+- Throughput (inferences/second)
+- Model accuracy on validation samples
+- Hardware temperature and power draw
+- Memory utilization
+
+Advantech DeviceOn provides OTA updates combined with container management for edge AI deployments.[^64] ThingsBoard supports firmware distribution with version tracking since version 3.3.[^65]
+
+### Fallback strategies
+
+Edge deployments need graceful degradation when primary inference fails.
+
+**Model fallback**: Switch to smaller, faster models when latency budgets are missed. A vision system might drop from YOLOv8m to YOLOv8n under thermal throttling.
+
+**Cloud fallback**: Route requests to cloud inference when device capacity is exceeded or models require updates not yet deployed.
+
+**Cached responses**: Return cached predictions for repeated inputs. This works for classification tasks with limited input variety.
+
+**Graceful denial**: When no inference is possible, return explicit "unknown" responses rather than failing silently.
+
+---
+
+## Complete example: browser chatbot
+
+A functional browser-based chatbot using WebLLM and WebGPU.
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Edge LLM Chat</title>
+  <script type="module">
+    import * as webllm from 'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@latest';
+
+    let engine;
+    const statusEl = document.getElementById('status');
+    const chatEl = document.getElementById('chat');
+    const inputEl = document.getElementById('input');
+
+    async function init() {
+      statusEl.textContent = 'Loading model...';
+
+      engine = await webllm.CreateMLCEngine(
+        "Llama-3.2-1B-Instruct-q4f16_1-MLC",
+        {
+          initProgressCallback: (progress) => {
+            statusEl.textContent = `Loading: ${Math.round(progress.progress * 100)}%`;
+          }
+        }
+      );
+
+      statusEl.textContent = 'Ready';
+    }
+
+    async function generate() {
+      const userMessage = inputEl.value.trim();
+      if (!userMessage || !engine) return;
+
+      chatEl.innerHTML += `<div class="user">User: ${userMessage}</div>`;
+      inputEl.value = '';
+      statusEl.textContent = 'Generating...';
+
+      const response = await engine.chat.completions.create({
+        messages: [{ role: "user", content: userMessage }],
+        stream: true
+      });
+
+      let assistantMessage = '';
+      chatEl.innerHTML += `<div class="assistant">Assistant: <span id="response"></span></div>`;
+      const responseEl = document.getElementById('response');
+
+      for await (const chunk of response) {
+        const content = chunk.choices[0]?.delta?.content || '';
+        assistantMessage += content;
+        responseEl.textContent = assistantMessage;
+      }
+
+      statusEl.textContent = 'Ready';
+    }
+
+    document.getElementById('send').addEventListener('click', generate);
+    inputEl.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') generate();
+    });
+
+    init();
+  </script>
+</head>
+<body>
+  <div id="status">Initializing...</div>
+  <div id="chat"></div>
+  <input id="input" type="text" placeholder="Type a message...">
+  <button id="send">Send</button>
+</body>
+</html>
+```
+
+This loads a quantized Llama 3.2 1B model entirely in the browser. No server required after initial page load. WebLLM provides OpenAI-compatible API with streaming support.
+
+---
+
+## Framework selection guide
+
+| Use Case | Recommended Framework | Hardware |
+|----------|----------------------|----------|
+| Robotics, autonomous systems | TensorRT + JetPack 7 | Jetson Thor/Orin |
+| iOS/macOS apps | Core ML | Apple M5/A19 |
+| Android apps | TensorFlow Lite, MLC LLM | Snapdragon 8 Elite NPU |
+| Raspberry Pi vision | HailoRT, TensorFlow Lite | Pi 5 + AI HAT+ |
+| Raspberry Pi LLM | llama.cpp, HailoRT | Pi 5 + AI HAT+ 2 |
+| Browser deployment | WebLLM, Transformers.js | WebGPU |
+| Cross-platform LLM | llama.cpp | Any CPU/GPU |
+| Microcontrollers | TensorFlow Lite Micro | Cortex-M |
+| Ultra-low power IoT | Nordic Edge AI Lab | nRF54L + Axon NPU |
+
+---
+
+## Summary
+
+Edge AI deployment trades cloud flexibility for latency, privacy, and offline capability. The hardware landscape in 2026 offers options from $70 USB accelerators to $3,499 development kits capable of running multi-AI workflows.
+
+The Jetson Thor platform launched in January 2026 delivers over 1000 TOPS with 128GB memory, enabling on-device generative AI for robotics applications. The Raspberry Pi AI HAT+ 2 brings LLM inference to the $130 price point, though practical performance remains limited to small models.
+
+Mobile NPUs have matured significantly. Apple's M5 chip delivers 3.5x the AI performance of M4, while Qualcomm's Snapdragon 8 Elite achieves 100x speedups over CPU for vision-language models. WebGPU has reached 70% browser coverage, with WebLLM achieving 80% of native inference performance.
+
+Model optimization through quantization, pruning, and distillation makes deployment feasible. Q4 quantization reduces 7B parameter models to under 5GB while preserving most capability. New NVFP4 and FP8 formats provide additional optimization paths on supported hardware.
+
+Production deployment requires more than inference code. OTA updates, monitoring, thermal management, and fallback strategies separate demos from reliable systems.
+
+The direction is clear: AI inference is moving closer to data sources. Edge deployment skills will matter more as this trend continues.
+
+---
+
+## References
+
+[^1]: InfoQ. "Cactus v1: Cross-Platform LLM Inference on Mobile with Zero Latency and Full Privacy." https://www.infoq.com/news/2025/12/cactus-on-device-inference/
+
+[^2]: PMC. "Tiny Machine Learning and On-Device Inference: A Survey." https://pmc.ncbi.nlm.nih.gov/articles/PMC12115890/
+
+[^3]: Novus. "The Rise of Local AI Models: Going Small to Go Big." https://www.novusasi.com/blog/the-rise-of-local-ai-models-going-small-to-go-big
+
+[^4]: GlobeNewswire. "Edge AI Hardware Markets, 2031: Rising AI Demand Spurs Smartphone Refresh Cycles in the Premium Segment." https://www.globenewswire.com/news-release/2026/01/21/3222516/28124/en/Edge-AI-Hardware-Markets-2031-Rising-AI-Demand-Spurs-Smartphone-Refresh-Cycles-in-the-Premium-Segment.html
+
+[^5]: NVIDIA. "Jetson Thor | Advanced AI for Physical Robotics." https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-thor/
+
+[^6]: NVIDIA Newsroom. "NVIDIA Blackwell-Powered Jetson Thor Now Available, Accelerating the Age of General Robotics." https://nvidianews.nvidia.com/news/nvidia-blackwell-powered-jetson-thor-now-available-accelerating-the-age-of-general-robotics
+
+[^7]: Seeed Studio. "NVIDIA Jetson AGX Thor Developer Kit." https://www.seeedstudio.com/NVIDIA-Jetson-AGX-Thor-Developer-Kit-p-9965.html
+
+[^8]: SDxCentral. "Nvidia pushes AI from edge to storage with Jetson T4000 and BlueField-4 updates." https://www.sdxcentral.com/news/nvidia-pushes-ai-from-edge-to-storage-with-jetson-t4000-and-bluefield-4-updates/
+
+[^9]: NVIDIA. "Jetson AGX Orin for Next-Gen Robotics." https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-orin/
+
+[^10]: NVIDIA Developer Blog. "NVIDIA Jetson Orin Nano Developer Kit Gets a Super Boost." https://developer.nvidia.com/blog/nvidia-jetson-orin-nano-developer-kit-gets-a-super-boost/
+
+[^11]: Raspberry Pi. "Introducing the Raspberry Pi AI HAT+ 2: Generative AI on Raspberry Pi 5." https://www.raspberrypi.com/news/introducing-the-raspberry-pi-ai-hat-plus-2-generative-ai-on-raspberry-pi-5/
+
+[^12]: CNX Software. "Raspberry Pi AI HAT+ 2 targets generative AI (LLM/VLM) with Hailo-10H accelerator." https://www.cnx-software.com/2026/01/15/raspberry-pi-ai-hat-2-targets-generative-ai-llm-vlm-with-hailo-10h-accelerator/
+
+[^13]: Electronics Weekly. "Raspberry Pi AI HAT+ 2 updates for Generative AI." https://www.electronicsweekly.com/news/products/raspberry-pi-development/raspberry-pi-ai-hat-2-updates-for-generative-ai-2026-01/
+
+[^14]: Jeff Geerling. "Testing Raspberry Pi's AI Kit - 13 TOPS for $70." https://www.jeffgeerling.com/blog/2024/testing-raspberry-pis-ai-kit-13-tops-70/
+
+[^15]: Jeff Geerling. "Raspberry Pi's new AI HAT adds 8GB of RAM for local LLMs." https://www.jeffgeerling.com/blog/2026/raspberry-pi-ai-hat-2/
+
+[^16]: Google Coral. "USB Accelerator Datasheet." https://www.coral.ai/static/files/Coral-USB-Accelerator-datasheet.pdf
+
+[^17]: Q-engineering. "Google Coral's TPU explained in depth." https://qengineering.eu/google-corals-tpu-explained.html
+
+[^18]: Apple. "Apple unleashes M5, the next big leap in AI performance for Apple silicon." https://www.apple.com/newsroom/2025/10/apple-unleashes-m5-the-next-big-leap-in-ai-performance-for-apple-silicon/
+
+[^19]: Apple. "Apple introduces M4 chip." https://www.apple.com/newsroom/2024/05/apple-introduces-m4-chip/
+
+[^20]: MacRumors. "A19 vs. A19 Pro: iPhone 17 Chip Differences." https://www.macrumors.com/2025/09/09/iphone-17-a19-chip/
+
+[^21]: Apple Machine Learning Research. "Deploying Transformers on the Apple Neural Engine." https://machinelearning.apple.com/research/neural-engine-transformers
+
+[^22]: Google Developers Blog. "Unlocking Peak Performance on Qualcomm NPU with LiteRT." https://developers.googleblog.com/unlocking-peak-performance-on-qualcomm-npu-with-litert/
+
+[^23]: arXiv. "Large Language Model Performance Benchmarking on Mobile Platforms." https://arxiv.org/html/2410.03613v1
+
+[^24]: arXiv. "Scaling LLM Test-Time Compute with Mobile NPU on Smartphones." https://arxiv.org/html/2509.23324v1
+
+[^25]: Automate.org. "CES 2026: Qualcomm Targets NVIDIA Jetson with New Robotics Developer Platform." https://www.automate.org/news/ces-2026-qualcomm-targets-nvidia-jetson-with-new-robotics-developer-platform
+
+[^26]: Nordic Semiconductor. "nRF54L Series SoC with NPU and Nordic Edge AI Lab make on-device intelligence easily accessible." https://www.nordicsemi.com/Nordic-news/2026/01/nRF54L-Series-SoC-with-NPU-and-Nordic-Edge-AI-Lab-make-on-device-intelligence-easily-accessible
+
+[^27]: Unified AI Hub. "Edge AI in 2026: Processing Intelligence at the Edge." https://www.unifiedaihub.com/blog/edge-ai-in-2026-processing-intelligence-where-data-is-generated
+
+[^28]: Google AI Edge. "Post-training quantization." https://ai.google.dev/edge/litert/conversion/tensorflow/quantization/post_training_quantization
+
+[^29]: PyTorch Blog. "Quantization-Aware Training for Large Language Models." https://pytorch.org/blog/quantization-aware-training/
+
+[^30]: llama.cpp GitHub. "Quantize README." https://github.com/ggml-org/llama.cpp/blob/master/tools/quantize/README.md
+
+[^31]: Oreate AI. "Practical Quantization of Llama Models: Detailed Explanation of GGUF and llama.cpp Technologies." https://www.oreateai.com/blog/practical-quantization-of-llama-models-detailed-explanation-of-gguf-and-llamacpp-technologies/
+
+[^32]: NVIDIA Developer Blog. "Open Source AI Tool Upgrades Speed Up LLM and Diffusion Models on NVIDIA RTX PCs." https://developer.nvidia.com/blog/open-source-ai-tool-upgrades-speed-up-llm-and-diffusion-models-on-nvidia-rtx-pcs
+
+[^33]: Nature Scientific Reports. "Neural network compression for reinforcement learning tasks." https://www.nature.com/articles/s41598-025-93955-w
+
+[^34]: Nature Scientific Reports. "Efficient self-attention with smart pruning for sustainable large language models." https://www.nature.com/articles/s41598-025-92586-5
+
+[^35]: Springer. "A Hybrid Lightweight Deep Learning Model for Edge Devices." https://link.springer.com/chapter/10.1007/978-3-031-81083-1_1
+
+[^36]: Wiley. "Optimizing Deep Learning Models for Resource-Constrained Environments." https://onlinelibrary.wiley.com/doi/full/10.1002/eng2.70187
+
+[^37]: NVIDIA Developer Blog. "Optimizing Inference on LLMs with TensorRT-LLM." https://developer.nvidia.com/blog/optimizing-inference-on-llms-with-tensorrt-llm-now-publicly-available/
+
+[^38]: Preste AI. "Optimized Deep Learning using TensorRT for NVIDIA Jetson TX2." https://www.preste.ai/post/optimized-deep-learning-using-tensorrt-for-nvidia-jetson-tx2-part-1
+
+[^39]: arXiv. "Benchmarking Deep Learning Models on NVIDIA Jetson Nano." https://arxiv.org/html/2406.17749v1
+
+[^40]: Apple Developer. "Deploy machine learning and AI models on-device with Core ML - WWDC24." https://developer.apple.com/videos/play/wwdc2024/10161/
+
+[^41]: PyTorch ExecuTorch. "Core ML Backend." https://docs.pytorch.org/executorch/0.7/backends-coreml.html
+
+[^42]: Red Hat Developer. "vLLM or llama.cpp: Choosing the right LLM inference engine for your use case." https://developers.redhat.com/articles/2025/09/30/vllm-or-llamacpp-choosing-right-llm-inference-engine-your-use-case
+
+[^43]: AI Competence. "Running Llama On Raspberry Pi 5 (2025 Setup & Guide)." https://aicompetence.org/running-llama-on-raspberry-pi-5/
+
+[^44]: Stratosphere Laboratory. "How Well Do LLMs Perform on a Raspberry Pi 5?" https://www.stratosphereips.org/blog/2025/6/5/how-well-do-llms-perform-on-a-raspberry-pi-5
+
+[^45]: Medium. "Local LLM eval tokens/sec comparison between llama.cpp and llamafile on Raspberry Pi 5." https://medium.com/aidatatools/local-llm-eval-tokens-sec-comparison-between-llama-cpp-and-llamafile-on-raspberry-pi-5-8gb-model-89cfa17f6f18
+
+[^46]: Medium. "llama.cpp performance breakthrough for multi-GPU setups." https://medium.com/@jagusztinl/llama-cpp-performance-breakthrough-for-multi-gpu-setups-04c83a66feb2
+
+[^47]: Callstack. "Want to Run LLMs on Your Device? Meet MLC." https://www.callstack.com/blog/want-to-run-llms-on-your-device-meet-mlc
+
+[^48]: It's FOSS. "I Ran Local LLMs on My Android Phone." https://itsfoss.com/android-on-device-ai/
+
+[^49]: Unsloth. "How to Run and Deploy LLMs on your iOS or Android Phone." https://unsloth.ai/docs/basics/deploy-llms-phone
+
+[^50]: byteiota. "WebGPU 2026: 70% Browser Support, 15x Performance Gains." https://byteiota.com/webgpu-2026-70-browser-support-15x-performance-gains/
+
+[^51]: Microsoft Open Source Blog. "ONNX Runtime Web unleashes generative AI in the browser using WebGPU." https://opensource.microsoft.com/blog/2024/02/29/onnx-runtime-web-unleashes-generative-ai-in-the-browser-using-webgpu
+
+[^52]: arXiv. "WebLLM: A High-Performance In-Browser LLM Inference Engine." https://arxiv.org/html/2412.15803v1
+
+[^53]: Medium. "WebGPU bugs are holding back the browser AI revolution." https://medium.com/@marcelo.emmerich/webgpu-bugs-are-holding-back-the-browser-ai-revolution-27d5f8c1dfca
+
+[^54]: Hugging Face Blog. "Transformers.js v3: WebGPU Support, New Models & Tasks, and More." https://huggingface.co/blog/transformersjs-v3
+
+[^55]: WebLLM. "Home." https://webllm.mlc.ai/
+
+[^56]: Embedded.com. "Optimizing Edge AI with Advanced Thermal Management in Embedded Systems." https://www.embedded.com/optimizing-edge-ai-with-advanced-thermal-management-in-embedded-systems-2/
+
+[^57]: IEEE Xplore. "Run-Time Prevention of Thermal Throttling on the Edge using Reinforcement-Learning Based Predictive Thermal Aware Power and Performance Management." https://ieeexplore.ieee.org/document/10666109/
+
+[^58]: Janea Systems. "4 Power Management Strategies for Edge AI Devices." https://www.janeasystems.com/blog/power-management-strategies-for-edge-devices
+
+[^59]: Seeed Studio Blog. "YOLOv8 Performance Benchmarks on NVIDIA Jetson Devices." https://www.seeedstudio.com/blog/2023/03/30/yolov8-performance-benchmarks-on-nvidia-jetson-devices/
+
+[^60]: Hackster.io. "Pushing Limits: YOLOv8 vs. v26 on Jetson Orin Nano." https://www.hackster.io/qwe018931/pushing-limits-yolov8-vs-v26-on-jetson-orin-nano-b89267
+
+[^61]: Simalabs. "Jetson AGX Thor vs. Jetson Orin: Latency-Accuracy Benchmarks for 4K Object Detection." https://www.simalabs.ai/resources/jetson-agx-thor-vs-orin-4k-object-detection-live-sports-benchmarks-2025
+
+[^62]: Golioth. "Over-the-Air (OTA) Updates." https://docs.golioth.io/device-management/ota/
+
+[^63]: Mender. "Over-the-air (OTA) update best practices for industrial IoT and embedded devices." https://mender.io/resources/reports-and-guides/ota-updates-best-practices
+
+[^64]: Advantech. "AIoT Device Management and Edge Orchestration - DeviceOn." https://campaign.advantech.online/en/deviceon/index.html
+
+[^65]: ThingsBoard. "Over-the-air firmware and software updates." https://thingsboard.io/docs/user-guide/ota-updates/

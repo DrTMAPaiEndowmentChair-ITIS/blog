@@ -1,0 +1,154 @@
+---
+/**
+ * Benchmark comparison table for Small Language Models
+ * Shows key metrics across popular SLM families
+ */
+interface ModelData {
+  name: string;
+  params: string;
+  mmlu?: string;
+  math?: string;
+  humaneval?: string;
+  context: string;
+  highlight?: boolean;
+}
+
+interface Props {
+  title?: string;
+  models: ModelData[];
+}
+
+const { title, models } = Astro.props;
+---
+
+<div class="slm-benchmark">
+  {title && <div class="table-title">{title}</div>}
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th class="model-col">Model</th>
+          <th>Params</th>
+          <th>MMLU</th>
+          <th>MATH</th>
+          <th>HumanEval</th>
+          <th>Context</th>
+        </tr>
+      </thead>
+      <tbody>
+        {models.map((model) => (
+          <tr class={model.highlight ? 'highlighted' : ''}>
+            <td class="model-name">{model.name}</td>
+            <td class="mono">{model.params}</td>
+            <td class="mono">{model.mmlu || '-'}</td>
+            <td class="mono">{model.math || '-'}</td>
+            <td class="mono">{model.humaneval || '-'}</td>
+            <td class="mono">{model.context}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <div class="table-note">
+    Benchmark scores compiled from official model releases and technical reports.
+    MMLU = Multitask Language Understanding; MATH = competition-level math; HumanEval = code generation.
+  </div>
+</div>
+
+<style>
+  .slm-benchmark {
+    margin: 2em 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .table-wrapper {
+    border: 1px solid var(--border);
+    border-radius: 0;
+    overflow: hidden;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-s);
+  }
+
+  thead {
+    background: var(--astro-code-background);
+  }
+
+  th {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-weight: var(--font-weight-bold);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+  }
+
+  td {
+    padding: 0.625rem 1rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+
+  tr:hover td {
+    background: var(--code-bg);
+  }
+
+  tr.highlighted td {
+    background: var(--selection);
+  }
+
+  tr.highlighted:hover td {
+    background: var(--selection);
+  }
+
+  .model-col {
+    min-width: 160px;
+  }
+
+  .model-name {
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+  }
+
+  .mono {
+    font-family: var(--mono);
+    text-align: center;
+  }
+
+  .table-note {
+    margin-top: 0.75rem;
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    font-style: italic;
+  }
+
+  @media (max-width: 600px) {
+    th, td {
+      padding: 0.5rem 0.625rem;
+      font-size: 0.7rem;
+    }
+
+    .model-col {
+      min-width: 120px;
+    }
+  }
+</style>

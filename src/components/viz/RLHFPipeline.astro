@@ -1,0 +1,282 @@
+---
+/**
+ * RLHF Pipeline visualization showing the three stages of training
+ * 1. SFT (Supervised Fine-Tuning)
+ * 2. Reward Model Training
+ * 3. PPO Optimization
+ */
+interface Stage {
+  id: string;
+  label: string;
+  sublabel: string;
+  details: string[];
+  color: 'sft' | 'rm' | 'ppo';
+}
+
+interface Props {
+  title?: string;
+}
+
+const { title = "RLHF Training Pipeline" } = Astro.props;
+
+const stages: Stage[] = [
+  {
+    id: 'sft',
+    label: 'Stage 1: SFT',
+    sublabel: 'Supervised Fine-Tuning',
+    details: [
+      'Human demonstrations',
+      'Standard cross-entropy loss',
+      'Creates initial policy'
+    ],
+    color: 'sft'
+  },
+  {
+    id: 'rm',
+    label: 'Stage 2: RM',
+    sublabel: 'Reward Model Training',
+    details: [
+      'Pairwise comparisons',
+      'Bradley-Terry model',
+      'Learns human preferences'
+    ],
+    color: 'rm'
+  },
+  {
+    id: 'ppo',
+    label: 'Stage 3: PPO',
+    sublabel: 'Policy Optimization',
+    details: [
+      'KL-penalized reward',
+      'Clipped surrogate objective',
+      'Iterative updates'
+    ],
+    color: 'ppo'
+  }
+];
+---
+
+<div class="rlhf-pipeline">
+  <div class="pipeline-title">{title}</div>
+
+  <div class="pipeline-container">
+    {stages.map((stage, index) => (
+      <>
+        <div class={`pipeline-stage stage-${stage.color}`} data-stage={stage.id}>
+          <div class="stage-header">
+            <div class="stage-number">{index + 1}</div>
+            <div class="stage-titles">
+              <div class="stage-label">{stage.label}</div>
+              <div class="stage-sublabel">{stage.sublabel}</div>
+            </div>
+          </div>
+          <ul class="stage-details">
+            {stage.details.map((detail) => (
+              <li>{detail}</li>
+            ))}
+          </ul>
+        </div>
+        {index < stages.length - 1 && (
+          <div class="pipeline-arrow">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </div>
+        )}
+      </>
+    ))}
+  </div>
+
+  <div class="pipeline-feedback">
+    <div class="feedback-line"></div>
+    <div class="feedback-label">RM evaluates policy outputs</div>
+  </div>
+</div>
+
+<style>
+  .rlhf-pipeline {
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+  }
+
+  .pipeline-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .pipeline-container {
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding-bottom: 1rem;
+  }
+
+  .pipeline-stage {
+    flex: 1;
+    min-width: 180px;
+    padding: 1rem;
+    background: var(--bg);
+    border: 2px solid var(--border);
+    transition: all 0.2s ease-out;
+  }
+
+  .pipeline-stage:hover {
+    transform: translateY(-2px);
+  }
+
+  .stage-sft {
+    border-color: #6366f1;
+  }
+
+  .stage-rm {
+    border-color: #f59e0b;
+  }
+
+  .stage-ppo {
+    border-color: #10b981;
+  }
+
+  .stage-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .stage-number {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--text-secondary);
+    color: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: bold;
+    flex-shrink: 0;
+  }
+
+  .stage-sft .stage-number {
+    background: #6366f1;
+  }
+
+  .stage-rm .stage-number {
+    background: #f59e0b;
+  }
+
+  .stage-ppo .stage-number {
+    background: #10b981;
+  }
+
+  .stage-titles {
+    flex: 1;
+  }
+
+  .stage-label {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+  }
+
+  .stage-sublabel {
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    margin-top: 0.125rem;
+  }
+
+  .stage-details {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .stage-details li {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    padding: 0.25rem 0;
+    padding-left: 1rem;
+    position: relative;
+  }
+
+  .stage-details li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--text-tertiary);
+  }
+
+  .pipeline-arrow {
+    display: flex;
+    align-items: center;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+  }
+
+  .pipeline-feedback {
+    position: relative;
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+  }
+
+  .feedback-line {
+    position: absolute;
+    top: 0;
+    left: 33%;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #f59e0b, #10b981);
+  }
+
+  .feedback-line::before {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: -3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+  }
+
+  .feedback-label {
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+    font-family: var(--mono);
+    text-align: center;
+    padding-top: 0.5rem;
+  }
+
+  @media (max-width: 768px) {
+    .pipeline-container {
+      flex-direction: column;
+    }
+
+    .pipeline-arrow {
+      transform: rotate(90deg);
+      justify-content: center;
+      padding: 0.5rem 0;
+    }
+
+    .pipeline-stage {
+      min-width: auto;
+    }
+
+    .pipeline-feedback {
+      display: none;
+    }
+  }
+</style>

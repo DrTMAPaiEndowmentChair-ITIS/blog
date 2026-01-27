@@ -1,0 +1,349 @@
+---
+title: "Mixture of Experts: Sparse Computation for Efficient LLMs"
+pubDate: 2026-01-26
+author: "Aadit Agrawal"
+---
+
+import MoERouting from '../../components/viz/MoERouting.astro';
+import MoEComparison from '../../components/viz/MoEComparison.astro';
+
+Dense transformer models activate every parameter for every token. This approach scales poorly; doubling model capacity means doubling compute. Mixture of Experts (MoE) breaks this constraint by routing each token to a subset of specialized sub-networks, enabling models with hundreds of billions of parameters while maintaining reasonable inference costs.
+
+The shift is complete. On the Artificial Analysis leaderboard, the top 10 open-source models all use MoE architectures[^1]. DeepSeek-R1, Kimi K2 Thinking, Qwen3, Llama 4, and Mistral Large 3 have demonstrated that sparse models match or exceed dense model performance at a fraction of the computational cost. Dense scaling alone no longer works. That is why ERNIE-4.5, Qwen3, Kimi K2, and others all use MoE. Dense models scale intelligence by doing more work. MoE scales intelligence by doing the right work.
+
+## The Core Idea
+
+An MoE layer replaces the standard feed-forward network (FFN) in a transformer block with multiple parallel FFNs called "experts." A learned routing network determines which experts process each token. Most tokens activate only 1-2 experts out of 8, 128, or even 512 available experts.
+
+Consider Mixtral 8x7B. The model contains 46.7 billion total parameters, but each token only activates 12.9 billion parameters during inference[^2]. You get the representational capacity of a 47B model with roughly the compute cost of a 13B dense model. Newer models push this further: Kimi K2 activates 32B of 1 trillion total parameters (3.2% activation), and Qwen3-Next activates just 3B of 80B parameters (3.7% activation)[^3][^4].
+
+<MoERouting />
+
+The routing mechanism computes a probability distribution over experts for each token. A gating function G(x) = softmax(W_g * x) produces weights, and the top-K experts by weight process the token. The final output combines expert outputs weighted by their routing scores.
+
+## How Routing Works at Implementation Level
+
+The router is a simple linear layer that projects the token hidden state to a vector of expert scores:
+
+```python
+class Router(nn.Module):
+    def __init__(self, hidden_dim, num_experts, top_k=2):
+        super().__init__()
+        self.gate = nn.Linear(hidden_dim, num_experts, bias=False)
+        self.top_k = top_k
+
+    def forward(self, x):
+        # x: [batch, seq_len, hidden_dim]
+        logits = self.gate(x)  # [batch, seq_len, num_experts]
+        scores = F.softmax(logits, dim=-1)
+
+        # Select top-k experts per token
+        top_scores, top_indices = torch.topk(scores, self.top_k, dim=-1)
+
+        # Renormalize selected weights
+        top_scores = top_scores / top_scores.sum(dim=-1, keepdim=True)
+
+        return top_scores, top_indices
+```
+
+Switch Transformer simplified earlier MoE designs by using top-1 routing instead of top-2[^5]. This reduces computation and communication overhead while maintaining model quality. The routing decision for each token is independent, allowing different tokens in the same sequence to use different experts.
+
+### Expert Dispatch and Gather
+
+After routing decisions are made, tokens must be physically dispatched to their assigned experts. This creates a challenge: tensor shapes must be known at compile time for efficient execution, but we cannot predict how many tokens each expert will receive.
+
+The standard solution uses a "capacity factor" that sets maximum tokens per expert:
+
+```python
+capacity = (tokens_per_batch / num_experts) * capacity_factor
+```
+
+A capacity factor of 1.0 assumes perfect load balance. In practice, values between 1.25 and 2.0 are common to handle routing imbalance[^6]. Tokens that exceed an expert's capacity are either dropped (passed through via residual connection) or handled through auxiliary mechanisms.
+
+## What Experts Actually Learn
+
+A common misconception: experts do not learn human-interpretable domains like "physics" or "medicine." Research on Switch Transformer and other MoE models shows that experts specialize at the token level, not the semantic level[^7].
+
+Encoder experts tend to specialize in syntactic patterns. One expert might handle punctuation tokens, another proper nouns, another sentence-initial tokens. Decoder experts show less clear specialization but maintain consistent activation patterns for specific token types.
+
+DeepSeek's architecture separates "shared experts" that activate for every token from "routing experts" that activate conditionally[^8]. Shared experts learn broad patterns required across all inputs; syntax processing and high-level semantic features. Routing experts capture more specialized, context-dependent computations.
+
+This finding has practical implications. MoE models perform well on knowledge-heavy tasks like TriviaQA but may underperform dense models on reasoning tasks at equivalent perplexity levels[^7].
+
+## Load Balancing Strategies
+
+Without intervention, routers collapse to using only a few experts while ignoring others. This wastes parameters and defeats the purpose of having multiple experts.
+
+### Auxiliary Loss
+
+Switch Transformer introduced an auxiliary loss that encourages balanced expert utilization[^5]. Given N experts and a batch of T tokens, the loss penalizes deviation from uniform distribution:
+
+```python
+def load_balance_loss(router_probs, expert_indices, num_experts):
+    # f_i: fraction of tokens assigned to expert i
+    # P_i: mean router probability for expert i
+
+    # Count tokens per expert
+    tokens_per_expert = torch.zeros(num_experts)
+    for i in range(num_experts):
+        tokens_per_expert[i] = (expert_indices == i).float().sum()
+    f = tokens_per_expert / tokens_per_expert.sum()
+
+    # Mean probability per expert
+    P = router_probs.mean(dim=0)
+
+    # Auxiliary loss: scaled dot product
+    return num_experts * (f * P).sum()
+```
+
+The auxiliary loss coefficient requires careful tuning. Too small and experts collapse; too large and the balancing signal overwhelms the primary training objective. Switch Transformer used alpha = 0.01, finding this balanced load quickly without degrading model quality[^5].
+
+### Auxiliary-Loss-Free Balancing
+
+DeepSeek-V3 pioneered auxiliary-loss-free load balancing[^9]. Instead of adding a loss term, they modify the routing mechanism itself to maintain balance without gradient interference. This avoids the fundamental trade-off where auxiliary losses can hurt model performance when weighted too heavily.
+
+The approach, called Loss-Free Balancing, applies expert-wise bias to routing scores before the top-K decision. By dynamically updating each expert's bias according to its recent load, it maintains balanced distribution without producing interference gradients[^10]. Validation on MoE models with up to 3B parameters trained on 200B tokens showed both better performance and better load balance compared with auxiliary-loss-controlled strategies.
+
+Interestingly, despite calling it "auxiliary-loss-free," DeepSeek V3 still uses a small complementary sequence-wise balance loss with a very small hyperparameter[^11]. A theoretical framework published at NeurIPS 2025 analyzed the Loss-Free Balancing procedure, proving monotonic improvement of a Lagrangian objective and an approximate-balancing guarantee[^12].
+
+### Global vs. Micro-Batch Balance
+
+Research from ACL 2025 found that employing global-batch load balance significantly outperforms micro-batch level balance by incorporating more diverse domain information[^13]. The finding: adding a small amount of micro-batch load balance while using global-batch balance can maintain model performance while reducing latency from local imbalance. Qwen3 adopted global-batch load balancing loss based on this research[^14].
+
+### Expert Choice Routing
+
+Expert Choice (EC) routing inverts the standard approach: instead of tokens selecting top-k experts, experts select top-k tokens[^15]. Each token can be routed to a variable number of experts while each expert maintains a fixed bucket size. This achieves optimal load balancing while allowing heterogeneity in token-to-expert mapping.
+
+Recent extensions include TC-MoE (ICLR 2025), which expands the expert space using ternary sets {-1, 0, 1}, achieving 1.1% improvement while reducing activated experts by up to 9%[^16]. Apple's EC-DIT (NeurIPS 2025) applied expert-choice routing to diffusion transformers, scaling to 97 billion parameters[^17].
+
+### Capacity Factor Trade-offs
+
+Setting expert capacity involves a three-way trade-off:
+
+1. **Too low**: Tokens get dropped, losing information
+2. **Too high**: Wasted computation on empty expert slots
+3. **Dynamic**: More complex implementation, harder to optimize
+
+Mixtral demonstrated that with diverse training data and proper initialization, load balance can emerge naturally without explicit auxiliary losses[^18]. The top-k routing over varied data spreads selections across experts. Post-training analysis confirmed all experts receive substantial token allocations.
+
+## Training Dynamics and Challenges
+
+### Instability
+
+MoE training exhibits higher variance than dense models. The routing decisions create feedback loops: an expert that performs well receives more tokens, gets more gradient updates, and becomes even more likely to be selected. This can lead to expert collapse or oscillating training dynamics.
+
+Switch Transformer showed that large sparse models can be trained with bfloat16 precision, but this requires careful attention to numerical stability in the routing computation[^5]. Many implementations use float32 for the router even when the rest of the model uses mixed precision.
+
+Kimi K2 trained for 15.5 trillion tokens with zero training instability by applying the Muon optimizer at unprecedented scale and developing novel optimization techniques[^3].
+
+### Communication Overhead
+
+In distributed training, MoE layers require all-to-all communication. Each token must be sent to the GPU holding its assigned expert, processed, and returned. This communication pattern differs from standard tensor or data parallelism.
+
+Expert parallelism (EP) distributes experts across GPUs. A model with 256 experts across 8 GPUs places 32 experts per GPU. The all-to-all communication volume scales with batch size and the degree of expert parallelism.
+
+Hybrid parallelism combines EP with tensor parallelism (TP) and data parallelism (DP). The optimal configuration depends on expert sizes, model architecture, and hardware interconnect bandwidth[^19].
+
+### Multi-Token Prediction
+
+DeepSeek-V3 pioneered combining MoE with multi-token prediction (MTP) training objectives[^9]. Instead of predicting only the next token, MTP predicts the next k tokens at each position using k independent output heads on a shared trunk. The approach allows denser training signals and improves data efficiency.
+
+Unlike other MTP methods, DeepSeek's approach maintains the causal chain by predicting additional tokens sequentially rather than in parallel. MTP modules are dropped at inference (though they can accelerate generation via speculative decoding), with acceptance rates between 85-90% for the second token prediction[^11]. Models trained with 4-token prediction are up to 3x faster at inference[^20].
+
+### Fine-Grained vs Coarse-Grained Experts
+
+Traditional MoE uses a moderate number of large experts. DeepSeek introduced fine-grained experts: more experts with smaller hidden dimensions, activating more experts per token[^8].
+
+If you have N experts activating K per token, fine-grained design uses mN experts with hidden dimension reduced by 1/m, activating mK experts per token. Total computation stays constant, but the model has access to more diverse expert combinations.
+
+The trend toward higher sparsity continues. DeepSeek-V3 uses 256 experts with 8 active per token. Kimi K2 increased sparsity further: 384 experts with 8 active, resulting in sparsity of 48 (384/8)[^3]. Qwen3-Next pushes to the extreme: 512 experts activating about 19 per token, achieving only 3.7% parameter activation with a 1:50 activation ratio[^4].
+
+## Hybrid Attention Architectures
+
+A major 2025 development combines MoE with linear attention mechanisms. Standard attention scales quadratically with context length. Linear attention variants like Gated DeltaNet scale linearly but compress past context through a memory bottleneck[^21].
+
+Qwen3-Next and Kimi Linear proposed hybrid architectures using a 3:1 ratio: for every three transformer blocks employing linear Gated DeltaNet, one block uses full attention[^22][^23]. This structure enables efficient long-context modeling while preserving reasoning capability on complex tasks.
+
+Gated DeltaNet combines the gating mechanism from Mamba2 with the delta update rule from DeltaNet. Gating enables rapid memory erasure; the delta rule facilitates targeted updates. The combination consistently surpasses Mamba2 and DeltaNet across language modeling, common-sense reasoning, in-context retrieval, and length extrapolation benchmarks[^21].
+
+For the MoE layers in these hybrid architectures, the structure repeats as: Layers 1-3 use Linear attention followed by MoE, Layer 4 uses Full attention followed by MoE. Qwen3-Next's flagship 80B-A3B model achieves only 3B active parameters per token through this design[^4].
+
+## Inference Considerations
+
+### Memory Requirements
+
+MoE models require loading all expert weights into memory, even though each token only uses a fraction. A 671B parameter MoE model needs 671B parameters worth of storage, not 37B.
+
+This creates an asymmetry between training and inference optimization. Training benefits from compute efficiency (fewer FLOPs per token). Inference on smaller batches may be bottlenecked by memory bandwidth for loading expert weights rather than compute. DeepSeek-V3's total computational cost is approximately 250 GFLOPS per token, whereas a 72B dense model requires 394 GFLOPS and a 405B dense model requires 2448 GFLOPS[^11].
+
+### Batch Routing Efficiency
+
+Large batch sizes help MoE inference. With more tokens, each expert receives more work, improving GPU utilization. DeepSeek-V3's high sparsity (8 of 256 experts) requires large batch sizes to ensure sufficient tokens per expert[^24].
+
+The routing pattern varies per batch, creating dynamic load imbalance. Some experts may be overloaded while others sit idle. Inference latency is determined by the most loaded expert, so load imbalance directly impacts throughput.
+
+### Expert Parallelism in Inference
+
+vLLM now supports expert parallelism for large-scale MoE deployment, combining Data Parallel attention with Expert or Tensor Parallel MoE layers[^25]. Key optimizations include:
+
+1. **Expert Parallel Load Balancing (EPLB)**: vLLM collects load statistics with every forward pass and periodically rebalances expert distribution across EP ranks[^25].
+2. **Communication backends**: DeepSeek's DeepEP kernels use nvshmem with high-throughput mode for prefill and low-latency mode for decode. Perplexity's PPLX provides a more flexible alternative for chunked prefill scenarios[^26].
+3. **Wide Expert Parallelism**: Simplifies scaling across multi-node deployments using NIXL+UCX for inter-node communication[^26].
+
+MoEShard achieves load balance through tensor sharding of experts rather than capacity-based dropping[^27]. Each expert's weights are split across GPUs, and all GPUs participate in computing each expert's output. This guarantees full token retention regardless of routing skew.
+
+<MoEComparison />
+
+### Hardware Optimization: Blackwell NVL72
+
+The NVIDIA GB200 NVL72 rack-scale platform connects 72 Blackwell GPUs using fifth-generation NVLink, providing 1,800 GB/s bidirectional bandwidth[^28]. This large scale-up domain is optimized for sparse MoE architectures, which require frequent all-to-all exchanges between experts.
+
+MoE models see a 10x performance leap on GB200 NVL72 compared with HGX H200, enabling one-tenth the cost per token[^1]. Key enablers include hardware acceleration for NVFP4 four-bit floating point, disaggregated serving through NVIDIA Dynamo, and multi-token prediction support in TensorRT-LLM[^28].
+
+For DeepSeek-R1, NVIDIA achieved over 250 tokens per second per user and maximum throughput over 30,000 tokens per second on a single DGX system with eight Blackwell GPUs[^29]. The GB300 NVL72 (Blackwell Ultra) delivered 45% higher performance per GPU on DeepSeek-R1 compared to GB200 NVL72[^30].
+
+## Survey of Current MoE Models (2025-2026)
+
+### Switch Transformer (2021)
+
+Google's Switch Transformer demonstrated MoE at scale with 1.6 trillion parameters across 2048 experts[^5]. Using top-1 routing, it achieved 7x pre-training speedup over T5 models while reducing the complexity of earlier MoE approaches. The work established auxiliary load balancing losses as standard practice.
+
+### Mixtral (2024)
+
+Mistral's Mixtral 8x7B popularized MoE for open-weight models[^2]. With 8 experts and top-2 routing, it uses 12.9B active parameters from 46.7B total. Mixtral achieved natural load balance without auxiliary losses, suggesting careful initialization and diverse training data can replace explicit balancing mechanisms.
+
+### DeepSeek-V3 (2024)
+
+DeepSeek-V3 combines fine-grained experts (256 total, 8 active) with Multi-head Latent Attention (MLA) and auxiliary-loss-free load balancing[^9]. The model has 671B total parameters with 37B active, trained on 14.8 trillion tokens. Training required 2.788 million H800 GPU hours. DeepSeek reported performance competitive with closed-source frontier models.
+
+### DeepSeek-R1 (January 2025)
+
+DeepSeek-R1 builds on the V3 architecture, using the same 671B/37B MoE structure but trained via large-scale reinforcement learning without supervised fine-tuning as a preliminary step[^31]. Analysis shows 67 experts per layer in R1 compared to 55 per layer in V3. The model achieves 79.8% pass@1 on AIME, 97.3% on MATH-500, and a 2,029 Elo rating on Codeforces-like challenges[^31].
+
+### Llama 4 (April 2025)
+
+Meta's Llama 4 represents Meta's first MoE architecture and first natively multimodal models[^32]. The family includes:
+
+- **Llama 4 Scout**: 17B active parameters, 16 experts, fits on a single H100 with INT4 quantization, supports 10 million token context
+- **Llama 4 Maverick**: 17B active / 400B total, 128 routed experts plus 1 shared expert, alternating dense and MoE layers, 1 million token context
+- **Llama 4 Behemoth**: 288B active parameters, 16 experts, nearly 2 trillion total parameters, outperforms GPT-4.5, Claude Sonnet 3.7, and Gemini 2.0 Pro on MATH-500 and GPQA Diamond[^32]
+
+Maverick's architecture sends each token to the shared expert plus one of 128 routed experts, using alternating dense and MoE layers for inference efficiency.
+
+### Qwen3 (May 2025)
+
+The Qwen3 series includes models from 0.6B to 235B parameters[^14]. Qwen3-235B-A22B uses 128 experts with 8 active, activating 22B of 235B parameters. Unlike earlier Qwen MoE models, Qwen3 removes shared experts and uses global-batch load balancing loss. Training covered 36 trillion tokens across 119 languages.
+
+A key innovation is the integration of thinking mode (complex multi-step reasoning) and non-thinking mode (rapid responses) into a unified framework, enabling dynamic mode switching. Qwen3-235B-A22B-Thinking-2507 beats OpenAI O3 across key metrics: 92 vs 88.0 on AIME'25, 83 vs 82.5 on HMMT'25[^33].
+
+### Qwen3-Next (September 2025)
+
+Alibaba's Qwen3-Next-80B-A3B represents ultra-sparse MoE design[^4]. With 512 experts and only 3B active parameters (3.7% activation, 1:50 ratio), it combines hybrid attention (Gated DeltaNet + Gated Attention) with multi-token prediction. Every 4th layer uses standard GQA attention; others use linear attention variants. The model supports 256K context natively, extendable to 1 million tokens.
+
+### Kimi K2 (July 2025)
+
+Moonshot AI's Kimi K2 uses 1 trillion total parameters with 32B active, featuring 384 experts with 8 selected per token plus 1 shared expert[^3]. The architecture follows DeepSeek V3's MLA design with 7168 hidden dimension and 2048 expert hidden dimension. Trained with the Muon optimizer on 15.5T tokens with zero instability, it executes 200-300 sequential tool calls autonomously. Kimi K2 Thinking adds step-by-step reasoning with dynamic tool invocation.
+
+### Mistral Large 3 (December 2025)
+
+Mistral Large 3 is a sparse MoE with 675B total and 41B active parameters, a 16:1 ratio[^34]. The architecture uses thousands of specialized expert subnetworks with granular sparse routing. Training used 3000 H200 GPUs. The model delivers 92% of GPT-5.2's performance at roughly 15% of the price[^1]. Released under Apache 2.0 license.
+
+### ERNIE 4.5 (July 2025)
+
+Baidu's ERNIE 4.5 series includes 10 variants from 0.3B to 424B parameters[^35]. The architecture introduces heterogeneous modality MoE with modality-isolated routing for text, image, and video. Key innovations include router orthogonal loss and multimodal token-balanced loss. ERNIE-4.5-300B-A47B-Base surpasses DeepSeek-V3-671B-A37B-Base on 22 of 28 benchmarks[^35]. The MoE variants activate 2 of 64 experts per token.
+
+### Grok 3 (February 2025)
+
+xAI's Grok 3 uses an MoE transformer with estimated 1.5 trillion parameters[^36]. Trained with 10x more compute than Grok-2 on the Colossus cluster (approximately 200k GPUs), it employs sparse attention mechanisms and MoE layers that dynamically allocate computational resources. The architecture continues the Grok-1 approach of 64 transformer layers with MoE feed-forward layers using a router picking a subset of expert MLPs per token. Grok 3's "Think" and "Big Brain" modes expose chain-of-thought reasoning with additional compute allocation[^36].
+
+## When to Use MoE vs Dense Models
+
+MoE makes sense when:
+
+- **Training compute is limited**: Sparse models achieve better quality per FLOP
+- **Inference batch sizes are large**: Amortizes expert loading overhead
+- **Knowledge breadth matters**: MoE excels at knowledge-intensive tasks
+- **You have fast interconnects**: All-to-all communication needs low latency
+
+Dense models may be preferable when:
+
+- **Inference is memory-bound**: MoE requires full model in memory
+- **Reasoning depth matters more than knowledge breadth**: Dense models may perform better on complex reasoning
+- **Single-request latency is critical**: Small batches underutilize MoE capacity
+- **Deployment hardware is constrained**: Expert parallelism needs multiple GPUs
+
+The trend is clear: MoE architectures dominate the frontier. As interconnect speeds improve and inference systems mature, the compute efficiency advantages of sparse models become harder to ignore.
+
+## References
+
+[^1]: [NVIDIA Blog - Mixture of Experts Powers the Most Intelligent Frontier AI Models](https://blogs.nvidia.com/blog/mixture-of-experts-frontier-models/)
+
+[^2]: [Mixtral of Experts - arXiv:2401.04088](https://arxiv.org/abs/2401.04088)
+
+[^3]: [Kimi K2: Open Agentic Intelligence - Moonshot AI](https://moonshotai.github.io/Kimi-K2/)
+
+[^4]: [Qwen3-Next: A New Generation of Ultra-Efficient Model Architecture - Alibaba Cloud](https://www.alibabacloud.com/blog/602536)
+
+[^5]: [Switch Transformers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity - arXiv:2101.03961](https://arxiv.org/abs/2101.03961)
+
+[^6]: [Mixture of Experts Explained - Hugging Face Blog](https://huggingface.co/blog/moe)
+
+[^7]: [A Visual Guide to Mixture of Experts - Maarten Grootendorst](https://newsletter.maartengrootendorst.com/p/a-visual-guide-to-mixture-of-experts)
+
+[^8]: [Understanding DeepSeek Part I: DeepSeekMoE - Chris Hayduk](https://www.chrishayduk.com/p/understanding-deepseek-part-i-deepseekmoe)
+
+[^9]: [DeepSeek-V3 Technical Report - arXiv:2412.19437](https://arxiv.org/abs/2412.19437)
+
+[^10]: [Auxiliary-Loss-Free Load Balancing Strategy for Mixture-of-Experts - arXiv:2408.15664](https://arxiv.org/abs/2408.15664)
+
+[^11]: [A Technical Tour of the DeepSeek Models from V3 to V3.2 - Sebastian Raschka](https://magazine.sebastianraschka.com/p/technical-deepseek)
+
+[^12]: [A Theoretical Framework for Auxiliary-Loss-Free Load-Balancing - NeurIPS 2025](https://openreview.net/forum?id=sQHZ2w8UzP)
+
+[^13]: [On Implementing Load Balancing Loss for Training MoE - ACL 2025](https://aclanthology.org/2025.acl-long.249.pdf)
+
+[^14]: [Qwen3 Technical Report - arXiv:2505.09388](https://arxiv.org/abs/2505.09388)
+
+[^15]: [Mixture-of-Experts with Expert Choice Routing - arXiv:2202.09368](https://arxiv.org/abs/2202.09368)
+
+[^16]: [TC-MoE: Augmenting Mixture of Experts with Ternary Expert Choice - ICLR 2025](https://openreview.net/forum?id=dsP91M4hDL)
+
+[^17]: [EC-DIT: Scaling Diffusion Transformers with Adaptive Expert-Choice Routing - Apple ML Research](https://machinelearning.apple.com/research/ec-dit)
+
+[^18]: [Understanding Mixture-of-Experts: Switch Transformer's Load Balancing vs. Mixtral's Natural Balance - Medium](https://medium.com/@pilliudayaditya1207/understanding-mixture-of-experts-switch-transformers-load-balancing-vs-mixtral-s-natural-balance-25ed528cadfe)
+
+[^19]: [A Hybrid Tensor-Expert-Data Parallelism Approach - DeepSpeed-TED](https://pssg.cs.umd.edu/assets/papers/2023-06-deepspeed-ted-moe.pdf)
+
+[^20]: [Better & Faster Large Language Models via Multi-token Prediction - arXiv:2404.19737](https://arxiv.org/abs/2404.19737)
+
+[^21]: [Gated Delta Networks: Improving Mamba2 with Delta Rule - arXiv:2412.06464](https://arxiv.org/abs/2412.06464)
+
+[^22]: [vLLM Now Supports Qwen3-Next: Hybrid Architecture with Extreme Efficiency](https://blog.vllm.ai/2025/09/11/qwen3-next.html)
+
+[^23]: [Kimi Linear: An Expressive, Efficient Attention Architecture - arXiv:2510.26692](https://arxiv.org/abs/2510.26692)
+
+[^24]: [MoE Inference Economics from First Principles - Tensor Economics](https://www.tensoreconomics.com/p/moe-inference-economics-from-first)
+
+[^25]: [Expert Parallel Deployment - vLLM Documentation](https://docs.vllm.ai/en/latest/serving/expert_parallel_deployment/)
+
+[^26]: [Scaling DeepSeek-style MoEs with vLLM and llm-d using Wide EP - Red Hat Developer](https://developers.redhat.com/articles/2025/09/08/scaling-deepseek-style-moes-vllm-and-llm-d-using-wide-ep)
+
+[^27]: [Accelerating MoE Model Inference with Expert Sharding - arXiv:2503.08467](https://arxiv.org/abs/2503.08467)
+
+[^28]: [Delivering Massive Performance Leaps for MoE Inference on NVIDIA Blackwell - NVIDIA Technical Blog](https://developer.nvidia.com/blog/delivering-massive-performance-leaps-for-mixture-of-experts-inference-on-nvidia-blackwell/)
+
+[^29]: [NVIDIA Blackwell Delivers World-Record DeepSeek-R1 Inference Performance - NVIDIA Technical Blog](https://developer.nvidia.com/blog/nvidia-blackwell-delivers-world-record-deepseek-r1-inference-performance/)
+
+[^30]: [NVIDIA Blackwell Ultra Sets New Inference Records in MLPerf Debut - NVIDIA Technical Blog](https://developer.nvidia.com/blog/nvidia-blackwell-ultra-sets-new-inference-records-in-mlperf-debut/)
+
+[^31]: [DeepSeek-R1 - GitHub](https://github.com/deepseek-ai/DeepSeek-R1)
+
+[^32]: [The Llama 4 herd: The beginning of a new era of natively multimodal AI innovation - Meta AI](https://ai.meta.com/blog/llama-4-multimodal-intelligence/)
+
+[^33]: [Ultimate Guide - The Best Qwen3 Models in 2026 - SiliconFlow](https://www.siliconflow.com/articles/en/the-best-qwen3-models-in-2025)
+
+[^34]: [Introducing Mistral 3 - Mistral AI](https://mistral.ai/news/mistral-3)
+
+[^35]: [Announcing the Open Source Release of the ERNIE 4.5 Model Family - Baidu](https://ernie.baidu.com/blog/posts/ernie4.5/)
+
+[^36]: [The Tech Behind Grok 3 - MOHA Software](https://mohasoftware.com/blog/the-tech-behind-elon-musks-xai-latest-release-grok-3)

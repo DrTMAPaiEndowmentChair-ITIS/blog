@@ -1,0 +1,231 @@
+---
+/**
+ * Visual diagram showing SLM deployment tiers
+ * From cloud to edge to mobile to browser
+ */
+interface DeploymentTier {
+  name: string;
+  device: string;
+  memory: string;
+  models: string[];
+  latency: string;
+}
+
+interface Props {
+  title?: string;
+}
+
+const { title } = Astro.props;
+
+const tiers: DeploymentTier[] = [
+  {
+    name: "Server",
+    device: "GPU Server",
+    memory: "24-80GB VRAM",
+    models: ["Phi-4 14B", "Qwen 2.5 7B", "Llama 3.2 3B"],
+    latency: "10-50ms"
+  },
+  {
+    name: "Desktop",
+    device: "Mac/PC with GPU",
+    memory: "8-16GB RAM",
+    models: ["Phi-4-mini 3.8B", "Gemma 3 4B", "Qwen 2.5 3B"],
+    latency: "30-100ms"
+  },
+  {
+    name: "Edge",
+    device: "Raspberry Pi / NPU",
+    memory: "4-8GB RAM",
+    models: ["Llama 3.2 1B", "SmolLM2 1.7B", "Gemma 3 1B"],
+    latency: "100-500ms"
+  },
+  {
+    name: "Mobile",
+    device: "Phone / Tablet",
+    memory: "2-6GB RAM",
+    models: ["Gemma 3 270M", "SmolLM 360M", "Phi Silica"],
+    latency: "50-200ms"
+  }
+];
+---
+
+<div class="deployment-tiers">
+  {title && <div class="tiers-title">{title}</div>}
+  <div class="tiers-container">
+    {tiers.map((tier, index) => (
+      <div class="tier-card">
+        <div class="tier-header">
+          <span class="tier-name">{tier.name}</span>
+          <span class="tier-index">{String(index + 1).padStart(2, '0')}</span>
+        </div>
+        <div class="tier-device">{tier.device}</div>
+        <div class="tier-specs">
+          <div class="spec-row">
+            <span class="spec-label">Memory</span>
+            <span class="spec-value">{tier.memory}</span>
+          </div>
+          <div class="spec-row">
+            <span class="spec-label">Latency</span>
+            <span class="spec-value">{tier.latency}</span>
+          </div>
+        </div>
+        <div class="tier-models">
+          <span class="models-label">Suitable models</span>
+          <ul class="model-list">
+            {tier.models.map((model) => (
+              <li>{model}</li>
+            ))}
+          </ul>
+        </div>
+        {index < tiers.length - 1 && (
+          <div class="tier-arrow" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 5v14M19 12l-7 7-7-7"/>
+            </svg>
+          </div>
+        )}
+      </div>
+    ))}
+  </div>
+  <div class="tiers-note">
+    Deployment tiers represent typical configurations. Actual performance depends on quantization level and specific hardware.
+  </div>
+</div>
+
+<style>
+  .deployment-tiers {
+    margin: 2em 0;
+  }
+
+  .tiers-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .tiers-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+  }
+
+  .tier-card {
+    position: relative;
+    padding: 1.25rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  .tier-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+
+  .tier-name {
+    font-weight: var(--font-weight-bold);
+    font-size: 1rem;
+    color: var(--text-primary);
+  }
+
+  .tier-index {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+  }
+
+  .tier-device {
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .tier-specs {
+    margin-bottom: 1rem;
+  }
+
+  .spec-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.25rem 0;
+  }
+
+  .spec-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+  }
+
+  .spec-value {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--text-primary);
+  }
+
+  .tier-models {
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .models-label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+  }
+
+  .model-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .model-list li {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    padding: 0.125rem 0;
+  }
+
+  .model-list li::before {
+    content: ">";
+    margin-right: 0.5rem;
+    color: var(--text-tertiary);
+    font-family: var(--mono);
+  }
+
+  .tier-arrow {
+    display: none;
+  }
+
+  .tiers-note {
+    margin-top: 1rem;
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    font-style: italic;
+  }
+
+  @media (max-width: 900px) {
+    .tiers-container {
+      grid-template-columns: 1fr;
+    }
+
+    .tier-arrow {
+      display: flex;
+      justify-content: center;
+      padding: 0.5rem 0;
+      color: var(--text-tertiary);
+    }
+  }
+</style>

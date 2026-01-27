@@ -1,0 +1,357 @@
+---
+/**
+ * Interactive agentic loop visualization
+ * Shows the observe -> think -> act cycle with animated transitions
+ */
+interface Props {
+  title?: string;
+  animationSpeed?: 'slow' | 'normal' | 'fast';
+}
+
+const { title = 'The Agentic Loop', animationSpeed = 'normal' } = Astro.props;
+const speedMs = { slow: 2500, normal: 1500, fast: 900 }[animationSpeed];
+---
+
+<div class="agent-loop" data-speed={speedMs}>
+  {title && <div class="loop-title">{title}</div>}
+
+  <div class="loop-container">
+    <button class="loop-control play-btn" aria-label="Play animation">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M4 2.5v11l9-5.5-9-5.5z"/>
+      </svg>
+    </button>
+
+    <div class="loop-diagram">
+      <div class="loop-stage observe" data-stage="observe">
+        <div class="stage-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 5v-2M12 21v-2M5 12H3M21 12h-2M7.05 7.05L5.636 5.636M18.364 18.364l-1.414-1.414M7.05 16.95l-1.414 1.414M18.364 5.636l-1.414 1.414"/>
+          </svg>
+        </div>
+        <div class="stage-label">Observe</div>
+        <div class="stage-desc">Read files, search code, check state</div>
+      </div>
+
+      <div class="loop-arrow arrow-1">
+        <svg width="40" height="24" viewBox="0 0 40 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M0 12h32M32 12l-6-6M32 12l-6 6"/>
+        </svg>
+      </div>
+
+      <div class="loop-stage think" data-stage="think">
+        <div class="stage-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z"/>
+            <path d="M9 21h6M10 17v4M14 17v4"/>
+          </svg>
+        </div>
+        <div class="stage-label">Think</div>
+        <div class="stage-desc">Reason about next step, plan action</div>
+      </div>
+
+      <div class="loop-arrow arrow-2">
+        <svg width="40" height="24" viewBox="0 0 40 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M0 12h32M32 12l-6-6M32 12l-6 6"/>
+        </svg>
+      </div>
+
+      <div class="loop-stage act" data-stage="act">
+        <div class="stage-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+          </svg>
+        </div>
+        <div class="stage-label">Act</div>
+        <div class="stage-desc">Execute tool: edit, run, search</div>
+      </div>
+
+      <div class="loop-return">
+        <svg class="return-arrow" viewBox="0 0 200 60" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M180 10 C 200 10, 200 50, 180 50 L 20 50 C 0 50, 0 10, 20 10" stroke-dasharray="4 4"/>
+          <path d="M20 10l6 6M20 10l6-6"/>
+        </svg>
+        <span class="return-label">loop until done</span>
+      </div>
+    </div>
+
+    <div class="loop-tools">
+      <div class="tools-label">Available Tools</div>
+      <div class="tools-grid">
+        <span class="tool-chip">file_read</span>
+        <span class="tool-chip">file_write</span>
+        <span class="tool-chip">shell_exec</span>
+        <span class="tool-chip">search</span>
+        <span class="tool-chip">lsp_query</span>
+        <span class="tool-chip">web_fetch</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function initAgentLoop() {
+    document.querySelectorAll('.agent-loop').forEach((container) => {
+      const playBtn = container.querySelector('.play-btn');
+      const stages = container.querySelectorAll('.loop-stage');
+      const arrows = container.querySelectorAll('.loop-arrow');
+      const returnArrow = container.querySelector('.loop-return');
+      const speed = parseInt(container.dataset.speed || '1500', 10);
+
+      let isPlaying = false;
+      let animationFrame: ReturnType<typeof setTimeout>;
+      let currentStep = -1;
+
+      const steps = ['observe', 'arrow-1', 'think', 'arrow-2', 'act', 'return'];
+
+      const clearAll = () => {
+        stages.forEach((s) => s.classList.remove('active'));
+        arrows.forEach((a) => a.classList.remove('active'));
+        returnArrow?.classList.remove('active');
+      };
+
+      const animate = () => {
+        if (!isPlaying) return;
+
+        currentStep++;
+        if (currentStep >= steps.length) {
+          currentStep = 0;
+          clearAll();
+        }
+
+        const step = steps[currentStep];
+
+        if (step === 'observe' || step === 'think' || step === 'act') {
+          clearAll();
+          container.querySelector(`[data-stage="${step}"]`)?.classList.add('active');
+        } else if (step === 'arrow-1' || step === 'arrow-2') {
+          container.querySelector(`.${step}`)?.classList.add('active');
+        } else if (step === 'return') {
+          returnArrow?.classList.add('active');
+        }
+
+        animationFrame = setTimeout(animate, speed);
+      };
+
+      const togglePlay = () => {
+        isPlaying = !isPlaying;
+        playBtn?.classList.toggle('playing', isPlaying);
+
+        if (isPlaying) {
+          currentStep = -1;
+          clearAll();
+          animate();
+        } else {
+          clearTimeout(animationFrame);
+        }
+      };
+
+      playBtn?.addEventListener('click', togglePlay);
+    });
+  }
+
+  initAgentLoop();
+  document.addEventListener('astro:after-swap', initAgentLoop);
+</script>
+
+<style>
+  .agent-loop {
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  .loop-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .loop-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .loop-control {
+    align-self: flex-start;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease-out;
+  }
+
+  .loop-control:hover {
+    border-color: var(--text-secondary);
+  }
+
+  .loop-control.playing {
+    background: var(--text-secondary);
+    border-color: var(--text-secondary);
+    color: var(--bg);
+  }
+
+  .loop-diagram {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    position: relative;
+    padding-bottom: 3rem;
+  }
+
+  .loop-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem 1.25rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    min-width: 120px;
+    transition: all 0.2s ease-out;
+  }
+
+  .loop-stage.active {
+    border-color: var(--text-secondary);
+    transform: translateY(-4px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  html.dark .loop-stage.active {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .loop-stage.observe.active {
+    border-color: #4a9eff;
+  }
+
+  .loop-stage.think.active {
+    border-color: #a855f7;
+  }
+
+  .loop-stage.act.active {
+    border-color: #22c55e;
+  }
+
+  .stage-icon {
+    color: var(--text-tertiary);
+    margin-bottom: 0.5rem;
+    transition: color 0.2s ease-out;
+  }
+
+  .loop-stage.observe.active .stage-icon { color: #4a9eff; }
+  .loop-stage.think.active .stage-icon { color: #a855f7; }
+  .loop-stage.act.active .stage-icon { color: #22c55e; }
+
+  .stage-label {
+    font-family: var(--mono);
+    font-weight: var(--font-weight-bold);
+    font-size: var(--font-size-s);
+    color: var(--text-primary);
+  }
+
+  .stage-desc {
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+    margin-top: 0.25rem;
+    text-align: center;
+    max-width: 100px;
+  }
+
+  .loop-arrow {
+    color: var(--border);
+    transition: color 0.2s ease-out;
+    flex-shrink: 0;
+  }
+
+  .loop-arrow.active {
+    color: var(--text-secondary);
+  }
+
+  .loop-return {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80%;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: var(--border);
+    transition: color 0.2s ease-out;
+  }
+
+  .loop-return.active {
+    color: var(--text-secondary);
+  }
+
+  .return-arrow {
+    width: 100%;
+    height: 40px;
+  }
+
+  .return-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    margin-top: -0.5rem;
+  }
+
+  .loop-tools {
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .tools-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    margin-bottom: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .tools-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .tool-chip {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    padding: 0.25rem 0.625rem;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+
+  @media (max-width: 600px) {
+    .loop-diagram {
+      flex-direction: column;
+      padding-bottom: 0;
+    }
+
+    .loop-arrow {
+      transform: rotate(90deg);
+    }
+
+    .loop-return {
+      display: none;
+    }
+  }
+</style>

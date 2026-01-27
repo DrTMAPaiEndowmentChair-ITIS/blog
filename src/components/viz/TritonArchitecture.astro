@@ -1,0 +1,240 @@
+---
+/**
+ * Triton Inference Server + TensorRT-LLM architecture visualization
+ * Shows the complete request flow through the inference stack
+ */
+interface Layer {
+  id: string;
+  label: string;
+  sublabel?: string;
+  components?: string[];
+  color?: 'accent' | 'highlight' | 'muted';
+}
+
+interface Props {
+  title?: string;
+}
+
+const { title = "Triton + TensorRT-LLM Architecture" } = Astro.props;
+
+const layers: Layer[] = [
+  {
+    id: "clients",
+    label: "Client Applications",
+    sublabel: "gRPC / HTTP / OpenAI-compatible API",
+    color: "muted"
+  },
+  {
+    id: "triton",
+    label: "Triton Inference Server",
+    sublabel: "Request scheduling, model management, metrics",
+    components: ["Model Repository", "Scheduler", "Backend Manager"],
+    color: "accent"
+  },
+  {
+    id: "ensemble",
+    label: "Ensemble Pipeline",
+    sublabel: "Preprocessing → TRT-LLM → Postprocessing",
+    components: ["Tokenizer", "TensorRT-LLM Backend", "Detokenizer"],
+    color: "highlight"
+  },
+  {
+    id: "trtllm",
+    label: "TensorRT-LLM Runtime",
+    sublabel: "Executor API with in-flight batching",
+    components: ["KV Cache Manager", "Batch Scheduler", "CUDA Graphs"],
+    color: "accent"
+  },
+  {
+    id: "engine",
+    label: "TensorRT Engine",
+    sublabel: "Optimized CUDA kernels",
+    components: ["Fused Attention", "Quantized Weights", "Layer Fusion"],
+    color: "highlight"
+  },
+  {
+    id: "gpu",
+    label: "NVIDIA GPU",
+    sublabel: "H100 / A100 / L40S",
+    color: "muted"
+  }
+];
+---
+
+<div class="triton-arch">
+  <div class="arch-title">{title}</div>
+
+  <div class="arch-stack">
+    {layers.map((layer, index) => (
+      <>
+        <div class={`arch-layer ${layer.color}`} data-layer={layer.id}>
+          <div class="layer-main">
+            <span class="layer-label">{layer.label}</span>
+            <span class="layer-sublabel">{layer.sublabel}</span>
+          </div>
+          {layer.components && (
+            <div class="layer-components">
+              {layer.components.map((comp) => (
+                <span class="component-tag">{comp}</span>
+              ))}
+            </div>
+          )}
+        </div>
+        {index < layers.length - 1 && (
+          <div class="arch-connector">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <path d="M12 5V19M12 19L6 13M12 19L18 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        )}
+      </>
+    ))}
+  </div>
+
+  <div class="arch-legend">
+    <div class="legend-item">
+      <span class="legend-dot accent"></span>
+      <span>Core Components</span>
+    </div>
+    <div class="legend-item">
+      <span class="legend-dot highlight"></span>
+      <span>Optimization Layers</span>
+    </div>
+  </div>
+</div>
+
+<style>
+  .triton-arch {
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  .arch-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .arch-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  .arch-layer {
+    width: 100%;
+    max-width: 500px;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    transition: all 0.15s ease-out;
+  }
+
+  .arch-layer:hover {
+    transform: translateX(4px);
+  }
+
+  .arch-layer.accent {
+    border-left: 3px solid var(--text-secondary);
+  }
+
+  .arch-layer.highlight {
+    border-left: 3px solid var(--text-tertiary);
+    background: var(--code-bg);
+  }
+
+  .arch-layer.muted {
+    border-left: 3px solid var(--border);
+  }
+
+  .layer-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .layer-label {
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+    font-size: var(--font-size-base);
+  }
+
+  .layer-sublabel {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+  }
+
+  .layer-components {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+
+  .component-tag {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    padding: 0.2rem 0.5rem;
+    background: var(--selection);
+    border-radius: 0;
+    color: var(--text-secondary);
+  }
+
+  .arch-connector {
+    color: var(--text-tertiary);
+    padding: 0.25rem 0;
+  }
+
+  .arch-legend {
+    display: flex;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    font-family: var(--mono);
+  }
+
+  .legend-dot {
+    width: 12px;
+    height: 3px;
+  }
+
+  .legend-dot.accent {
+    background: var(--text-secondary);
+  }
+
+  .legend-dot.highlight {
+    background: var(--text-tertiary);
+  }
+
+  @media (max-width: 600px) {
+    .arch-layer {
+      padding: 0.75rem 1rem;
+    }
+
+    .layer-components {
+      gap: 0.375rem;
+    }
+
+    .component-tag {
+      font-size: 0.6rem;
+      padding: 0.15rem 0.375rem;
+    }
+  }
+</style>

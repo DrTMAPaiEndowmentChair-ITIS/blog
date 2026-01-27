@@ -1,0 +1,711 @@
+---
+title: "NVIDIA TensorRT and Triton: Production LLM Inference"
+pubDate: 2026-01-26
+author: "Aadit Agrawal"
+---
+
+import TritonArchitecture from '../../components/viz/TritonArchitecture.astro';
+import InferenceComparison from '../../components/viz/InferenceComparison.astro';
+
+Deploying LLMs at scale requires more than loading a model and serving requests. Production systems must handle concurrent users, minimize latency, maximize GPU utilization, and provide observability. NVIDIA's TensorRT-LLM and Triton Inference Server form a battle-tested stack for these requirements.
+
+TensorRT-LLM became fully open-source in March 2025 and now delivers over 40,000 tokens per second on Blackwell B200 GPUs running Llama 4[^new1]. The stack integrates with NVIDIA Dynamo for datacenter-scale orchestration across thousands of GPUs[^new2].
+
+This guide covers the complete deployment pipeline: building optimized TensorRT engines, configuring Triton for LLM workloads, and tuning for production performance.
+
+---
+
+## TensorRT-LLM overview
+
+TensorRT-LLM is NVIDIA's open-source library for compiling and running large language models on NVIDIA GPUs. Built on PyTorch, it provides a Python API for model definition while generating highly optimized CUDA kernels for inference[^1]. The current release (January 2026) uses PyTorch 2.9.0, TensorRT 10.9, and CUDA 12.8.1[^new3].
+
+The library handles several optimization categories:
+
+**Quantization**: TensorRT-LLM supports NVFP4, FP8, INT4 AWQ, and INT8 SmoothQuant quantization formats. NVFP4 is a 4-bit floating-point format introduced with Blackwell GPUs that reduces KV cache memory by 50% compared to FP8 while maintaining less than 1% accuracy loss on benchmarks including LiveCodeBench, MMLU-PRO, and MBPP[^new4]. FP8 on Hopper and Blackwell architectures delivers 2.5-3x inference speed improvements compared to FP16[^2].
+
+**Kernel fusion**: Multiple transformer operations combine into single CUDA kernels. LayerNorm, matrix multiplications, bias additions, and activation functions execute together instead of requiring separate kernel launches and memory transfers[^3].
+
+**Attention optimizations**: Custom FlashAttention kernels, multi-head/multi-query/grouped-query attention support, and fused attention implementations reduce memory bandwidth requirements.
+
+**Parallelism**: Tensor parallelism splits matrix multiplications across GPUs. Pipeline parallelism distributes model layers sequentially across devices. Wide expert parallelism (EP) enables efficient Mixture-of-Experts inference on models like DeepSeek-R1 and Llama 4[^new5]. All strategies enable serving models larger than single-GPU memory[^4].
+
+**Speculative decoding**: TensorRT-LLM supports EAGLE-3, multi-token prediction (MTP), and ReDrafter techniques for accelerated token generation. EAGLE-3 with speculative decoding achieves up to 4x speedup on Llama 4 Maverick[^new6]. ReDrafter, developed by Apple and integrated into TensorRT-LLM, achieves up to 2.7x throughput improvements on H100 GPUs[^new7].
+
+<TritonArchitecture />
+
+---
+
+## Building TensorRT engines for LLMs
+
+TensorRT-LLM converts model weights into optimized TensorRT engines through a two-step process: checkpoint conversion and engine building.
+
+### Step 1: Quantize and convert checkpoints
+
+The `quantize.py` script converts Hugging Face checkpoints to TensorRT-LLM format while applying quantization:
+
+```bash
+# NVFP4 quantization (Blackwell GPUs - recommended for B200/GB200)
+python examples/quantization/quantize.py \
+  --model_dir /path/to/llama-70b \
+  --qformat nvfp4 \
+  --kv_cache_dtype nvfp4 \
+  --output_dir /output/llama-70b-nvfp4 \
+  --tp_size 4
+
+# FP8 quantization (Hopper/Ada/Blackwell GPUs)
+python examples/quantization/quantize.py \
+  --model_dir /path/to/llama-70b \
+  --qformat fp8 \
+  --kv_cache_dtype fp8 \
+  --output_dir /output/llama-70b-fp8 \
+  --tp_size 4
+
+# INT4 AWQ quantization (all GPU generations)
+python examples/quantization/quantize.py \
+  --model_dir /path/to/llama-70b \
+  --qformat int4_awq \
+  --awq_block_size 64 \
+  --output_dir /output/llama-70b-int4awq \
+  --tp_size 4
+```
+
+The `--tp_size` parameter specifies tensor parallelism degree. Set this to the number of GPUs you will use for inference. INT4 AWQ uses block-wise quantization; smaller block sizes (64 vs 128) provide better accuracy at marginal compute cost[^5]. NVFP4 uses block-wise quantization with size 16 and FP8 scaling factors for higher precision during dequantization[^new4].
+
+### Step 2: Build the engine
+
+The `trtllm-build` command compiles checkpoints into TensorRT engines:
+
+```bash
+trtllm-build \
+  --checkpoint_dir /output/llama-70b-fp8 \
+  --output_dir /engines/llama-70b-fp8 \
+  --gemm_plugin fp8 \
+  --gpt_attention_plugin fp8 \
+  --max_batch_size 64 \
+  --max_input_len 4096 \
+  --max_seq_len 8192 \
+  --use_fused_mlp enable \
+  --workers 4
+```
+
+Key build parameters:
+
+| Parameter | Purpose |
+|-----------|---------|
+| `--gemm_plugin` | Enables cuBLASLt for optimized matrix operations |
+| `--gpt_attention_plugin` | Uses efficient attention kernels with in-place KV cache updates |
+| `--use_fused_mlp` | Enables horizontal fusion in GatedMLP layers |
+| `--max_batch_size` | Maximum concurrent sequences the engine supports |
+| `--max_input_len` | Maximum input context length |
+| `--max_seq_len` | Maximum total sequence length (input + output) |
+
+For FP8 on Hopper GPUs, the GEMM + SwiGLU fusion in Gated-MLP combines two Matmul operations and one SwiGLU operation into a single kernel[^6].
+
+### Layer fusion patterns
+
+TensorRT's compiler identifies and fuses operation sequences automatically. Common fusion patterns include:
+
+- **RMSNorm fusion**: Combines normalization with subsequent quantization
+- **Attention fusion**: Merges Q/K/V projections with attention computation
+- **MLP fusion**: Fuses gate and up projections with activation functions
+- **AllReduce fusion**: Combines reduction with LayerNorm after multi-GPU communication
+
+The `--reduce_fusion enable` flag eliminates extra copies from local buffers to shared buffers in communication kernels[^7].
+
+---
+
+## Disaggregated serving
+
+Disaggregated serving separates compute-intensive prefill operations from memory-bound decode operations onto specialized hardware clusters. This architecture addresses the fundamental mismatch between prefill (compute-bound, benefits from high FLOPS) and decode (memory-bound, benefits from high memory bandwidth) phases[^new8].
+
+TensorRT-LLM supports three disaggregated serving approaches:
+
+**trtllm-serve**: A command-line utility that deploys OpenAI-compatible servers for each context and generation instance, with an orchestrator coordinating requests.
+
+**Dynamo integration**: NVIDIA Dynamo orchestrates requests across prefill and decode workers with KV-cache-aware routing. The smart router determines optimal decode workers based on KV cache block availability[^new2].
+
+**NIXL acceleration**: The NVIDIA Inference Exchange Library (NIXL) accelerates KV cache transfer between GPUs with low-latency communication primitives.
+
+Disaggregated architectures demonstrate up to 6.4x throughput improvements and 20x reduction in latency variance. Organizations report 15-40% infrastructure cost reductions through optimized hardware allocation[^new9].
+
+---
+
+## In-flight batching and paged attention
+
+Traditional batching waits until a batch fills before processing. In-flight batching (also called continuous batching or iteration-level batching) processes new requests immediately without waiting for existing sequences to complete[^8].
+
+### How in-flight batching works
+
+The TensorRT-LLM scheduler manages two phases:
+
+1. **Context phase**: Processing input prompts, computing initial KV cache entries
+2. **Generation phase**: Autoregressive token generation using cached keys/values
+
+With in-flight batching, sequences in context phase process together with sequences in generation phase. When a generation sequence finishes, a new context sequence can immediately take its slot. This keeps GPU utilization high even with variable-length inputs and outputs.
+
+### Paged KV cache
+
+Instead of allocating KV cache as contiguous memory blocks, paged attention splits the cache into smaller blocks that can be allocated non-contiguously[^9]. This approach:
+
+- Eliminates memory fragmentation from variable sequence lengths
+- Enables KV cache sharing between requests with common prefixes
+- Supports block sizes of 8, 16, 32, 64, or 128 tokens per block
+
+The paged KV cache allocates memory upfront in TensorRT-LLM rather than on-demand. Plan for approximately 60% additional VRAM beyond model weights for KV cache allocation[^10].
+
+### Chunked prefill
+
+Long input contexts can delay generation for concurrent requests. Chunked prefill divides the context phase into smaller chunks, enabling better parallelization with decode operations[^11].
+
+This feature allows GPU systems to handle longer contexts and higher concurrency by decoupling memory consumption from context length.
+
+---
+
+## Triton Inference Server architecture
+
+Triton provides the serving infrastructure around TensorRT-LLM engines. It handles request routing, model loading, batching, and metrics collection. The OpenAI-compatible frontend transitioned from beta to stable in 2025, enabling drop-in compatibility with OpenAI API clients[^new10].
+
+### Core components
+
+**Model Repository**: A directory structure containing model configurations and artifacts. Each model has a `config.pbtxt` file defining inputs, outputs, and backend settings.
+
+**Scheduler**: Routes incoming requests to model instances. For LLMs, the scheduler typically delegates batching decisions to the TensorRT-LLM runtime.
+
+**Backend Manager**: Loads and manages model backends. The TensorRT-LLM backend uses the C++ Executor API for optimal performance.
+
+**Metrics Server**: Exposes Prometheus-compatible metrics on port 8002 by default.
+
+**Security note**: Organizations should update to Triton version 25.07 or later to address CVE-2025-23319, CVE-2025-23320, and CVE-2025-23334, which when chained could allow unauthenticated remote code execution[^new11].
+
+### Model ensemble structure
+
+The TensorRT-LLM backend uses an ensemble of three models:
+
+```
+model_repository/
+├── ensemble/
+│   └── config.pbtxt
+├── preprocessing/
+│   ├── config.pbtxt
+│   └── 1/model.py
+├── tensorrt_llm/
+│   ├── config.pbtxt
+│   └── 1/
+│       └── [engine files]
+└── postprocessing/
+    ├── config.pbtxt
+    └── 1/model.py
+```
+
+**Preprocessing**: Tokenizes input text using the model's tokenizer
+**TensorRT-LLM**: Runs inference on the optimized engine
+**Postprocessing**: Detokenizes output IDs back to text
+
+The ensemble model chains these together automatically.
+
+---
+
+## Configuring Triton for LLMs
+
+### tensorrt_llm model configuration
+
+The core configuration for the TensorRT-LLM backend:
+
+```protobuf
+name: "tensorrt_llm"
+backend: "tensorrtllm"
+max_batch_size: 64
+
+model_transaction_policy {
+  decoupled: true
+}
+
+input [
+  { name: "input_ids" data_type: TYPE_INT32 dims: [-1] },
+  { name: "input_lengths" data_type: TYPE_INT32 dims: [1] },
+  { name: "request_output_len" data_type: TYPE_INT32 dims: [1] },
+  { name: "end_id" data_type: TYPE_INT32 dims: [1] },
+  { name: "pad_id" data_type: TYPE_INT32 dims: [1] },
+  { name: "stream" data_type: TYPE_BOOL dims: [1] optional: true }
+]
+
+output [
+  { name: "output_ids" data_type: TYPE_INT32 dims: [-1] },
+  { name: "sequence_length" data_type: TYPE_INT32 dims: [1] }
+]
+
+parameters {
+  key: "gpt_model_path"
+  value: { string_value: "/engines/llama-70b-fp8" }
+}
+
+parameters {
+  key: "batching_type"
+  value: { string_value: "inflight_fused_batching" }
+}
+
+parameters {
+  key: "max_tokens_in_paged_kv_cache"
+  value: { string_value: "2048000" }
+}
+
+parameters {
+  key: "kv_cache_free_gpu_mem_fraction"
+  value: { string_value: "0.85" }
+}
+```
+
+Key parameters explained:
+
+| Parameter | Value | Purpose |
+|-----------|-------|---------|
+| `decoupled: true` | Required for streaming | Enables async responses |
+| `batching_type` | `inflight_fused_batching` | Enables continuous batching |
+| `max_tokens_in_paged_kv_cache` | Token count | Total KV cache capacity |
+| `kv_cache_free_gpu_mem_fraction` | 0.0-1.0 | Fraction of free GPU memory for KV cache |
+
+### Instance configuration
+
+The `instance_count` parameter controls concurrent execution. For most workloads, set this to 5 or higher[^12]:
+
+```protobuf
+instance_group [
+  {
+    count: 5
+    kind: KIND_GPU
+    gpus: [0, 1, 2, 3]
+  }
+]
+```
+
+### Queue management
+
+Control request queuing behavior:
+
+```protobuf
+parameters {
+  key: "max_queue_delay_microseconds"
+  value: { string_value: "100000" }
+}
+
+parameters {
+  key: "max_queue_size"
+  value: { string_value: "256" }
+}
+```
+
+Setting `max_queue_delay_microseconds` above 0 improves batch formation by waiting for additional requests to arrive.
+
+---
+
+## TensorRT-LLM backend setup walkthrough
+
+### 1. Pull the container
+
+```bash
+docker pull nvcr.io/nvidia/tritonserver:25.10-py3
+```
+
+### 2. Create model repository
+
+```bash
+# Clone the backend repository
+git clone https://github.com/triton-inference-server/tensorrtllm_backend.git
+cd tensorrtllm_backend
+
+# Copy template models
+mkdir -p /triton_models
+cp -r all_models/inflight_batcher_llm/* /triton_models/
+```
+
+### 3. Build the TensorRT-LLM engine
+
+Follow the engine building steps from earlier, placing the output in `/engines/`.
+
+### 4. Configure the models
+
+Use the provided template filling script:
+
+```bash
+ENGINE_DIR=/engines/llama-70b-fp8
+TOKENIZER_DIR=/models/llama-70b
+MAX_BATCH=64
+
+python3 tools/fill_template.py -i /triton_models/preprocessing/config.pbtxt \
+  tokenizer_dir:${TOKENIZER_DIR},triton_max_batch_size:${MAX_BATCH}
+
+python3 tools/fill_template.py -i /triton_models/tensorrt_llm/config.pbtxt \
+  triton_backend:tensorrtllm,triton_max_batch_size:${MAX_BATCH},\
+  decoupled_mode:true,engine_dir:${ENGINE_DIR},\
+  batching_type:inflight_fused_batching
+
+python3 tools/fill_template.py -i /triton_models/postprocessing/config.pbtxt \
+  tokenizer_dir:${TOKENIZER_DIR},triton_max_batch_size:${MAX_BATCH}
+
+python3 tools/fill_template.py -i /triton_models/ensemble/config.pbtxt \
+  triton_max_batch_size:${MAX_BATCH}
+```
+
+### 5. Launch the server
+
+```bash
+python3 scripts/launch_triton_server.py \
+  --model_repo /triton_models \
+  --world_size 4
+
+# Or directly with tritonserver
+tritonserver \
+  --model-repository=/triton_models \
+  --http-port=8000 \
+  --grpc-port=8001 \
+  --metrics-port=8002
+```
+
+### 6. Verify deployment
+
+```bash
+curl localhost:8000/v2/health/ready
+# Response: {"ready":true}
+
+curl localhost:8000/v2/models
+# Lists all loaded models with READY status
+```
+
+---
+
+## Performance tuning
+
+### Concurrency and batch size
+
+The relationship between `max_batch_size`, engine build parameters, and runtime behavior:
+
+- **Engine `max_batch_size`**: Hard limit set at build time
+- **Triton `max_batch_size`**: Soft limit for request acceptance
+- **Runtime batch size**: Determined by TRT-LLM scheduler based on available requests and memory
+
+The TRT-LLM scheduler can form batches larger than Triton's `max_batch_size` when using in-flight batching. The scheduler optimizes based on available KV cache memory and pending requests[^13].
+
+### GPU memory allocation
+
+Balance KV cache size against model memory requirements:
+
+```python
+# Calculate KV cache memory
+kv_cache_tokens = max_batch_size * max_seq_len
+kv_cache_bytes = kv_cache_tokens * num_layers * 2 * hidden_size * dtype_bytes
+```
+
+For a 70B model with 80 layers, 8192 hidden size, and FP16 KV cache:
+- 64 batch * 8192 seq_len = 524,288 tokens
+- 524,288 * 80 * 2 * 8192 * 2 bytes = ~1.3 TB (exceeds GPU memory)
+
+Use `kv_cache_free_gpu_mem_fraction` to limit allocation to available memory. Start with 0.85 and adjust based on OOM behavior.
+
+### CUDA Graphs
+
+TensorRT-LLM uses CUDA Graphs to reduce kernel launch overhead. The runtime captures execution graphs for common batch sizes and replays them without CPU intervention.
+
+CUDA Graph padding handles mismatched batch sizes by padding to the nearest captured graph size. This trades minor compute waste for consistent low-latency execution[^14].
+
+### Multi-GPU configuration
+
+For tensor parallelism across GPUs:
+
+```bash
+# 4-way tensor parallelism
+trtllm-build --tp_size 4 ...
+
+# Launch with matching world size
+python3 launch_triton_server.py --world_size 4
+```
+
+The backend uses MPI to coordinate execution across GPUs. Leader mode uses one process to manage inference; Orchestrator mode distributes coordination[^15].
+
+---
+
+## Monitoring and metrics
+
+### Prometheus metrics endpoint
+
+Triton exposes metrics at `http://localhost:8002/metrics` by default. Enable with:
+
+```bash
+tritonserver --allow-metrics=true --allow-gpu-metrics=true
+```
+
+### Key metrics for LLM workloads
+
+The TensorRT-LLM backend exposes custom metrics:
+
+| Metric | Description |
+|--------|-------------|
+| `nv_trt_llm_request_count` | Total inference requests |
+| `nv_trt_llm_inflight_request_count` | Currently processing requests |
+| `nv_trt_llm_kv_cache_block_usage` | KV cache utilization |
+| `nv_trt_llm_generation_tokens_per_second` | Output throughput |
+
+Standard Triton metrics include:
+
+| Metric | Description |
+|--------|-------------|
+| `nv_inference_request_success` | Successful request count |
+| `nv_inference_compute_output_duration_us` | Inference latency |
+| `nv_gpu_utilization` | GPU compute utilization |
+| `nv_gpu_memory_used_bytes` | GPU memory consumption |
+
+### Grafana dashboard setup
+
+NVIDIA provides pre-built Grafana dashboards in the tutorials repository[^16]. Import the JSON configuration:
+
+```bash
+# Download dashboard JSON
+curl -O https://raw.githubusercontent.com/triton-inference-server/tutorials/main/\
+Deployment/Kubernetes/TensorRT-LLM_Autoscaling_and_Load_Balancing/\
+grafana_inference-metrics_dashboard.json
+```
+
+Configure Prometheus as a data source in Grafana, then import the dashboard JSON.
+
+### GenAI-Perf benchmarking
+
+Measure throughput and latency with GenAI-Perf:
+
+```bash
+genai-perf \
+  --model ensemble \
+  --backend tensorrtllm \
+  --endpoint localhost:8001 \
+  --streaming \
+  --concurrency 32 \
+  --input-sequence-length 512 \
+  --output-sequence-length 128
+```
+
+The tool reports time-to-first-token, inter-token latency, throughput, and percentile statistics[^17].
+
+---
+
+## Comparison with alternatives
+
+<InferenceComparison />
+
+### TensorRT-LLM
+
+Best for maximum throughput when you can invest in setup complexity. January 2026 benchmarks show B200 delivering 60,000 tokens per second per GPU at 1,000 tokens per second per user interactivity on Llama 3.3 70B[^new12]. On Llama 4 Scout, B200 achieves over 42,000 tokens per second with a 3.4x performance increase over H200[^new1].
+
+**Strengths**: Peak throughput, Tensor Core optimization, deep NVIDIA integration, EAGLE-3 speculative decoding, NVFP4 quantization
+**Trade-offs**: Longer setup time (1-2 weeks for production tuning), engine rebuilds required for config changes
+
+### vLLM
+
+Best for teams prioritizing development velocity and concurrency handling. PagedAttention provides GPU-friendly memory layout without fragmentation[^19]. vLLM v0.14.1 (January 2026) adds W4A8 grouped GEMM on Hopper, MoE + LoRA support with AWQ Marlin, and Transformers v5 RoPE compatibility[^new13].
+
+Inferact Inc. launched in January 2026 to commercialize vLLM with $150M funding at an $800M valuation[^new14]. The vLLM project now runs on over 400,000 GPUs worldwide.
+
+**Strengths**: Easy setup (1-2 days), consistent latency under load, active community, broad hardware support (NVIDIA, AMD, Intel, TPU)
+**Trade-offs**: Lower peak throughput than TensorRT-LLM on Blackwell GPUs
+
+### SGLang
+
+SGLang has become a production standard, generating trillions of tokens daily across deployments at xAI, AMD, NVIDIA, LinkedIn, Cursor, and major cloud providers[^new15]. On H100 hardware, SGLang achieves 16,215 tokens per second, matching LMDeploy and exceeding vLLM by 29%[^new16].
+
+**Strengths**: RadixAttention for prefix caching (50%+ hit rates in production), zero-overhead CPU scheduler, prefill-decode disaggregation, native C++ optimization
+**Trade-offs**: Smaller ecosystem than vLLM
+
+### Text-Generation-Inference v3
+
+TGI is now in maintenance mode, with Hugging Face recommending vLLM or SGLang for new deployments[^new17]. TGI v3 achieves 13x speedups on prompts exceeding 200,000 tokens by reusing earlier token computations[^20].
+
+**Strengths**: Prefix caching, long context handling, Hugging Face ecosystem, zero-config mode
+**Trade-offs**: Maintenance mode limits new feature development
+
+### Decision matrix
+
+| Requirement | Recommended Engine |
+|-------------|-------------------|
+| Maximum throughput on Blackwell | TensorRT-LLM |
+| Fast iteration cycles | vLLM or SGLang |
+| High concurrency, consistent latency | vLLM |
+| Prefix caching in production | SGLang |
+| Long chat histories (200K+ tokens) | TGI v3 |
+| Kubernetes-native deployment | Triton + TensorRT-LLM |
+| Datacenter-scale orchestration | NVIDIA Dynamo |
+| Multi-vendor hardware support | vLLM |
+
+---
+
+## Complete deployment example
+
+End-to-end deployment of Llama 3.1 70B on 4x H100 80GB:
+
+### Environment setup
+
+```bash
+# Pull containers
+docker pull nvcr.io/nvidia/tritonserver:25.10-py3
+docker pull nvcr.io/nvidia/pytorch:25.10-py3
+
+# Download model
+huggingface-cli download meta-llama/Llama-3.1-70B-Instruct \
+  --local-dir /models/llama-3.1-70b
+```
+
+### Build engine
+
+```bash
+docker run --gpus all -v /models:/models -v /engines:/engines \
+  nvcr.io/nvidia/pytorch:25.10-py3 bash -c "
+    pip install tensorrt-llm
+
+    # Quantize to FP8
+    python -m tensorrt_llm.commands.quantize \
+      --model_dir /models/llama-3.1-70b \
+      --qformat fp8 \
+      --kv_cache_dtype fp8 \
+      --output_dir /engines/llama-70b-ckpt \
+      --tp_size 4
+
+    # Build engine
+    trtllm-build \
+      --checkpoint_dir /engines/llama-70b-ckpt \
+      --output_dir /engines/llama-70b-engine \
+      --gemm_plugin fp8 \
+      --gpt_attention_plugin fp8 \
+      --max_batch_size 64 \
+      --max_input_len 4096 \
+      --max_seq_len 8192 \
+      --use_fused_mlp enable \
+      --workers 4
+"
+```
+
+### Deploy with Triton
+
+```bash
+docker run --gpus all -p 8000:8000 -p 8001:8001 -p 8002:8002 \
+  -v /engines:/engines \
+  -v /models:/models \
+  -v /triton_models:/triton_models \
+  nvcr.io/nvidia/tritonserver:25.10-py3 bash -c "
+    # Configure models (using fill_template.py as shown earlier)
+    # ...
+
+    tritonserver \
+      --model-repository=/triton_models \
+      --allow-metrics=true \
+      --allow-gpu-metrics=true
+"
+```
+
+### Test inference
+
+```python
+import tritonclient.grpc as grpcclient
+import numpy as np
+
+client = grpcclient.InferenceServerClient(url="localhost:8001")
+
+# Prepare inputs
+prompt = "Explain the attention mechanism in transformers:"
+input_ids = tokenizer.encode(prompt)  # Use appropriate tokenizer
+
+inputs = [
+    grpcclient.InferInput("text_input", [1], "BYTES"),
+    grpcclient.InferInput("max_tokens", [1], "INT32"),
+    grpcclient.InferInput("stream", [1], "BOOL"),
+]
+
+inputs[0].set_data_from_numpy(np.array([[prompt]], dtype=object))
+inputs[1].set_data_from_numpy(np.array([[256]], dtype=np.int32))
+inputs[2].set_data_from_numpy(np.array([[True]], dtype=bool))
+
+# Stream responses
+for response in client.infer("ensemble", inputs, stream=True):
+    output = response.as_numpy("text_output")
+    print(output[0].decode(), end="", flush=True)
+```
+
+---
+
+## Blackwell GPU deployment
+
+NVIDIA Blackwell architecture (B200, GB200, GB300) delivers substantial inference improvements over Hopper:
+
+| Metric | B200 vs H200 |
+|--------|--------------|
+| Tokens per second (Llama 3.3 70B) | 4x higher throughput[^new12] |
+| Tokens per second (Llama 4 Scout) | 3.4x improvement[^new1] |
+| DeepSeek-R1 inference | 5x vs Hopper per GPU[^new18] |
+| Memory per GPU | Up to 288GB HBM3e (Blackwell Ultra) |
+
+The GB200 NVL72 rack-scale platform connects 72 Blackwell GPUs using fifth-generation NVLink with 1,800 GB/s bidirectional bandwidth between all chips[^new19]. Blackwell Ultra (GB300) delivers 45% higher DeepSeek-R1 throughput than GB200 with 1.5x more NVFP4 compute and 2x more attention-layer acceleration[^new18].
+
+Key Blackwell optimizations in TensorRT-LLM:
+- NVFP4 quantization for weights and KV cache
+- Programmatic dependent launch (PDL) for reduced kernel latencies
+- Enhanced all-to-all communication primitives
+- CuteDSL NVFP4 grouped GEMM integration
+
+The January 2026 TensorRT-LLM optimizations delivered up to 2.8x throughput increases per Blackwell GPU over the previous three months[^new20].
+
+---
+
+## Summary
+
+TensorRT-LLM and Triton Inference Server provide production-grade LLM serving with:
+
+- **Engine optimization**: NVFP4/FP8 quantization, kernel fusion, custom attention kernels, and EAGLE-3 speculative decoding
+- **Efficient batching**: In-flight batching and paged KV cache for high throughput
+- **Disaggregated serving**: Separate prefill and decode phases for optimized resource utilization
+- **Flexible deployment**: Multi-GPU, multi-node support with MPI coordination and NVIDIA Dynamo orchestration
+- **Observability**: Prometheus metrics integration for monitoring
+
+The setup complexity is higher than alternatives like vLLM or SGLang, but peak performance on Blackwell GPUs is also higher. For teams already in the NVIDIA ecosystem deploying at scale, this stack delivers consistent, optimized inference. Organizations prioritizing faster iteration should evaluate vLLM (broad hardware support, active development) or SGLang (production-proven prefix caching).
+
+---
+
+## References
+
+[^1]: [TensorRT-LLM Documentation](https://nvidia.github.io/TensorRT-LLM/)
+[^2]: [TensorRT-LLM Overview](https://nvidia.github.io/TensorRT-LLM/overview.html)
+[^3]: [TensorRT-LLM Optimization Guide](https://introl.com/blog/tensorrt-llm-optimization-nvidia-inference-stack-guide)
+[^4]: [TensorRT-LLM Architecture Overview](https://nvidia.github.io/TensorRT-LLM/architecture/overview.html)
+[^5]: [TensorRT-LLM Quantization Examples](https://github.com/NVIDIA/TensorRT-LLM/blob/main/examples/quantization/README.md)
+[^6]: [trtllm-build Command Reference](https://nvidia.github.io/TensorRT-LLM/latest/commands/trtllm-build.html)
+[^7]: [DeepSeek-R1 Optimization on B200](https://nvidia.github.io/TensorRT-LLM/blogs/tech_blog/blog1_Pushing_Latency_Boundaries_Optimizing_DeepSeek-R1_Performance_on_NVIDIA_B200_GPUs.html)
+[^8]: [TensorRT-LLM In-Flight Batching](https://developer.nvidia.com/blog/nvidia-tensorrt-llm-now-accelerates-encoder-decoder-models-with-in-flight-batching/)
+[^9]: [TensorRT-LLM GPT Attention](https://nvidia.github.io/TensorRT-LLM/advanced/gpt-attention.html)
+[^10]: [Boosting LLMs Performance in Production](https://softwaremill.com/boosting-llms-performance-in-production/)
+[^11]: [TensorRT-LLM Chunked Prefill](https://developer.nvidia.com/blog/streamlining-ai-inference-performance-and-deployment-with-nvidia-tensorrt-llm-chunked-prefill/)
+[^12]: [Triton TensorRT-LLM Model Configuration](https://docs.nvidia.com/deeplearning/triton-inference-server/user-guide/docs/tensorrtllm_backend/docs/model_config.html)
+[^13]: [TensorRT-LLM Backend Documentation](https://github.com/triton-inference-server/tensorrtllm_backend/blob/main/docs/model_config.md)
+[^14]: [NVIDIA TensorRT-LLM H100 Performance](https://developer.nvidia.com/blog/nvidia-tensorrt-llm-supercharges-large-language-model-inference-on-nvidia-h100-gpus/)
+[^15]: [Triton Multi-Node Deployment](https://docs.nvidia.com/deeplearning/triton-inference-server/user-guide/docs/tutorials/Deployment/Kubernetes/TensorRT-LLM_Multi-Node_Distributed_Models/README.html)
+[^16]: [Triton Autoscaling and Load Balancing Tutorial](https://docs.nvidia.com/deeplearning/triton-inference-server/user-guide/docs/tutorials/Deployment/Kubernetes/TensorRT-LLM_Autoscaling_and_Load_Balancing/README.html)
+[^17]: [Triton Metrics Documentation](https://docs.nvidia.com/deeplearning/triton-inference-server/user-guide/docs/user_guide/metrics.html)
+[^18]: [NexaStack TensorRT-LLM Optimization](https://www.nexastack.ai/blog/optimizing-tensorrt-llm)
+[^19]: [vLLM vs TensorRT-LLM Comparison](https://northflank.com/blog/vllm-vs-tensorrt-llm-and-how-to-run-them)
+[^20]: [vLLM vs TensorRT-LLM vs TGI Technical Comparison](https://www.marktechpost.com/2025/11/19/vllm-vs-tensorrt-llm-vs-hf-tgi-vs-lmdeploy-a-deep-technical-comparison-for-production-llm-inference/)
+
+### 2026 updates
+
+[^new1]: [NVIDIA Accelerates Inference on Meta Llama 4 Scout and Maverick](https://developer.nvidia.com/blog/nvidia-accelerates-inference-on-meta-llama-4-scout-and-maverick/)
+[^new2]: [NVIDIA Dynamo Open-Source Inference Framework](https://developer.nvidia.com/blog/introducing-nvidia-dynamo-a-low-latency-distributed-inference-framework-for-scaling-reasoning-ai-models/)
+[^new3]: [TensorRT-LLM Release Notes](https://nvidia.github.io/TensorRT-LLM/release-notes.html)
+[^new4]: [Introducing NVFP4 for Efficient Low-Precision Inference](https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/)
+[^new5]: [Delivering Massive Performance Leaps for MoE Inference on Blackwell](https://developer.nvidia.com/blog/delivering-massive-performance-leaps-for-mixture-of-experts-inference-on-nvidia-blackwell/)
+[^new6]: [Blackwell Breaks 1,000 TPS/User Barrier with Llama 4 Maverick](https://developer.nvidia.com/blog/blackwell-breaks-the-1000-tps-user-barrier-with-metas-llama-4-maverick/)
+[^new7]: [TensorRT-LLM Supports Recurrent Drafting for LLM Inference](https://developer.nvidia.com/blog/nvidia-tensorrt-llm-now-supports-recurrent-drafting-for-optimizing-llm-inference/)
+[^new8]: [Disaggregated Serving in TensorRT-LLM](https://nvidia.github.io/TensorRT-LLM/blogs/tech_blog/blog5_Disaggregated_Serving_in_TensorRT-LLM.html)
+[^new9]: [Disaggregation in LLMs: Evolution in AI Infrastructure](https://www.infoq.com/articles/llms-evolution-ai-infrastructure/)
+[^new10]: [Triton Inference Server Release Notes](https://docs.nvidia.com/deeplearning/triton-inference-server/release-notes/index.html)
+[^new11]: [NVIDIA Patches Critical RCE Vulnerability Chain](https://www.darkreading.com/vulnerabilities-threats/nvidia-patches-critical-rce-vulnerability-chain)
+[^new12]: [NVIDIA Blackwell Leads on InferenceMAX Benchmarks](https://developer.nvidia.com/blog/nvidia-blackwell-leads-on-new-semianalysis-inferencemax-benchmarks/)
+[^new13]: [vLLM Releases - GitHub](https://github.com/vllm-project/vllm/releases)
+[^new14]: [Inferact launches with $150M to commercialize vLLM](https://siliconangle.com/2026/01/22/inferact-launches-150m-funding-commercialize-vllm/)
+[^new15]: [SGLang GitHub Repository](https://github.com/sgl-project/sglang)
+[^new16]: [LLM Inference Engines: vLLM vs LMDeploy vs SGLang 2026](https://research.aimultiple.com/inference-engines/)
+[^new17]: [Hugging Face Text Generation Inference](https://huggingface.co/docs/text-generation-inference/en/index)
+[^new18]: [NVIDIA Blackwell Ultra Sets New Inference Records in MLPerf](https://developer.nvidia.com/blog/nvidia-blackwell-ultra-sets-new-inference-records-in-mlperf-debut/)
+[^new19]: [NVIDIA Blackwell Platform Arrives](https://nvidianews.nvidia.com/news/nvidia-blackwell-platform-arrives-to-power-a-new-era-of-computing)
+[^new20]: [NVIDIA Blackwell Raises Bar in InferenceMAX Benchmarks](https://blogs.nvidia.com/blog/blackwell-inferencemax-benchmark-results/)

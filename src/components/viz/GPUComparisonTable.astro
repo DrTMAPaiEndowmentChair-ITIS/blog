@@ -1,0 +1,203 @@
+---
+/**
+ * GPU comparison table for AMD vs NVIDIA
+ * Shows key specifications side by side
+ */
+interface GPU {
+  name: string;
+  vendor: 'amd' | 'nvidia';
+  vram: string;
+  bandwidth: string;
+  tdp: string;
+  architecture: string;
+  highlight?: boolean;
+}
+
+interface Props {
+  gpus?: GPU[];
+  title?: string;
+}
+
+const defaultGPUs: GPU[] = [
+  {
+    name: "MI300X",
+    vendor: "amd",
+    vram: "192 GB HBM3",
+    bandwidth: "5.3 TB/s",
+    tdp: "750W",
+    architecture: "CDNA 3",
+    highlight: true
+  },
+  {
+    name: "MI325X",
+    vendor: "amd",
+    vram: "256 GB HBM3e",
+    bandwidth: "6.0 TB/s",
+    tdp: "750W",
+    architecture: "CDNA 3"
+  },
+  {
+    name: "H100 SXM",
+    vendor: "nvidia",
+    vram: "80 GB HBM3",
+    bandwidth: "3.35 TB/s",
+    tdp: "700W",
+    architecture: "Hopper"
+  },
+  {
+    name: "H200",
+    vendor: "nvidia",
+    vram: "141 GB HBM3e",
+    bandwidth: "4.8 TB/s",
+    tdp: "700W",
+    architecture: "Hopper"
+  }
+];
+
+const { gpus = defaultGPUs, title = "Data Center GPU Comparison" } = Astro.props;
+
+const specs = [
+  { key: 'vram', label: 'VRAM' },
+  { key: 'bandwidth', label: 'Memory Bandwidth' },
+  { key: 'tdp', label: 'TDP' },
+  { key: 'architecture', label: 'Architecture' }
+];
+---
+
+<div class="gpu-comparison">
+  <div class="table-title">{title}</div>
+  <div class="table-container">
+    <div class="table-header">
+      <div class="header-cell spec-label"></div>
+      {gpus.map((gpu) => (
+        <div class={`header-cell gpu-name ${gpu.vendor} ${gpu.highlight ? 'highlighted' : ''}`}>
+          <span class="vendor-badge">{gpu.vendor.toUpperCase()}</span>
+          {gpu.name}
+        </div>
+      ))}
+    </div>
+    {specs.map((spec) => (
+      <div class="table-row">
+        <div class="row-cell spec-label">{spec.label}</div>
+        {gpus.map((gpu) => (
+          <div class={`row-cell spec-value ${gpu.vendor} ${gpu.highlight ? 'highlighted' : ''}`}>
+            {gpu[spec.key as keyof GPU]}
+          </div>
+        ))}
+      </div>
+    ))}
+  </div>
+</div>
+
+<style>
+  .gpu-comparison {
+    margin: 2em 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .table-container {
+    display: grid;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    overflow: hidden;
+    min-width: fit-content;
+  }
+
+  .table-header,
+  .table-row {
+    display: grid;
+    grid-template-columns: 140px repeat(4, minmax(100px, 1fr));
+  }
+
+  .header-cell,
+  .row-cell {
+    padding: 0.625rem 0.875rem;
+    background: var(--bg);
+    font-size: var(--font-size-s);
+    transition: background 0.1s ease-out;
+  }
+
+  .header-cell {
+    background: var(--astro-code-background);
+    font-weight: var(--font-weight-bold);
+  }
+
+  .gpu-name {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    text-align: center;
+  }
+
+  .vendor-badge {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0;
+    background: var(--code-bg);
+    color: var(--text-secondary);
+  }
+
+  .gpu-name.amd .vendor-badge {
+    background: #ed1c24;
+    color: white;
+  }
+
+  .gpu-name.nvidia .vendor-badge {
+    background: #76b900;
+    color: white;
+  }
+
+  .spec-label {
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: 0.75rem;
+  }
+
+  .spec-value {
+    font-family: var(--mono);
+    text-align: center;
+  }
+
+  .highlighted {
+    background: var(--selection) !important;
+  }
+
+  .table-row:hover .row-cell {
+    background: var(--code-bg);
+  }
+
+  .table-row:hover .highlighted {
+    background: var(--selection) !important;
+  }
+
+  @media (max-width: 700px) {
+    .table-header,
+    .table-row {
+      grid-template-columns: 100px repeat(4, minmax(80px, 1fr));
+    }
+
+    .header-cell,
+    .row-cell {
+      padding: 0.5rem 0.5rem;
+      font-size: 0.7rem;
+    }
+
+    .vendor-badge {
+      font-size: 0.5rem;
+    }
+  }
+</style>

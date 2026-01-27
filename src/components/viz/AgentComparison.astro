@@ -1,0 +1,250 @@
+---
+/**
+ * Comparison table for coding agents
+ * Shows key features and differences between popular agents
+ */
+interface Agent {
+  name: string;
+  license: string;
+  models: string;
+  tools: string;
+  sandbox: string;
+  context: string;
+  highlight?: boolean;
+}
+
+interface Props {
+  title?: string;
+}
+
+const { title = 'Coding Agent Comparison' } = Astro.props;
+
+const agents: Agent[] = [
+  {
+    name: 'Claude Code',
+    license: 'Proprietary',
+    models: 'Claude 4',
+    tools: 'Bash, Read, Write, Edit, Grep, Glob, LSP, MCP',
+    sandbox: 'macOS sandbox, Docker optional',
+    context: 'Auto-compact at 95%',
+  },
+  {
+    name: 'Codex CLI',
+    license: 'Open Source',
+    models: 'GPT-5.1-Codex',
+    tools: 'Shell, file ops, code exec',
+    sandbox: 'Docker containers',
+    context: 'Compaction (multi-window)',
+  },
+  {
+    name: 'Gemini CLI',
+    license: 'Apache 2.0',
+    models: 'Gemini 3 Flash/Pro',
+    tools: 'Shell, file ops, Search, MCP',
+    sandbox: 'Optional Docker',
+    context: '1M token window',
+  },
+  {
+    name: 'OpenCode',
+    license: 'MIT',
+    models: 'Any (OpenAI, Claude, Gemini, local)',
+    tools: 'Shell, file ops, LSP',
+    sandbox: 'None (native)',
+    context: 'Manual/configurable',
+    highlight: true,
+  },
+  {
+    name: 'Aider',
+    license: 'Apache 2.0',
+    models: 'Any (GPT-4, Claude, local)',
+    tools: 'Git, file ops, voice',
+    sandbox: 'None (native)',
+    context: 'Repo map + smart chunking',
+  },
+  {
+    name: 'Continue',
+    license: 'Apache 2.0',
+    models: 'Any (configurable)',
+    tools: 'IDE integration, file ops',
+    sandbox: 'None (IDE process)',
+    context: 'IDE-managed',
+  },
+];
+
+const specs = [
+  { key: 'license', label: 'License' },
+  { key: 'models', label: 'Models' },
+  { key: 'tools', label: 'Core Tools' },
+  { key: 'sandbox', label: 'Sandboxing' },
+  { key: 'context', label: 'Context Mgmt' },
+];
+---
+
+<div class="agent-comparison">
+  {title && <div class="comparison-title">{title}</div>}
+
+  <div class="comparison-scroll">
+    <table class="comparison-table">
+      <thead>
+        <tr>
+          <th class="agent-header"></th>
+          {agents.map((agent) => (
+            <th class={`agent-header ${agent.highlight ? 'highlighted' : ''}`}>
+              {agent.name}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {specs.map((spec) => (
+          <tr class="spec-row">
+            <td class="spec-label">{spec.label}</td>
+            {agents.map((agent) => (
+              <td class={`spec-value ${agent.highlight ? 'highlighted' : ''}`}>
+                {agent[spec.key as keyof Agent]}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="comparison-legend">
+    <span class="legend-item">
+      <span class="legend-marker highlighted"></span>
+      Open source, model-agnostic
+    </span>
+  </div>
+</div>
+
+<style>
+  .agent-comparison {
+    margin: 2em 0;
+    padding: 1.5rem;
+    background: var(--astro-code-background);
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  .comparison-title {
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .comparison-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 800px;
+  }
+
+  .agent-header {
+    padding: 0.75rem 1rem;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  .agent-header:first-child {
+    width: 100px;
+  }
+
+  .agent-header.highlighted {
+    background: var(--selection);
+    color: var(--text-secondary);
+  }
+
+  .spec-row {
+    transition: background 0.1s ease-out;
+  }
+
+  .spec-row:hover td {
+    background: var(--code-bg);
+  }
+
+  .spec-row:hover .highlighted {
+    background: var(--selection);
+  }
+
+  .spec-label {
+    padding: 0.625rem 1rem;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .spec-value {
+    padding: 0.625rem 1rem;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    text-align: center;
+    vertical-align: top;
+  }
+
+  .spec-value.highlighted {
+    background: var(--selection);
+  }
+
+  .comparison-legend {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+  }
+
+  .legend-marker {
+    width: 12px;
+    height: 12px;
+    border: 1px solid var(--border);
+  }
+
+  .legend-marker.highlighted {
+    background: var(--selection);
+  }
+
+  @media (max-width: 600px) {
+    .agent-comparison {
+      padding: 1rem;
+    }
+
+    .agent-header,
+    .spec-label,
+    .spec-value {
+      padding: 0.5rem 0.625rem;
+      font-size: 0.65rem;
+    }
+  }
+</style>
