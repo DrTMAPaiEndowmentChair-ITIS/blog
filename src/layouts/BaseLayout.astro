@@ -8,13 +8,13 @@ import type { LayoutProps } from '@/types'
 
 type Props = LayoutProps
 
-const { type = 'page', wide = false } = Astro.props
+const { type = 'page' } = Astro.props
 const language = themeConfig.site.language || 'en-US'
 const contentWidth = themeConfig.general.contentWidth
 const fadeAnimation = themeConfig.general.fadeAnimation
 const widthValue = Math.min(parseFloat(contentWidth), 50)
 const shouldUseCustomWidth = widthValue > 25
-const finalWidth = wide ? '72rem' : shouldUseCustomWidth ? `${widthValue}rem` : '25rem'
+const finalWidth = shouldUseCustomWidth ? `${widthValue}rem` : '25rem'
 ---
 
 <html lang={language}>
@@ -27,7 +27,7 @@ const finalWidth = wide ? '72rem' : shouldUseCustomWidth ? `${widthValue}rem` : 
     data-centered={themeConfig.general.centeredLayout}
     style={`
       max-width: ${finalWidth};
-      ${shouldUseCustomWidth && !wide ? `--content-width: ${widthValue}rem;` : ''}
+      ${shouldUseCustomWidth ? `--content-width: ${widthValue}rem;` : ''}
     `}
   >
     <FaviconThemeSwitcher />
