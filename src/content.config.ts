@@ -1,5 +1,6 @@
 import { glob } from 'astro/loaders'
 import { defineCollection, z } from 'astro:content'
+import { POST_CATEGORIES } from './data/taxonomy'
 
 const posts = defineCollection({
   // Load Markdown and MDX files in the `src/content/posts/` directory.
@@ -10,7 +11,12 @@ const posts = defineCollection({
       title: z.string(),
       // Transform string to Date object
       pubDate: z.coerce.date(),
-      image: z.string().optional()
+      image: z.string().optional(),
+      author: z.string().optional(),
+      category: z.enum(POST_CATEGORIES),
+      description: z.string(),
+      topics: z.array(z.string()).default([]),
+      featured: z.boolean().default(false)
     })
 })
 

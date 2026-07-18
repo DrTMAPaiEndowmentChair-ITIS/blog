@@ -1,0 +1,104 @@
+---
+const layers = [
+  { name: 'Accelerator package', fabric: 'On-package fabric', examples: 'chiplets, HBM stacks' },
+  {
+    name: 'Scale-up domain',
+    fabric: 'NVLink / Infinity Fabric',
+    examples: 'peer memory, collectives'
+  },
+  { name: 'Compute node', fabric: 'PCIe + NIC / DPU', examples: 'host control, RDMA endpoint' },
+  { name: 'Scale-out fabric', fabric: 'InfiniBand / RoCEv2', examples: 'leaf-spine, routed fabric' }
+]
+---
+
+<figure class="topology" aria-labelledby="topology-title">
+  <figcaption id="topology-title">AI cluster communication domains</figcaption>
+  <div class="layers">
+    {
+      layers.map((layer, index) => (
+        <section style={`--inset:${index * 6}%`}>
+          <div>
+            <>
+              <strong>{layer.name}</strong>
+              <span>{layer.examples}</span>
+            </>
+          </div>
+          <code>{layer.fabric}</code>
+        </section>
+      ))
+    }
+  </div>
+  <div class="collectives">
+    <span>all-reduce</span><span>all-gather</span><span>reduce-scatter</span><span
+      >point-to-point</span
+    >
+  </div>
+</figure>
+
+<style>
+  .topology {
+    margin: 2rem 0;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    background: var(--code-bg);
+  }
+  figcaption {
+    margin-bottom: 1rem;
+    font: 600 0.82rem/1.4 var(--mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .layers {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  section {
+    margin-inline: var(--inset);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  section strong,
+  section span {
+    display: block;
+  }
+  section strong {
+    font: 600 0.82rem var(--mono);
+  }
+  section span {
+    margin-top: 0.15rem;
+    color: var(--text-tertiary);
+    font-size: 0.76rem;
+  }
+  code {
+    white-space: nowrap;
+    color: var(--text-secondary);
+    font-size: 0.76rem;
+  }
+  .collectives {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid var(--border);
+  }
+  .collectives span {
+    padding: 0.25rem 0.45rem;
+    background: var(--selection);
+    font: 0.72rem var(--mono);
+  }
+  @media (max-width: 560px) {
+    section {
+      margin-inline: 0;
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+  }
+</style>

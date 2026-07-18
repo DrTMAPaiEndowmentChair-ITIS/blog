@@ -1,0 +1,96 @@
+---
+const paths = [
+  {
+    name: 'Materialized attention',
+    trips: ['QKᵀ write', 'score read', 'softmax write', 'probability read', 'output write']
+  },
+  { name: 'Tiled attention', trips: ['Q/K/V tile read', 'online softmax in SRAM', 'output write'] }
+]
+---
+
+<figure class="viz" aria-labelledby="am-title">
+  <figcaption id="am-title">
+    Attention data movement with and without score materialization
+  </figcaption>
+  <div class="memory"><b>HBM</b><span>large capacity, off-chip</span></div>
+  <div class="paths">
+    {
+      paths.map((path) => (
+        <section>
+          <>
+            <strong>{path.name}</strong>
+            <div>
+              {path.trips.map((trip) => (
+                <span>{trip}</span>
+              ))}
+            </div>
+          </>
+        </section>
+      ))
+    }
+  </div>
+  <div class="memory sram"><b>SRAM</b><span>tiles, row maxima, normalization sums</span></div>
+</figure>
+<style>
+  .viz {
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    font: 600 var(--font-size-s) var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1.2rem;
+  }
+  .memory {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.7rem 1rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    font: 0.78rem var(--mono);
+  }
+  .memory span {
+    color: var(--text-tertiary);
+  }
+  .paths {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.8rem;
+    margin: 0.8rem 0;
+  }
+  .paths section {
+    padding: 1rem;
+    border-left: 3px solid var(--text-secondary);
+    background: var(--bg);
+  }
+  section strong {
+    font: 0.8rem var(--mono);
+  }
+  section div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.7rem;
+  }
+  section span {
+    font: 0.7rem var(--mono);
+    padding: 0.3rem 0.4rem;
+    border: 1px solid var(--border);
+  }
+  .sram {
+    border-style: dashed;
+  }
+  @media (max-width: 600px) {
+    .paths {
+      grid-template-columns: 1fr;
+    }
+    .memory {
+      display: grid;
+      gap: 0.3rem;
+    }
+  }
+</style>

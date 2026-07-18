@@ -1,0 +1,141 @@
+---
+const messages = [
+  { side: 'client', label: 'initialize', detail: 'version + client capabilities' },
+  { side: 'server', label: 'initialize result', detail: 'version + server capabilities' },
+  { side: 'client', label: 'notifications/initialized', detail: 'operation may begin' },
+  { side: 'client', label: 'tools/list', detail: 'request with JSON-RPC id' },
+  { side: 'server', label: 'tools list', detail: 'result for the same id' },
+  { side: 'client', label: 'tools/call', detail: 'name + validated arguments' },
+  { side: 'server', label: 'tool result', detail: 'content + optional structuredContent' }
+]
+---
+
+<figure class="mcp-flow" aria-labelledby="mcp-flow-title">
+  <figcaption id="mcp-flow-title">
+    MCP session lifecycle and correlated JSON-RPC messages
+  </figcaption>
+  <div class="actors" aria-hidden="true"><span>Host and client</span><span>MCP server</span></div>
+  <div class="timeline">
+    <div class="rail left"></div><div class="rail right"></div>
+    {
+      messages.map((message) => (
+        <div class:list={['message', message.side]}>
+          <div class="card">
+            <strong>{message.label}</strong>
+            <span>{message.detail}</span>
+          </div>
+          <span class="arrow" aria-hidden="true">
+            {message.side === 'client' ? '→' : '←'}
+          </span>
+        </div>
+      ))
+    }
+  </div>
+  <div class="note">
+    Capabilities gate later methods. Notifications carry no request id and receive no response.
+  </div>
+</figure>
+
+<style>
+  .mcp-flow {
+    margin: 2rem 0;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    background: var(--code-bg);
+    color: var(--text-primary);
+  }
+  figcaption {
+    margin-bottom: 1rem;
+    font: 600 0.82rem/1.4 var(--mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .actors {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    text-align: center;
+    color: var(--text-secondary);
+    font: 600 0.82rem var(--mono);
+  }
+  .timeline {
+    position: relative;
+    margin-top: 0.75rem;
+    padding: 0.5rem 0;
+  }
+  .rail {
+    position: absolute;
+    inset-block: 0;
+    width: 1px;
+    background: var(--border);
+  }
+  .rail.left {
+    left: 16%;
+  }
+  .rail.right {
+    right: 16%;
+  }
+  .message {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 2.4rem 1fr;
+    align-items: center;
+    min-height: 4.2rem;
+  }
+  .message.client .card {
+    grid-column: 1;
+  }
+  .message.client .arrow {
+    grid-column: 2;
+  }
+  .message.server .card {
+    grid-column: 3;
+  }
+  .message.server .arrow {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .card {
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .card strong,
+  .card span {
+    display: block;
+  }
+  .card strong {
+    font: 600 0.82rem var(--mono);
+  }
+  .card span {
+    margin-top: 0.2rem;
+    color: var(--text-tertiary);
+    font-size: 0.78rem;
+  }
+  .arrow {
+    text-align: center;
+    color: var(--text-secondary);
+    font: 1.1rem var(--mono);
+  }
+  .note {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-tertiary);
+    font-size: 0.8rem;
+  }
+  @media (max-width: 560px) {
+    .actors {
+      gap: 1rem;
+    }
+    .message {
+      grid-template-columns: minmax(0, 1fr) 1.5rem minmax(0, 1fr);
+    }
+    .card {
+      padding: 0.5rem;
+    }
+    .card span {
+      font-size: 0.7rem;
+    }
+  }
+</style>

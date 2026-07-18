@@ -1,0 +1,184 @@
+---
+title: 'Inside the KV Cache: Memory Systems for LLM Inference'
+pubDate: 2026-02-03
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: 'Treat the KV cache as a dynamic memory system shaped by paging, fragmentation, shared prefixes, and unpredictable request lifetimes.'
+topics: ['KV cache', 'Memory', 'LLM serving']
+---
+
+import KVCacheMemory from '../../components/viz/KVCacheMemory.astro'
+
+Autoregressive inference repeatedly evaluates attention over an expanding prefix. Recomputing every key and value projection at every step would repeat work for tokens that have not changed. A key-value cache stores those projections, then appends the projections for each new token.
+
+That optimization moves the serving limit. Model weights are mostly static, but cache allocation follows request arrivals, prompt lengths, generation lengths, beam branches, cancellations, and shared prefixes. The cache is therefore both a tensor and a dynamic memory-management problem.
+
+## Cache contents
+
+For a transformer layer, attention projects hidden states into queries, keys, and values:
+
+$$
+Q = XW_Q,\qquad K = XW_K,\qquad V = XW_V
+$$
+
+During decode, the current query attends to cached keys and values:
+
+$$
+\operatorname{Attention}(q_t,K_{\leq t},V_{\leq t})
+=
+\operatorname{softmax}\left(\frac{q_tK_{\leq t}^{T}}{\sqrt{d_h}}\right)V_{\leq t}
+$$
+
+Only the current query is transient. Keys and values remain live because later tokens can attend to them.
+
+For a decoder with $L$ layers, $H_{kv}$ key-value heads, head dimension $D$, sequence length $S$, and $B$ bytes per scalar, cache storage per sequence is:
+
+$$
+M_{KV}=2LSH_{kv}DB
+$$
+
+The leading factor accounts for separate key and value tensors. This formula exposes the useful levers: context length, cache precision, layer count, and key-value head count. Multi-query attention shares one key-value head across query heads; grouped-query attention uses more than one but fewer than full multi-head attention.[^1]
+
+## Prefill and decode write different access patterns
+
+Prefill processes a prompt as a token matrix. Each layer writes a run of key and value vectors, while attention consumes the prompt prefix. Decode appends a narrow slice and reads the existing cache.
+
+The distinction matters for kernel design:
+
+| Phase        | Cache operation                               | Typical pressure                 |
+| ------------ | --------------------------------------------- | -------------------------------- |
+| Prefill      | Bulk allocation and writes                    | Compute, allocation latency      |
+| Decode       | Append one position, read all prior positions | Memory bandwidth, cache capacity |
+| Cancellation | Release every block owned by a request        | Allocator synchronization        |
+| Prefix reuse | Map a new request to existing blocks          | Reference counting, routing      |
+
+A serving scheduler must reserve enough blocks before admitting work. If it admits from token limits alone, a burst of long generations can exhaust cache pages after requests have begun streaming.
+
+<KVCacheMemory />
+
+## Contiguous allocation wastes capacity
+
+A simple allocator reserves one contiguous region per sequence at its maximum configured length. That approach creates internal fragmentation when generation ends early. It also creates external fragmentation as variable-sized regions are allocated and freed.
+
+PagedAttention applies operating-system paging to the cache. Logical token blocks map through a block table to non-contiguous physical blocks. vLLM's original paper reports near-zero cache waste and supports cache sharing within and across requests; its evaluation measured between two and four times the throughput of the compared systems at comparable latency.[^2]
+
+The attention kernel cannot assume that adjacent logical tokens are adjacent in memory. It resolves each logical block through the block table. That indirection is the price of flexible allocation.
+
+### Block size trade-offs
+
+Small blocks reduce waste in the final, partially filled page. They increase block-table entries, allocation operations, and address translation inside the kernel. Large blocks reduce metadata but strand more capacity at sequence tails.
+
+Choose block size with workload traces, not model shape alone. Record the distribution of prompt lengths, output lengths, cancellations, and prefix reuse. Then replay those traces against candidate block sizes and measure:
+
+- live cache bytes versus reserved bytes
+- allocation latency at high request concurrency
+- attention-kernel time by context length
+- blocks copied during beam or parallel sampling
+- eviction and recomputation frequency
+
+## Prefix caching needs identity rules
+
+Two requests can share cached blocks only when the token sequence and every cache-relevant model input match. Text equality is insufficient because tokenization settings, adapter selection, multimodal embeddings, position assignment, and model revision can change the resulting states.
+
+A practical cache key includes:
+
+```ts
+type PrefixKey = {
+  modelRevision: string
+  adapterId: string | null
+  tokenIds: readonly number[]
+  positionPolicy: string
+  multimodalDigest: string | null
+}
+```
+
+Hash blocks incrementally so a request can reuse the longest matching prefix. Store parent hashes to prevent a block with identical local tokens from matching under a different preceding context.
+
+Reference counts protect shared blocks. Copy-on-write handles divergence: requests share completed prefix blocks, while each allocates private blocks for generated continuations. The vLLM paper uses this mechanism for parallel sampling and beam search.[^2]
+
+## Eviction policy affects compute
+
+Evicting a cache entry does not lose model weights or user data, but it turns the next hit into recomputation. A least-recently-used policy treats every block equally even though recomputation cost rises with the number of prefix tokens that must be replayed.
+
+A cost-aware score can combine:
+
+$$
+\text{value}(p)=
+\frac{\widehat{\text{reuse probability}}(p)\cdot
+\widehat{\text{prefill cost saved}}(p)}
+{\text{bytes}(p)}
+$$
+
+The terms are estimates derived from observed traffic. Keep them separate in telemetry. A high hit rate can still save little compute if hits cover short prefixes.
+
+Cache-aware routing introduces another constraint. Sending a request to the least-loaded replica can discard a large local prefix hit. Sending every matching prefix to one replica can create a hotspot. Route using predicted queue time plus predicted prefill time after reuse.
+
+## Quantized cache changes attention inputs
+
+Quantizing the cache reduces bytes per scalar in the storage formula. It also adds scale metadata and dequantization work to attention. Keys and values can require different calibration because their distributions differ by layer and head.
+
+Validation must include generation quality and kernel performance. A cache format that halves tensor payload does not halve total latency if dequantization prevents a fused attention path. Measure:
+
+- quality against the unquantized cache on task-specific prompts
+- time per output token across context lengths
+- scale-storage overhead
+- conversion work during prefix reuse or cache transfer
+- numerical behavior for long-running generations
+
+## Moving cache across memory tiers
+
+GPU memory is not the only possible cache tier. A serving system can move inactive blocks to host memory, local storage, or another worker, then restore them when a request resumes. The decision compares transfer time with recomputation time.
+
+Prompt Cache defines reusable prompt modules and preserves their positional accuracy when reusing attention state across prompts.[^3] CacheGen targets network transfer: it encodes key-value tensors into a compressed bitstream conditioned on their distribution, then adapts compression to available bandwidth.[^4]
+
+Tiering needs an explicit state machine:
+
+```ts
+type BlockState =
+  | { kind: 'device'; gpu: number; address: bigint }
+  | { kind: 'moving'; operationId: string; destination: 'host' | 'remote' }
+  | { kind: 'host'; bufferId: string }
+  | { kind: 'remote'; objectKey: string; checksum: string }
+  | { kind: 'evicted' }
+```
+
+Only one transition may own a block at a time. Cancellation during transfer must release both the source reference and any completed destination allocation. A checksum catches truncated or stale payloads, while model and layout identifiers prevent restoring cache produced by incompatible weights.
+
+A near-runnable capacity calculator follows directly from the storage equation:
+
+```python
+def kv_bytes(layers, sequence, kv_heads, head_dim, bytes_per_scalar):
+    return 2 * layers * sequence * kv_heads * head_dim * bytes_per_scalar
+
+def concurrent_capacity(free_bytes, reserve_fraction, per_sequence_bytes):
+    usable = int(free_bytes * reserve_fraction)
+    return usable // per_sequence_bytes
+```
+
+Feed it values from the deployed model configuration and runtime telemetry. The result is not admission control by itself; workspaces, allocator metadata, partial pages, and transfer buffers also consume memory.
+
+Choose restore or recomputation using measured queue, transfer, decoding, and prefill curves. Report bytes restored, tokens recovered, tokens recomputed, and time saved. A high hit count is misleading if most restored prefixes are short.
+
+## Failure modes and instrumentation
+
+**Admission overcommit:** requests begin with enough memory for their prompts but no reserve for output growth. Reject or queue before prefill using a configurable output reservation.
+
+**Leaked references:** cancellation bypasses a decrement path, leaving shared blocks permanently live. Audit ownership transitions and reconcile allocator totals.
+
+**Hash collisions or incomplete keys:** unrelated states share a block. Use a collision-resistant digest and include every state-changing input.
+
+**Eviction storms:** a working set slightly larger than capacity repeatedly recomputes prefixes. Track evicted-token recomputation, not just eviction count.
+
+**Tail-page waste:** a nominally paged allocator still wastes capacity if blocks are too large for the output-length distribution. Report occupancy inside allocated blocks.
+
+The minimum dashboard needs physical blocks free, reserved, active, shared, and evictable; cache hit tokens; recomputed tokens; allocation latency; and request aborts caused by cache pressure. Those measurements turn KV capacity from an opaque out-of-memory event into a schedulable resource.
+
+## References
+
+[^1]: Noam Shazeer, "Fast Transformer Decoding: One Write-Head is All You Need," arXiv, 2019. [https://arxiv.org/abs/1911.02150](https://arxiv.org/abs/1911.02150)
+
+[^2]: Woosuk Kwon et al., "Efficient Memory Management for Large Language Model Serving with PagedAttention," SOSP, 2023. [https://arxiv.org/abs/2309.06180](https://arxiv.org/abs/2309.06180)
+
+[^3]: In Gim et al., "Prompt Cache: Modular Attention Reuse for Low-Latency Inference," MLSys, 2024. [https://arxiv.org/abs/2311.04934](https://arxiv.org/abs/2311.04934)
+
+[^4]: Yuhan Liu et al., "CacheGen: KV Cache Compression and Streaming for Fast Large Language Model Serving," SIGCOMM, 2024. [https://arxiv.org/abs/2310.07240](https://arxiv.org/abs/2310.07240)

@@ -1,0 +1,67 @@
+<figure class="viz" aria-labelledby="sdp-title">
+  <figcaption id="sdp-title">Synthetic data is accepted only after independent checks</figcaption>
+  <div class="flow">
+    <div><b>Seed set</b><span>licensed, deduplicated examples</span></div><i>→</i>
+    <div><b>Generate</b><span>prompt plus sampled response</span></div><i>→</i>
+    <div><b>Validate</b><span>schema, execution, citation, policy</span></div><i>→</i>
+    <div><b>Deduplicate</b><span>exact and semantic overlap</span></div><i>→</i>
+    <div><b>Train split</b><span>lineage and generator recorded</span></div>
+  </div>
+  <aside>
+    <b>Quarantine lane</b> Failed records retain rejection reasons for audit; they do not silently re-enter
+    generation.
+  </aside>
+</figure>
+<style>
+  .viz {
+    margin: 2rem 0;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+  }
+  figcaption {
+    font: 600 0.85rem var(--mono);
+    margin-bottom: 1rem;
+  }
+  .flow {
+    display: grid;
+    grid-template-columns: repeat(9, minmax(0, 1fr));
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .flow div,
+  aside {
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    background: var(--background);
+  }
+  b,
+  span {
+    display: block;
+  }
+  .flow span {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    margin-top: 0.3rem;
+  }
+  i {
+    text-align: center;
+    font-style: normal;
+  }
+  aside {
+    margin-top: 0.8rem;
+    border-left: 3px solid #dc2626;
+    font-size: 0.78rem;
+  }
+  aside b {
+    display: inline;
+  }
+  @media (max-width: 760px) {
+    .flow {
+      grid-template-columns: 1fr;
+    }
+    .flow i {
+      transform: rotate(90deg);
+    }
+  }
+</style>

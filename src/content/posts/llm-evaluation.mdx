@@ -1,0 +1,257 @@
+---
+title: 'LLM Evaluation: Contamination, Judge Bias, and Production Metrics'
+pubDate: 2026-05-19
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Design evaluations around release decisions while controlling contamination, judge bias, statistical noise, and production constraints.'
+topics: ['Evaluation', 'Benchmarks', 'LLM judges']
+---
+
+import EvaluationPipeline from '../../components/viz/EvaluationPipeline.astro'
+
+An evaluation is a measurement procedure, not a prompt file. Its result depends on the dataset, harness, model configuration, scorer, aggregation, and statistical analysis. Changing any one of them changes the object being measured.
+
+This matters for language-model systems because the model is only one component. Retrieval, tools, policy prompts, sampling parameters, and output parsers can determine whether the same model succeeds or fails.
+
+## Define the decision before the metric
+
+Start with the release decision:
+
+```yaml
+decision: replace current support-answering model
+population: authenticated English support questions
+constraints:
+  - no regression on policy compliance
+  - bounded p95 response latency
+  - bounded cost per resolved conversation
+outcomes:
+  - correct resolution
+  - unsupported claim rate
+  - escalation rate
+```
+
+The numeric thresholds are product choices and therefore omitted from this example. A benchmark score that does not connect to the decision is diagnostic evidence, not a release gate.
+
+HELM argues for broad scenario coverage and simultaneous measurement of accuracy, robustness, calibration, fairness, bias, toxicity, and efficiency rather than a single model score.[^helm] The exact dimensions should follow the deployed task.
+
+## Build cases from a task taxonomy
+
+Random production samples reproduce the traffic distribution but can miss rare, costly failures. Handwritten challenge sets cover known hazards but distort prevalence. Use both and report them separately.
+
+A case should contain:
+
+```ts
+type EvalCase = {
+  id: string
+  input: unknown
+  expected?: unknown
+  rubric?: string
+  tags: string[]
+  source: 'production' | 'expert' | 'incident' | 'synthetic'
+  provenance: string
+  createdAt: string
+}
+```
+
+Tags enable slices such as language, tool, document type, ambiguity, policy class, and input length. Provenance supports contamination audits and rights review.
+
+Freeze a release suite. Add new incident cases to a forward-looking suite so repeated tuning does not quietly overfit the current gate.
+
+<EvaluationPipeline />
+
+## Pin the harness
+
+The harness includes every transformation between a case and its score:
+
+- System and developer instructions.
+- Tool definitions and tool results.
+- Retrieval index and ranking configuration.
+- Model identifier and sampling parameters.
+- Retry and timeout policy.
+- Output parser.
+- Scorer prompt and scorer model.
+
+Record the rendered request rather than only the prompt template. A misplaced separator, reordered choice list, or truncated tool result can alter the outcome.
+
+```json
+{
+  "case_id": "billing-policy-017",
+  "suite_revision": "support-v4",
+  "model": "candidate-build",
+  "prompt_sha256": "…",
+  "toolset_revision": "support-tools-v7",
+  "retrieval_revision": "kb-2026-05-18",
+  "sampler": { "temperature": 0 },
+  "raw_output_uri": "artifact://run/case/output"
+}
+```
+
+Version names above are illustrative.
+
+## Deterministic scoring comes first
+
+Use deterministic checks when the task has an executable contract:
+
+- JSON Schema validity.
+- Exact identifier match.
+- Unit tests for generated code.
+- Database-state assertions after tool use.
+- Citation presence and source alignment.
+- Regular-language constraints.
+
+Deterministic scorers expose why a case failed and can be rerun without model variance. They do not measure open-ended quality, but they should handle every property that can be specified mechanically.
+
+For partial-credit tasks, define components:
+
+$$
+S(x)=\sum_i w_i s_i(x)
+$$
+
+Weights encode a product judgment. Publish them with the results and report component scores so one weighted total does not hide a safety regression.
+
+## Human evaluation needs a protocol
+
+Human ratings are not ground truth by default. Raters need:
+
+- A concrete rubric with positive and negative examples.
+- Blinded model identity.
+- Randomized answer order.
+- An abstain or unclear option.
+- Independent ratings before adjudication.
+- Quality-control cases.
+
+Measure agreement and inspect disagreements. Low agreement can indicate an ambiguous rubric, insufficient evidence, or a task with legitimate preference variation.
+
+Pairwise comparison is often easier than an absolute scale: show two outputs for the same input and ask which better satisfies the rubric. Randomize left and right positions, then include ties when the difference is not material.
+
+## LLM judges are noisy instruments
+
+Model-based scoring enables larger evaluation sets, but it introduces a second model whose behavior must be validated.
+
+The MT-Bench and Chatbot Arena paper compared model judges with human preferences and documented position, verbosity, and self-enhancement biases.[^mtbench] A judge can therefore reward presentation features unrelated to task correctness.
+
+Mitigations are measurable:
+
+1. Swap candidate order and score both orientations.
+2. Hide model identity and provider-specific formatting.
+3. Require criterion-level scores before an overall preference.
+4. Give the judge reference evidence when the task permits it.
+5. Calibrate against a held-out human-rated set.
+6. Route judge-human disagreement and low-confidence cases to review.
+
+```text
+score(A, B) + score(B, A) → stable preference or disagreement
+```
+
+Do not ask a judge for hidden chain-of-thought. Request a short evidence field tied to rubric criteria, then audit whether that evidence matches the outputs.
+
+Judge agreement with humans should be reported on the target task, not borrowed from another benchmark. A judge calibrated for concise customer support answers may fail on mathematical proofs or code patches.
+
+## Contamination invalidates the question
+
+Benchmark contamination occurs when evaluation material or close derivatives enter training, fine-tuning, retrieval corpora, prompt libraries, or manual development loops. A high score can then measure recall of the benchmark rather than task generalization.
+
+Contamination is not limited to exact duplicates. Paraphrased questions, published solutions, answer keys, and benchmark-specific explanations can leak the intended mapping.
+
+Mitigations include:
+
+- Keep private test cases and rotate them.
+- Hash and search exact examples across accessible training corpora.
+- Run semantic near-duplicate detection.
+- Store creation dates and source provenance.
+- Separate public development sets from private release sets.
+- Treat benchmark names and canonical phrasing as contamination signals.
+
+Black-box detection is uncertain. The Min-K% Prob method tests whether a text contains unusually low-probability tokens and was evaluated for pretraining-data detection on a time-split benchmark.[^mink] It is evidence, not proof of membership. A current evaluation should describe the audit performed and residual uncertainty.
+
+Dynamic cases reduce exposure. Generate them from controlled templates with executable answers, then validate the generator. Do not call generated cases uncontaminated merely because their final strings are new; the underlying task pattern may still be familiar.
+
+## Statistical reporting
+
+A score without uncertainty encourages false precision. For a binary metric with $n$ independent cases and empirical success rate $\hat p$, a simple standard error estimate is:
+
+$$
+\operatorname{SE}(\hat p)=\sqrt{\frac{\hat p(1-\hat p)}{n}}
+$$
+
+Bootstrap intervals are more flexible for non-linear metrics and sliced data. For model comparisons, use paired resampling because both models run on the same cases.
+
+Report:
+
+- Number of eligible, executed, failed, and excluded cases.
+- Aggregate and slice metrics.
+- Confidence intervals.
+- Paired differences against the current system.
+- Missing-output and parser-failure rates.
+- Judge disagreement and human adjudication rates.
+
+Do not remove timeouts from the denominator unless the release decision also ignores timeouts.
+
+## Production metrics close the loop
+
+Offline cases are controlled and replayable. Production metrics observe the real distribution and real users. Neither replaces the other.
+
+Useful system metrics include:
+
+| Layer     | Measurements                                           |
+| --------- | ------------------------------------------------------ |
+| Request   | eligible volume, language, intent, input length        |
+| Model     | latency, token usage, refusal, malformed output        |
+| Retrieval | empty results, evidence coverage, stale index          |
+| Tools     | call success, invalid arguments, approval, rollback    |
+| Outcome   | resolution, correction, escalation, abandonment        |
+| Safety    | policy blocks, confirmed incidents, reviewer reversals |
+
+User clicks and thumbs ratings are behavior signals, not direct correctness labels. A user can accept a plausible wrong answer or downvote a correct refusal. Combine behavioral metrics with audited samples.
+
+For online experiments, define guardrails before launch and preserve assignment logs. Model changes can alter cost, latency, and escalation while leaving average answer ratings unchanged.
+
+## Detect drift
+
+Drift can occur in inputs, retrieved knowledge, tool behavior, policy, or user expectations. Track slice proportions and score distributions over time.
+
+Trigger a review when:
+
+- A new intent lacks evaluation coverage.
+- A retrieval source changes schema.
+- A tool adds a side effect.
+- A scorer model or prompt changes.
+- Human-judge agreement degrades.
+- Production outcomes separate from offline scores.
+
+An evaluation suite is versioned software. Changes need review, changelogs, reproducible artifacts, and migration notes.
+
+## Diagnose failures by layer
+
+**Correct evidence absent:** retrieval failure.
+
+**Correct evidence present, answer unsupported:** generation or instruction failure.
+
+**Valid action selected with wrong arguments:** tool-planning or schema failure.
+
+**Correct output marked wrong:** scorer or rubric failure.
+
+**Offline pass with production regression:** population, harness, or outcome mismatch.
+
+Store raw inputs, outputs, tool traces, scorer decisions, and policy versions so these categories can be tested rather than guessed.
+
+## Release report
+
+A useful report states:
+
+1. The deployment decision.
+2. Suite provenance and known contamination risk.
+3. Harness and model revisions.
+4. Deterministic, judge, and human scoring procedures.
+5. Aggregate results with uncertainty.
+6. Critical slices and regressions.
+7. Production guardrails.
+8. Known blind spots.
+
+The report should make rerunning the evaluation possible. A leaderboard number without cases, harness, and scoring details cannot support a production decision.
+
+[^helm]: [Liang et al., “Holistic Evaluation of Language Models,” Transactions on Machine Learning Research, 2023](https://arxiv.org/abs/2211.09110).
+
+[^mtbench]: [Zheng et al., “Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena,” NeurIPS Datasets and Benchmarks, 2023](https://arxiv.org/abs/2306.05685).
+
+[^mink]: [Shi et al., “Detecting Pretraining Data from Large Language Models,” ICLR, 2024](https://arxiv.org/abs/2310.16789).

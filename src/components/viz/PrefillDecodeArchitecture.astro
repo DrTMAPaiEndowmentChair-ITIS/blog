@@ -1,0 +1,114 @@
+---
+const stages = [
+  { name: 'Prefill pool', detail: 'Prompt matrix operations', metric: 'TTFT' },
+  { name: 'KV transport', detail: 'Block metadata plus tensors', metric: 'bytes' },
+  { name: 'Decode pool', detail: 'One autoregressive step', metric: 'TPOT' }
+]
+---
+
+<figure class="viz" aria-labelledby="pd-title">
+  <figcaption id="pd-title">Prefill and decode as separate scheduling domains</figcaption>
+  <div class="request"><span>request</span><b>router</b></div>
+  <div class="pipeline">
+    {
+      stages.map((stage, index) => (
+        <>
+          <section>
+            <>
+              <small>{stage.metric}</small>
+              <strong>{stage.name}</strong>
+              <span>{stage.detail}</span>
+            </>
+          </section>
+          {index < stages.length - 1 && <div class="link">→</div>}
+        </>
+      ))
+    }
+  </div>
+  <div class="controls">
+    <span>Compute parallelism tuned for prompt length</span><span
+      >Bandwidth budgeted for KV size</span
+    ><span>Memory parallelism tuned for concurrency</span>
+  </div>
+</figure>
+<style>
+  .viz {
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    font: 600 var(--font-size-s) var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1.2rem;
+  }
+  .request {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    font: 0.8rem var(--mono);
+    margin-bottom: 1rem;
+  }
+  .request b {
+    padding: 0.45rem 0.8rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .pipeline {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr auto 1fr;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .pipeline section {
+    min-height: 112px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--text-secondary);
+    background: var(--bg);
+  }
+  section small {
+    font: 0.7rem var(--mono);
+    color: var(--text-tertiary);
+  }
+  section strong {
+    font-family: var(--mono);
+  }
+  section span {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+  }
+  .link {
+    color: var(--text-tertiary);
+    font-size: 1.4rem;
+  }
+  .controls {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.6rem;
+    margin-top: 0.7rem;
+  }
+  .controls span {
+    font: 0.72rem/1.45 var(--mono);
+    color: var(--text-tertiary);
+  }
+  @media (max-width: 650px) {
+    .pipeline {
+      grid-template-columns: 1fr;
+    }
+    .link {
+      text-align: center;
+      transform: rotate(90deg);
+    }
+    .controls {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

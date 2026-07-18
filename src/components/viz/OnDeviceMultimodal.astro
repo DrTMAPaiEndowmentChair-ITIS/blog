@@ -1,0 +1,76 @@
+<figure class="viz" aria-labelledby="odm-title">
+  <figcaption id="odm-title">A shared memory budget, not three independent pipelines</figcaption>
+  <div class="inputs"><b>camera frames</b><b>audio windows</b><b>text tokens</b></div>
+  <div class="arrows">↓ ↓ ↓</div>
+  <div class="encoders">
+    <span>vision encoder</span><span>speech encoder</span><span>token embedding</span>
+  </div>
+  <div class="adapter">modality adapters produce language-model tokens</div>
+  <div class="memory">
+    <b>resident weights</b><b>KV cache</b><b>activations</b><b>runtime workspace</b>
+  </div>
+  <p>
+    Peak allocation is the sum of concurrent residents. Schedule encoders serially when their
+    outputs can be retained as compact tokens.
+  </p>
+</figure>
+<style>
+  .viz {
+    margin: 2rem 0;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    text-align: center;
+  }
+  figcaption {
+    text-align: left;
+    font: 600 0.85rem var(--mono);
+    margin-bottom: 1rem;
+  }
+  .inputs,
+  .encoders,
+  .memory {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+  }
+  .memory {
+    grid-template-columns: repeat(4, 1fr);
+    margin-top: 0.8rem;
+  }
+  .inputs b,
+  .encoders span,
+  .memory b,
+  .adapter {
+    padding: 0.7rem;
+    border: 1px solid var(--border);
+    background: var(--background);
+    font-size: 0.75rem;
+  }
+  .adapter {
+    margin-top: 0.55rem;
+    border-color: #2563eb;
+  }
+  .arrows {
+    color: var(--text-secondary);
+    padding: 0.35rem;
+  }
+  .memory b {
+    border-top: 3px solid #d97706;
+  }
+  p {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    margin: 0.8rem 0 0;
+  }
+  @media (max-width: 640px) {
+    .inputs,
+    .encoders,
+    .memory {
+      grid-template-columns: 1fr;
+    }
+    .arrows {
+      display: none;
+    }
+  }
+</style>

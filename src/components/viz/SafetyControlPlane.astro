@@ -1,0 +1,139 @@
+---
+const controls = [
+  ['Input boundary', 'Identity, rate limit, content classification'],
+  ['Context builder', 'Source allowlist, provenance, secret filtering'],
+  ['Model request', 'Pinned policy and bounded output contract'],
+  ['Tool broker', 'Typed arguments, least privilege, approval'],
+  ['Output boundary', 'Schema validation, citation and policy checks']
+]
+---
+
+<figure class="safety" aria-labelledby="safety-title">
+  <figcaption id="safety-title">Safety control plane around a model request</figcaption>
+  <div class="plane">
+    <div class="policy"><strong>Policy service</strong><span>versioned rules</span></div>
+    <div class="audit"><strong>Audit log</strong><span>decision evidence</span></div>
+    <div class="path">
+      {
+        controls.map(([name, detail], index) => (
+          <>
+            <section>
+              <>
+                <strong>{name}</strong>
+                <span>{detail}</span>
+              </>
+            </section>
+            {index < controls.length - 1 && <b aria-hidden="true">→</b>}
+          </>
+        ))
+      }
+    </div>
+  </div>
+</figure>
+
+<style>
+  .safety {
+    margin: 2rem 0;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    background: var(--code-bg);
+  }
+  figcaption {
+    margin-bottom: 1rem;
+    font: 600 0.82rem/1.4 var(--mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .plane {
+    position: relative;
+    padding: 4.5rem 0;
+  }
+  .policy,
+  .audit {
+    position: absolute;
+    left: 50%;
+    translate: -50% 0;
+    display: flex;
+    gap: 0.65rem;
+    padding: 0.55rem 0.8rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    font-size: 0.76rem;
+  }
+  .policy {
+    top: 0;
+  }
+  .audit {
+    bottom: 0;
+  }
+  .policy:after,
+  .audit:before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    width: 1px;
+    height: 2.5rem;
+    background: var(--border);
+  }
+  .policy:after {
+    top: 100%;
+  }
+  .audit:before {
+    bottom: 100%;
+  }
+  .policy span,
+  .audit span {
+    color: var(--text-tertiary);
+  }
+  .path {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+  }
+  section {
+    flex: 1;
+    min-width: 0;
+    padding: 0.7rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  section strong,
+  section span {
+    display: block;
+  }
+  section strong {
+    font: 600 0.76rem var(--mono);
+  }
+  section span {
+    margin-top: 0.3rem;
+    color: var(--text-tertiary);
+    font-size: 0.72rem;
+  }
+  b {
+    align-self: center;
+    padding: 0 0.25rem;
+    color: var(--text-secondary);
+  }
+  @media (max-width: 700px) {
+    .plane {
+      padding: 0;
+    }
+    .policy,
+    .audit {
+      position: static;
+      translate: none;
+      margin: 0.6rem auto;
+      width: max-content;
+    }
+    .policy:after,
+    .audit:before {
+      display: none;
+    }
+    .path {
+      flex-direction: column;
+    }
+    b {
+      rotate: 90deg;
+    }
+  }
+</style>

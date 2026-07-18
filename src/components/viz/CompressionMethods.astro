@@ -1,0 +1,61 @@
+<figure class="viz" aria-labelledby="cm-title">
+  <figcaption id="cm-title">
+    Compression changes different parts of the deployment contract
+  </figcaption>
+  <div class="matrix">
+    <b>Method</b><b>Changes graph</b><b>Needs retraining</b><b>Runtime requirement</b>
+    <strong>Unstructured pruning</strong><span>mask or sparse weights</span><span
+      >usually recovery tuning</span
+    ><span>sparse kernel support</span>
+    <strong>Structured pruning</strong><span>removes heads, channels, layers</span><span
+      >recovery tuning</span
+    ><span>dense kernels can apply</span>
+    <strong>Distillation</strong><span>student architecture</span><span>student training</span><span
+      >ordinary student runtime</span
+    >
+    <strong>Low-rank factorization</strong><span>W becomes AB</span><span
+      >optional recovery tuning</span
+    ><span>two smaller operators</span>
+  </div>
+</figure>
+<style>
+  .viz {
+    margin: 2rem 0;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+  }
+  figcaption {
+    font: 600 0.85rem var(--mono);
+    margin-bottom: 1rem;
+  }
+  .matrix {
+    display: grid;
+    grid-template-columns: 1.2fr repeat(3, 1fr);
+    border-top: 1px solid var(--border);
+    border-left: 1px solid var(--border);
+  }
+  .matrix > * {
+    padding: 0.7rem;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    font-size: 0.73rem;
+    background: var(--background);
+  }
+  .matrix > b {
+    font-family: var(--mono);
+    background: color-mix(in srgb, #2563eb 12%, var(--background));
+  }
+  @media (max-width: 680px) {
+    .matrix {
+      grid-template-columns: 1fr;
+    }
+    .matrix > b:not(:first-child) {
+      display: none;
+    }
+    .matrix strong {
+      margin-top: 0.5rem;
+      color: #2563eb;
+    }
+  }
+</style>

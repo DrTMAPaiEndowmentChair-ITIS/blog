@@ -1,0 +1,196 @@
+---
+title: 'Synthetic Data Pipelines: Generation, Filtering, and Validation'
+pubDate: '2026-05-28'
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Build reproducible synthetic-data systems with explicit lineage, generation, filtering, deduplication, validation, and policy controls.'
+topics: ['Synthetic data', 'Data quality', 'Training']
+---
+
+import SyntheticDataPipeline from '../../components/viz/SyntheticDataPipeline.astro'
+
+**Author**: Aadit Agrawal
+
+Synthetic data is a software artifact with lineage. A production pipeline must be able to answer which seed, prompt template, generator, sampling configuration, validator, and policy produced every accepted record. Without that chain, a high-scoring training run cannot be reproduced or audited.
+
+<SyntheticDataPipeline />
+
+## Define the target distribution first
+
+Generation should fill a documented coverage gap. Start with a taxonomy of task, language, domain, difficulty, input form, and expected output form. Assign each candidate to that taxonomy before accepting it.
+
+A record envelope can preserve the minimum lineage:
+
+```json
+{
+  "record_id": "content-addressed-id",
+  "seed_id": "source-record-id",
+  "task": "tool_argument_generation",
+  "generator": {
+    "model": "pinned-model-revision",
+    "template": "template-content-hash",
+    "sampling": "serialized-sampling-config"
+  },
+  "candidate": {
+    "prompt": "generated prompt",
+    "response": "generated response"
+  },
+  "validation": [],
+  "decision": "pending"
+}
+```
+
+Do not use an editable model alias or prompt filename as provenance. Store immutable revisions and content hashes.
+
+## Seed records constrain what generation can learn
+
+Self-Instruct starts from seed tasks, generates new instructions and instances, filters invalid or similar outputs, then uses accepted examples for instruction tuning.[^self-instruct] The mechanism amplifies a seed distribution. It does not create an unbiased sample of every task users will request.
+
+Seed preparation should include:
+
+- license and consent review;
+- removal of secrets and personal data;
+- exact and near-duplicate grouping;
+- taxonomy labels;
+- held-out source groups for evaluation;
+- contamination checks against benchmark material.
+
+Split by source group before generation. If variants of one seed land in training and evaluation, the evaluation measures template transfer rather than independent generalization.
+
+## Generation should expose controlled diversity
+
+Prompt templates can request variations in task structure, constraints, domain, or reasoning requirement. Sampling adds lexical and solution diversity. Both can also produce invalid examples.
+
+Generate multiple candidates per seed only when a validator can distinguish them. Otherwise the pipeline increases volume without evidence of quality. Preserve rejected candidates and reasons so generator changes can be compared on the same acceptance criteria.
+
+Structured tasks should use structured generation:
+
+```python
+from dataclasses import dataclass
+
+@dataclass
+class Candidate:
+    instruction: str
+    input: str
+    output: str
+    assumptions: list[str]
+    source_ids: list[str]
+```
+
+A schema verifies form, not truth. It prevents missing fields and malformed types from entering later stages.
+
+## Use validators with independent evidence
+
+A generator grading its own answer repeats correlated errors. Prefer validators that obtain evidence through a different mechanism.
+
+| Task                  | Strong validator                       | Weak validator        |
+| --------------------- | -------------------------------------- | --------------------- |
+| Code generation       | compile, tests, static analysis        | generator self-rating |
+| Structured extraction | schema plus comparison to source       | fluent explanation    |
+| Mathematics           | symbolic check or alternate derivation | answer-format match   |
+| Retrieval question    | entailment against cited passages      | uncited judge score   |
+| Tool calls            | schema plus sandbox execution          | syntactic JSON only   |
+
+Execution validators need containment. Run generated code with resource limits, no ambient credentials, restricted networking, and disposable storage. Record exit status and test output, but sanitize untrusted content before displaying it in internal tools.
+
+For open-ended responses, use a rubric with observable failure labels such as unsupported claim, missing constraint, contradiction, unsafe instruction, or non-answer. Calibrate model-based judges against a human-reviewed sample and recheck calibration when the generator or domain changes.
+
+## Deduplicate before and after generation
+
+Exact hashing removes byte-identical records. Normalized hashing can ignore formatting, case, or boilerplate. Semantic similarity catches paraphrases, but thresholds depend on the embedding model and domain.
+
+Deduplication has two distinct objectives:
+
+1. prevent repeated training weight on the same underlying example;
+2. prevent evaluation leakage from a training example or its derivative.
+
+The second objective needs lineage-aware checks. A generated prompt can be lexically distant from its seed while preserving the same answer structure. Group descendants with their seed during split assignment.
+
+Store cluster identifiers and representative records. Deleting duplicates without a manifest makes future dataset diffs difficult to explain.
+
+## Filter by difficulty with executable signals
+
+Difficulty labels produced only by a generator are unstable. Prefer signals tied to the task:
+
+- number and type of constraints satisfied;
+- proof or program length after normalization;
+- number of tool calls required by a reference solution;
+- pass rate across independent solvers;
+- retrieval depth or evidence count;
+- disagreement among validated candidate solutions.
+
+Do not equate longer chain-of-thought text with harder reasoning. A verbose candidate can contain redundant or fabricated steps. If reasoning traces are used for training, validate the final answer and inspect step consistency with tools where the domain permits it.
+
+## Keep private reasoning out of public data contracts
+
+A synthetic pipeline can train on solutions without exposing raw reasoning at inference. Separate outcome supervision, concise rationales, tool traces, and hidden scratch work as distinct fields. The serving format should not inherit the generator's internal trace by accident.
+
+For tool use, a compact trace is often more useful:
+
+```text
+request
+tool schema selected
+validated arguments
+tool result reference
+final answer grounded in result
+```
+
+This structure is auditable and maps to runtime behavior.
+
+## Control model collapse with real anchors
+
+Training repeatedly on model-generated distributions can reduce coverage of low-probability events and propagate generator errors. A synthetic corpus therefore needs real-data anchors, independent evaluation, and explicit mixture weights. Synthetic examples should address measured gaps rather than replace the entire observed distribution.
+
+Track acceptance and performance by source type. If synthetic data improves aggregate accuracy while reducing performance on a real-data slice, the aggregate result is insufficient.
+
+## Build evaluation before the large run
+
+The evaluation set must not be generated by the same templates, seeds, and model revision used for training. Include:
+
+- a frozen real-data set;
+- adversarial cases written or curated independently;
+- schema and execution tests;
+- slice metrics for the target taxonomy;
+- memorization probes against seeds;
+- safety and privacy probes;
+- regression examples from production failures.
+
+FLAN work showed that scaling instruction-finetuning tasks and using chain-of-thought data can improve model behavior across evaluation families.[^flan] That result supports task diversity as a training variable. It does not validate any arbitrary synthetic dataset, so each pipeline still needs its own ablations.
+
+Run mixture ablations rather than comparing only no-synthetic versus all-synthetic. Change one factor at a time: seed source, generator revision, filtering stage, or mixture weight.
+
+## Version the dataset as a build
+
+A dataset release should contain:
+
+- source and license manifest;
+- generator and prompt hashes;
+- validator versions;
+- rejection counts by reason;
+- deduplication clusters;
+- split assignment logic;
+- final record hashes;
+- evaluation report;
+- known limitations.
+
+Treat validator changes like code changes. Rebuild from immutable candidates, diff accepted record IDs, and investigate large movements. A judge prompt edit can alter the training distribution even when generation is unchanged.
+
+## Failure modes
+
+**Validator leakage:** The generator learns the tests or rubric and produces outputs tailored to them. Keep hidden checks and rotate surface forms without changing the criterion.
+
+**Homogeneous style:** One generator and template create repeated syntax. Measure lexical and structural diversity, then introduce source or template diversity with unchanged validation.
+
+**False authority:** Candidates include citations that look valid but do not support the claim. Fetch the cited primary source and verify entailment, or reject the citation.
+
+**Split contamination:** Derived examples cross seed-group boundaries. Assign the split at the ancestor seed and inherit it through every transformation.
+
+**Silent policy drift:** A hosted generator changes behind an alias. Pin a revision when possible and retain probe outputs that identify behavior changes.
+
+Synthetic data quality comes from the rejection path as much as the generator. The durable pipeline preserves provenance, validates with independent evidence, deduplicates by lineage, anchors evaluation in real data, and makes every accepted record reproducible.
+
+## References
+
+[^self-instruct]: [Self-Instruct: Aligning Language Models with Self-Generated Instructions](https://arxiv.org/abs/2212.10560).
+
+[^flan]: [Scaling Instruction-Finetuned Language Models](https://arxiv.org/abs/2210.11416).

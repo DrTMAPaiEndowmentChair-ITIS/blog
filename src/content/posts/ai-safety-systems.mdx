@@ -1,0 +1,285 @@
+---
+title: 'AI Safety Systems in Production: Policy, Permissions, and Validation'
+pubDate: 2026-06-12
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: 'Design production safety as a control plane spanning identity, data access, tool permissions, output validation, monitoring, and response.'
+topics: ['AI safety', 'Authorization', 'Guardrails']
+---
+
+import SafetyControlPlane from '../../components/viz/SafetyControlPlane.astro'
+
+Production AI safety is a systems property. A model can refuse a prohibited request and still leak data through retrieval, call an overpowered tool, or emit malformed output that an application executes.
+
+The control plane must govern identity, data access, tool authority, output contracts, monitoring, and response. Model behavior remains one control inside that plane.
+
+## Model the system before the threat
+
+Draw the actual data path:
+
+```text
+user → gateway → context builder → model → tool broker → external systems
+                         ↓                       ↓
+                    retrieval index         audit log
+```
+
+For each boundary, record:
+
+- Principal and credential.
+- Data classification.
+- Allowed operations.
+- Policy owner.
+- Validation performed.
+- Log and retention behavior.
+- Failure and rollback path.
+
+NIST's Generative AI Profile organizes risk work around govern, map, measure, and manage functions and treats risk management as a lifecycle activity rather than a model-only test.[^nist]
+
+<SafetyControlPlane />
+
+## Separate policy from prompt text
+
+A system prompt is input to a probabilistic model. It can influence behavior but cannot enforce database permissions or network access.
+
+Represent enforceable policy in code or a policy engine:
+
+```ts
+type Action = {
+  principal: string
+  operation: 'read' | 'create' | 'update' | 'delete'
+  resource: string
+  attributes: Record<string, string>
+}
+
+type PolicyDecision = {
+  effect: 'allow' | 'deny' | 'require_approval'
+  policyVersion: string
+  reason: string
+}
+```
+
+The prompt can tell the model not to delete records. The tool broker must deny deletion unless the authenticated principal, resource policy, and conversation approval allow it.
+
+Version policies independently from prompts. An incident review should identify the rule that allowed an action without reconstructing it from prose embedded in a model request.
+
+## Apply least privilege to tools
+
+Tool definitions should map to narrow operations. A generic SQL executor or shell command carries more authority than a tool designed around one domain action.
+
+Prefer:
+
+```json
+{
+  "name": "create_refund_request",
+  "input": {
+    "invoice_id": "INV-1042",
+    "reason_code": "DUPLICATE_CHARGE"
+  }
+}
+```
+
+over:
+
+```json
+{
+  "name": "run_command",
+  "input": {
+    "command": "refund --invoice INV-1042"
+  }
+}
+```
+
+The values are illustrative. The narrow tool allows schema validation, resource-level authorization, idempotency, and a specific audit event.
+
+Credentials should be scoped per tool service and deployment environment. Do not place a broad production credential in the model context. The model should select an operation; the broker should attach credentials after policy approval.
+
+## Bind approval to material arguments
+
+Approval must cover the action the system will execute. If the model changes a recipient, amount, repository, or destination after approval, request approval again.
+
+```ts
+function approvalFingerprint(tool: string, args: unknown, principal: string): string {
+  return stableHash({ tool, args, principal })
+}
+```
+
+The approval record should contain the fingerprint, policy version, user identity, timestamp, and rendered action summary. A generic session-wide approval grants authority to future model outputs that the user has not seen.
+
+Read operations can also be sensitive. Searching personnel records or retrieving private source code requires access checks even when no state changes.
+
+## Treat retrieved content as untrusted
+
+Prompt injection crosses a trust boundary when data is interpreted as instructions. Web pages, emails, documents, issue comments, and tool results can contain text that tells the model to ignore policy or exfiltrate context.
+
+Do not rely on a delimiter to make instructions harmless. The model still reads both sides of the delimiter.
+
+Controls include:
+
+- Retrieve only from authorized sources.
+- Preserve source identity around every passage.
+- Label retrieved text as data in the model instruction.
+- Exclude credentials and unnecessary private context.
+- Restrict tool authority independently of model output.
+- Require confirmation for sensitive side effects.
+- Validate output before execution.
+
+Indirect injection becomes an incident only when the surrounding system gives the injected instruction a path to data or action. Remove that path with least privilege and approval.
+
+## Constrain data movement
+
+Build context from an explicit allowlist of fields. Passing complete records creates accidental exposure and makes later redaction harder.
+
+```ts
+type TicketContext = {
+  subject: string
+  customerMessage: string
+  publicProduct: string
+  allowedPolicyExcerpts: string[]
+}
+```
+
+Keep secrets out of prompts. If a tool needs an API credential, inject it inside the trusted tool process. Model-visible logs should redact authorization headers, session cookies, private keys, and personal data not needed for the task.
+
+Tenant isolation belongs in the query and storage layer. Filtering another tenant's passages after retrieval already exposes them to rankers, caches, and traces.
+
+## Validate inputs and outputs
+
+Input validation protects services from malformed model-generated arguments. Output validation protects downstream consumers from malformed or policy-breaking model text.
+
+Use a layered contract:
+
+1. Parse the output.
+2. Validate its schema.
+3. Check domain invariants.
+4. Apply authorization.
+5. Execute through an idempotent boundary.
+6. Verify postconditions.
+
+```ts
+type RefundRequest = {
+  invoiceId: string
+  reasonCode: 'DUPLICATE_CHARGE' | 'SERVICE_NOT_DELIVERED'
+}
+
+function validateRefund(request: RefundRequest, invoice: { id: string; state: string }): void {
+  if (request.invoiceId !== invoice.id) throw new Error('invoice mismatch')
+  if (invoice.state !== 'paid') throw new Error('invoice is not refundable')
+}
+```
+
+A JSON Schema can prove that `invoiceId` is a string. It cannot prove that the invoice belongs to the principal or is refundable.
+
+For generated code, parse before execution, run in an isolated environment, constrain network and filesystem access, set resource limits, and inspect artifacts. Text moderation does not replace a sandbox.
+
+## Use classifiers as routing controls
+
+Classifiers can detect content categories, sensitive data, or policy-relevant intent. They should produce an operational route:
+
+```text
+allow → normal pipeline
+transform → redact or narrow context
+review → human queue
+block → safe response with reason code
+```
+
+Measure false positives and false negatives on the deployed distribution. A classifier threshold is a policy choice with user and incident costs on both sides.
+
+Do not let a classifier silently rewrite authority. A low-risk classification can reduce review but should not grant a tool permission that the principal lacks.
+
+## Make provenance inspectable
+
+For factual answers, preserve the link between claims and sources:
+
+- Source identifier and revision.
+- Retrieved passage offsets.
+- Rank and selection trace.
+- Claim-to-source association where required.
+- Time of retrieval.
+
+Citation presence alone is not grounding. Validate that the cited passage supports the claim and that the user can access the source.
+
+For actions, provenance means the chain from user request through model proposal, policy decision, approval, tool call, and verified result.
+
+## Design failure states
+
+Safe failure is explicit:
+
+| Failure                    | System response                                    |
+| -------------------------- | -------------------------------------------------- |
+| Retrieval unavailable      | State that evidence could not be loaded            |
+| Policy service unavailable | Deny sensitive actions                             |
+| Approval expired           | Request a new approval                             |
+| Output invalid             | Repair within a bounded retry policy or stop       |
+| Tool result ambiguous      | Do not claim success                               |
+| Audit sink unavailable     | Apply the declared fail-open or fail-closed policy |
+
+A model-generated statement of success is not a tool postcondition. Read the authoritative system state before telling the user that an external action completed.
+
+## Evaluate attacks as workflows
+
+Single-turn refusal tests cover only model behavior. System tests should exercise:
+
+- Direct requests for prohibited content.
+- Indirect instructions inside retrieved documents.
+- Attempts to access another principal's resources.
+- Argument substitution after approval.
+- Tool-result spoofing.
+- Encoded or fragmented policy violations.
+- Excessive output and parser edge cases.
+- Service outages during sensitive actions.
+
+Record the layer that blocked each test. A prompt-only defense that passes today can regress with a model update. An authorization denial should remain stable.
+
+NIST recommends documented test plans, independent assessment where appropriate, incident disclosure processes, and ongoing monitoring for generative AI systems.[^nist] Translate those controls into executable release gates and incident runbooks.
+
+## Log decisions without creating a second leak
+
+Audit records need enough detail for reconstruction:
+
+```json
+{
+  "request_id": "req_91",
+  "principal": "user_24",
+  "policy_version": "tools-12",
+  "tool": "create_refund_request",
+  "decision": "require_approval",
+  "approval_id": "approval_77",
+  "result": "created"
+}
+```
+
+Identifiers and versions are illustrative.
+
+Do not log full prompts by default when they contain private documents. Store encrypted artifacts with limited retention and access, or log hashes plus selected redacted fields. Test redaction on tool errors because exception text often includes request bodies.
+
+## Incident response
+
+An AI incident runbook needs system controls:
+
+1. Disable or narrow the affected tool.
+2. Revoke credentials and sessions.
+3. Preserve policy, prompt, model, retrieval, and tool revisions.
+4. Identify affected principals and resources.
+5. Replay the trace in an isolated environment.
+6. Add a regression case at the failed layer.
+7. Verify the fix against adjacent workflows.
+
+Changing the system prompt is appropriate only when the failure was actually instructional. A cross-tenant retrieval bug needs a query and authorization fix.
+
+## Deployment checklist
+
+- Every request has an authenticated principal or an explicit anonymous policy.
+- Retrieval filters execute before content leaves its authorization boundary.
+- Tools expose narrow operations with typed inputs.
+- Credentials never enter model-visible context.
+- Sensitive actions require argument-bound approval.
+- Tool brokers apply policy after model selection.
+- Outputs pass syntax, schema, domain, and authorization checks.
+- Success claims follow verified postconditions.
+- Traces identify every deployed revision.
+- Logs are redacted, access-controlled, and retained by policy.
+- Offline attacks and production incidents become regression cases.
+
+Safety improves when authority is explicit and independently enforceable. The model proposes. Policy decides. Tools verify. Audit records preserve the evidence.
+
+[^nist]: [NIST AI 600-1, Artificial Intelligence Risk Management Framework: Generative Artificial Intelligence Profile, July 2024](https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf).

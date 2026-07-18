@@ -1,0 +1,254 @@
+---
+title: 'Retrieval Systems Beyond Basic RAG: Hybrid Search, Reranking, and Evaluation'
+pubDate: 2026-04-27
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: 'Build measurable retrieval pipelines with structural chunking, hybrid candidate generation, reranking, and relevance evaluation.'
+topics: ['RAG', 'Retrieval', 'Reranking']
+---
+
+import RetrievalRankingStages from '../../components/viz/RetrievalRankingStages.astro'
+
+A retrieval system has a narrower job than a language model: given a query, return evidence that satisfies an information need. That boundary makes retrieval measurable. Documents can be judged for relevance before generation is introduced, and failures can be assigned to indexing, candidate generation, ranking, context construction, or answer synthesis.
+
+Basic retrieval-augmented generation often collapses those stages into one embedding search. Production retrieval needs more structure because identifiers, exact phrases, concepts, freshness, access control, and document quality are different ranking signals.
+
+## Index documents around retrieval units
+
+Chunking defines the unit the ranker can return. A chunk that spans unrelated sections produces an embedding with mixed semantics. A chunk that is too narrow can omit the qualifier needed to interpret a match.
+
+Use structural boundaries before token counts:
+
+```ts
+type Passage = {
+  id: string
+  documentId: string
+  headingPath: string[]
+  body: string
+  updatedAt: string
+  acl: string[]
+}
+
+function passageText(passage: Passage): string {
+  return [...passage.headingPath, passage.body].join('\n')
+}
+```
+
+The heading path gives a dense encoder and lexical index the local subject. The document identifier supports deduplication after ranking. The access-control field allows filtering before any passage enters the candidate set.
+
+Store provenance that survives every stage:
+
+- Stable document and passage identifiers.
+- Source URI and content revision.
+- Character or byte offsets into the source.
+- Parser and embedding model versions.
+- Access-control attributes.
+- Timestamp used for freshness calculations.
+
+Without a revision identifier, an answer citation can point at content that changed after retrieval.
+
+## Lexical retrieval preserves exact evidence
+
+BM25 ranks documents using query term frequency, inverse document frequency, and length normalization. A common form is:
+
+$$
+\operatorname{score}(D,Q)=\sum_{q \in Q}\operatorname{IDF}(q)
+\frac{f(q,D)(k_1+1)}
+{f(q,D)+k_1(1-b+b|D|/\operatorname{avgdl})}
+$$
+
+Here, $f(q,D)$ is the frequency of term $q$ in document $D$. The parameters $k_1$ and $b$ control term saturation and length normalization. They are tuning parameters, not universal constants.
+
+Lexical retrieval is valuable for error codes, function names, chemical symbols, product identifiers, and quoted policy language. An embedding model can place semantically related text nearby while missing the exact token sequence that establishes relevance.
+
+Normalize carefully. Lowercasing may suit prose but can damage case-sensitive identifiers. Stemming can improve recall for natural language and corrupt source-code terms. Maintain field-specific analyzers instead of applying one text pipeline to every field.
+
+## Dense retrieval supplies semantic candidates
+
+A bi-encoder maps the query and passage independently:
+
+$$
+z_q = f_\theta(q), \qquad z_d = g_\theta(d)
+$$
+
+The index retrieves passages with high cosine similarity or inner product. Independent encoding makes corpus vectors reusable, which is why dense retrieval works as a candidate generator.
+
+Dense retrieval inherits the encoder's training distribution. The BEIR benchmark evaluated lexical, sparse, dense, late-interaction, and reranking systems across 18 datasets; its results found BM25 to be a robust baseline and showed that reranking and late interaction performed best on average in zero-shot settings, with higher computational cost.[^beir]
+
+That result argues against replacing lexical search by default. It supports evaluating multiple retriever families on the target corpus.
+
+## Hybrid fusion combines rankers
+
+Lexical and dense scores are usually not calibrated to the same range. Adding raw scores allows whichever system has the wider numeric distribution to dominate.
+
+Reciprocal Rank Fusion combines positions instead:
+
+$$
+\operatorname{RRF}(d)=\sum_{r \in R}\frac{1}{k+\operatorname{rank}_r(d)}
+$$
+
+The original RRF study compared fusion methods and reported that reciprocal rank fusion outperformed the tested Condorcet and individual learning-to-rank approaches.[^rrf] The constant $k$ controls how sharply the formula rewards the top positions and should be selected on validation queries.
+
+```ts
+type Ranked = { id: string; rank: number }
+
+function rrf(lists: Ranked[][], rankConstant: number): Map<string, number> {
+  const scores = new Map<string, number>()
+  for (const list of lists) {
+    for (const hit of list) {
+      scores.set(hit.id, (scores.get(hit.id) ?? 0) + 1 / (rankConstant + hit.rank))
+    }
+  }
+  return scores
+}
+```
+
+The candidate depth for each ranker is an operational control. A deeper pool raises recall and increases fusion, filtering, and reranking work.
+
+<RetrievalRankingStages />
+
+## Reranking spends compute on a bounded set
+
+A cross-encoder reads the query and candidate passage together. Joint attention can inspect exact query-passage interactions that a bi-encoder compresses into separate vectors.
+
+The architecture separates jobs:
+
+1. Lexical and dense retrievers maximize candidate recall.
+2. Fusion creates a bounded candidate pool.
+3. A cross-encoder improves ordering precision.
+4. A context builder selects passages under a token budget.
+
+Training data must resemble the candidate distribution at inference. HYRR trains rerankers on candidates from a hybrid lexical and dense retriever and reports robustness across first-stage retrieval systems on supervised and zero-shot passage tasks.[^hyrr]
+
+Reranking every document defeats the purpose. Its latency should scale with the candidate pool, not corpus size. Batch query-passage pairs on accelerators and log queue time separately from model execution.
+
+## Late interaction retains token-level matching
+
+Late-interaction systems encode query and document tokens independently, then aggregate token-level similarities. They occupy a point between bi-encoders and cross-encoders:
+
+- More expressive matching than one vector per passage.
+- Reusable document representations.
+- Larger indexes and more scoring work than single-vector search.
+- Less joint computation than a cross-encoder.
+
+This architecture is useful when a single passage contains several concepts and relevance depends on multiple local matches. It also complicates index storage and serving. Measure end-to-end latency at realistic corpus size rather than comparing model forward passes alone.
+
+## Query transformation needs a grounding boundary
+
+Query rewriting can expand acronyms, resolve conversational references, or create alternate lexical forms. It can also remove a rare identifier that carried the user's actual intent.
+
+Preserve the original query as one branch:
+
+```text
+original query ───────────────› lexical retrieval
+       ├── normalized query ──› dense retrieval
+       └── generated variant ─› optional retrieval branch
+```
+
+HyDE generates a hypothetical document, embeds it, and retrieves nearby real documents. The paper explicitly notes that the generated document is unreal and may contain false details; the corpus search provides the grounding step.[^hyde] A generated query or hypothetical document must never be presented as evidence.
+
+## Filters belong before context assembly
+
+Metadata filtering is part of retrieval correctness. Tenant, repository, geography, retention class, and authorization constraints should restrict candidates before content reaches the model.
+
+Do not retrieve globally and remove unauthorized passages after reranking. That design leaks protected content into ranker inputs, traces, caches, and timing behavior.
+
+Freshness is also domain-specific. A recent changelog can outrank an older overview for a current-version query. A historical audit may require the opposite. Encode freshness as an explicit feature controlled by query intent rather than a global recency boost.
+
+## Evaluate retrieval without generation
+
+For a query with a set of relevant passages, common metrics answer different questions:
+
+| Metric               | Question                                         |
+| -------------------- | ------------------------------------------------ |
+| Recall at $k$        | Did the candidate set contain relevant evidence? |
+| Precision at $k$     | How much of the returned set was relevant?       |
+| Mean reciprocal rank | How early was the first relevant result?         |
+| nDCG at $k$          | Did graded relevance appear in a useful order?   |
+
+For binary relevance:
+
+$$
+\operatorname{Recall@k}=\frac{|\text{relevant}\cap\text{top-k}|}{|\text{relevant}|}
+$$
+
+Use passage-level labels for candidate and reranker evaluation, then add answer-level evaluation separately. If answer quality falls while retrieval metrics remain stable, inspect context ordering, citation binding, and generation.
+
+Evaluation queries should be grouped by failure-sensitive slices:
+
+- Exact identifiers and quoted phrases.
+- Paraphrases with no shared keywords.
+- Questions requiring several passages.
+- Time-sensitive queries.
+- Negative queries with no supporting evidence.
+- Permission boundaries.
+- Documents with repeated boilerplate.
+
+Report confidence intervals or paired tests when comparing rankers. A single aggregate can hide a regression on exact-match queries behind a gain on semantic questions.
+
+## Context construction is a ranking stage
+
+The top-ranked passages are not automatically the best prompt. Near-duplicate chunks waste tokens. Several passages from one document can crowd out independent evidence. The relevant span can be buried inside a long passage.
+
+A context builder should:
+
+1. Remove exact and near duplicates.
+2. Group passages by source document.
+3. Prefer passages that add evidence not already selected.
+4. Preserve source identifiers around every passage.
+5. Stop at a measured token budget.
+
+Long context does not remove this requirement. The Lost in the Middle study found that model performance can change with the position of relevant information and often declines when evidence appears in the middle of a long input.[^middle]
+
+## Operational measurements
+
+Trace each stage with the query and corpus versions needed for replay:
+
+```json
+{
+  "query_id": "q_7f3",
+  "index_revision": "docs-2026-04-26",
+  "lexical_ms": 12,
+  "dense_ms": 19,
+  "fusion_candidates": 80,
+  "rerank_ms": 37,
+  "selected_passages": 6
+}
+```
+
+The values above illustrate a trace schema, not a performance target.
+
+Monitor:
+
+- Empty-result rate and fallback rate.
+- Candidate recall on labeled traffic samples.
+- Reranker score drift by document type.
+- Index freshness lag.
+- Permission-filter rejection counts.
+- Duplicate passage share.
+- Stage latency distributions and queue time.
+- Citation click-through or evidence inspection where the product exposes it.
+
+## Failure diagnosis
+
+**Relevant passage absent from all candidates:** inspect parsing, analyzers, embeddings, filters, and candidate depth.
+
+**Relevant passage retrieved but ranked low:** inspect fusion, reranker training distribution, and query features.
+
+**Relevant passage ranks high but is omitted from the prompt:** inspect deduplication and context-budget logic.
+
+**Evidence appears in the prompt but the answer is wrong:** inspect ordering, answer instructions, citation binding, and model capability.
+
+**Offline relevance improves while production outcomes fall:** inspect query distribution drift, latency, permissions, and the difference between relevance labels and the user outcome.
+
+A retrieval stack earns complexity only when each added stage moves a defined metric on representative queries. Hybrid retrieval, reranking, and context construction are separable controls. That separation makes the system faster to debug and harder to fool with one attractive aggregate score.
+
+[^beir]: [Thakur et al., “BEIR: A Heterogeneous Benchmark for Zero-shot Evaluation of Information Retrieval Models,” NeurIPS Datasets and Benchmarks, 2021](https://openreview.net/forum?id=wCu6T5xFjeJ).
+
+[^rrf]: [Cormack, Clarke, and Buettcher, “Reciprocal Rank Fusion Outperforms Condorcet and Individual Rank Learning Methods,” SIGIR, 2009](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf).
+
+[^hyrr]: [Lu et al., “HYRR: Hybrid Infused Reranking for Passage Retrieval,” 2022](https://arxiv.org/abs/2212.10528).
+
+[^hyde]: [Gao et al., “Precise Zero-Shot Dense Retrieval without Relevance Labels,” ACL, 2023](https://aclanthology.org/2023.acl-long.99/).
+
+[^middle]: [Liu et al., “Lost in the Middle: How Language Models Use Long Contexts,” Transactions of the Association for Computational Linguistics, 2024](https://aclanthology.org/2024.tacl-1.9/).

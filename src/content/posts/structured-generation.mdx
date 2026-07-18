@@ -1,0 +1,226 @@
+---
+title: 'Structured Generation: How LLMs Produce Valid JSON'
+pubDate: 2026-03-05
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: 'See how grammar compilation and token masking turn probabilistic decoding into reliably structured JSON and schema-constrained output.'
+topics: ['Structured output', 'JSON Schema', 'Decoding']
+---
+
+import ConstrainedDecoding from '../../components/viz/ConstrainedDecoding.astro'
+
+Prompting a model to return JSON asks a probabilistic decoder to imitate a grammar. Constrained decoding changes the operation: before sampling, the runtime masks tokens that cannot extend any valid document in the target language.
+
+The result can guarantee syntax without guaranteeing truth. A schema can force an integer field, but it cannot prove that the integer was computed from the source text.
+
+## Compile structure before generation
+
+JSON Schema, a regular expression, or a context-free grammar is not applied directly to model logits. The serving system compiles the constraint into a recognizer with runtime state.
+
+At generation step $t$, let $V$ be the vocabulary and $A(s_t)\subseteq V$ be the tokens accepted from grammar state $s_t$. Masked logits are:
+
+$$
+\ell'_t(v)=
+\begin{cases}
+\ell_t(v),&v\in A(s_t)\\
+-\infty,&v\notin A(s_t)
+\end{cases}
+$$
+
+Sampling then uses the normalized distribution over legal tokens. Willard and Louf formulate guided generation as transitions in a finite-state machine and build an index over the model vocabulary.[^1] Context-free constraints require stack state because nesting cannot be represented by a finite-state machine alone.
+
+<ConstrainedDecoding />
+
+## Tokens do not align with grammar terminals
+
+A tokenizer can encode punctuation together with adjacent text. A token might contain a quote, property characters, and a colon. Another token can contain a byte prefix that is invalid alone but valid when followed by later bytes.
+
+The matcher must answer a prefix question: does the token's byte sequence keep at least one valid completion reachable? Checking only complete terminals rejects useful multi-character tokens. Checking decoded Unicode strings can mishandle byte-level tokenizers.
+
+A robust engine:
+
+1. evaluates token bytes against the current recognizer state
+2. preserves every reachable parse stack when the grammar is ambiguous
+3. caches the legal-token set for repeated states
+4. advances state with the sampled token
+5. detects accepting state before applying end-of-sequence rules
+
+XGrammar separates context-independent grammar components from context-dependent components and overlaps grammar processing with GPU execution.[^2] Its design addresses the cost of walking grammar stacks across a large vocabulary.[^2]
+
+## JSON Schema is more than JSON syntax
+
+JSON grammar guarantees balanced delimiters, quoted keys, and valid scalar syntax. A schema adds semantic structure:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": { "enum": ["ok", "error"] },
+    "retryable": { "type": "boolean" },
+    "code": { "type": "integer", "minimum": 0 }
+  },
+  "required": ["status", "retryable"],
+  "additionalProperties": false
+}
+```
+
+Compilation must define which schema features are supported. Object property ordering, numeric bounds, string patterns, recursive references, unions, and `additionalProperties` each require different machinery. A provider that accepts a schema but ignores unsupported keywords supplies weaker guarantees than the input document suggests.
+
+Publish a supported subset and reject unsupported constraints at request validation. Silent downgrade turns a type contract into a prompt hint.
+
+## State-dependent masking cost
+
+Naively testing every vocabulary token at every step repeats work. Production engines reduce that cost through:
+
+- vocabulary tries that share token prefixes
+- precomputed masks for stable grammar states
+- cached transitions keyed by recognizer state and token
+- separation of deterministic and branching parse states
+- CPU grammar work overlapped with device model execution
+
+The mask still has to reach the sampling kernel. Copying a dense vocabulary-sized mask from host memory per sequence and per step can dominate short structured outputs. Bitsets, cached device masks, and batch grouping by grammar state reduce transfer.
+
+Batching introduces divergence. Two requests using the same schema can occupy different parse states, so their legal sets differ. The sampler must apply per-sequence masks even when the model forward pass is batched.
+
+## Whitespace and canonical forms
+
+JSON permits whitespace in many positions. Leaving all whitespace paths open expands grammar state and lets the model spend tokens formatting. A canonical mode can constrain separators and indentation, but it changes the accepted language.
+
+Define canonicalization as an API option:
+
+```ts
+type StructuredOutputOptions = {
+  schema: object
+  whitespace: 'compact' | 'model'
+  rejectUnsupportedKeywords: true
+  maxOutputTokens: number
+}
+```
+
+Compact output reduces token use. Model-controlled whitespace preserves stylistic freedom. Neither choice changes field semantics.
+
+## Token boundaries and parser composition
+
+Grammar terminals rarely align with model tokens. DOMINO uses token-aligned finite-state machines so a token can span several grammar terminals without forcing a token boundary after each terminal.[^3] This avoids rejecting a token merely because it packages punctuation, whitespace, and property text together.
+
+SynCode precomputes a finite lookahead table for grammar terminals and uses it to construct masks for context-free grammars.[^4] Two properties need separate tests:
+
+- soundness means every admitted token prefix retains a valid grammatical completion
+- completeness means every token that can participate in a valid completion remains admitted
+
+An unsound masker can emit invalid output. An incomplete masker can force low-probability tokenization paths even when the intended text is valid. Boundary fixtures should include escaped text, punctuation merged with names, and byte sequences split across tokens.
+
+### Near-runnable validation boundary
+
+Constrained output should still terminate at an ordinary validator:
+
+```python
+import json
+from jsonschema import Draft202012Validator
+
+def validate_generated_payload(raw_text, schema):
+    payload = json.loads(raw_text)
+    validator = Draft202012Validator(schema)
+    errors = sorted(
+        validator.iter_errors(payload),
+        key=lambda error: list(error.absolute_path),
+    )
+    if errors:
+        formatted = [
+            {
+                "path": list(error.absolute_path),
+                "message": error.message,
+            }
+            for error in errors
+        ]
+        raise ValueError(formatted)
+    return payload
+```
+
+Install `jsonschema` and supply the same schema compiled by the generation engine. This second validation catches engine defects and documents the trust boundary. Domain checks follow it and can query authoritative identifiers or enforce cross-field rules.
+
+## Compilation limits
+
+Compile user-supplied schemas before reserving model capacity. Cache compiled state by canonical schema bytes, tokenizer revision, grammar compiler version, and whitespace policy.
+
+Set separate limits for schema bytes, recursive depth, grammar states, and compile time. Returning a validation error before inference keeps malformed schemas out of the model queue.
+
+Expose the compilation result:
+
+```ts
+type CompiledConstraint = {
+  digest: string
+  compilerVersion: string
+  tokenizerRevision: string
+  supportedKeywords: readonly string[]
+  ignoredKeywords: readonly never[]
+}
+```
+
+The `never[]` type expresses the strict policy: unsupported keywords cause rejection. If compatibility requires permissive handling, name that mode explicitly and return every ignored keyword.
+
+## Valid structure is not valid data
+
+Apply three validation layers after decoding:
+
+| Layer            | Detects                         | Example                     |
+| ---------------- | ------------------------------- | --------------------------- |
+| Parser           | Invalid JSON bytes              | Unclosed string             |
+| Schema validator | Wrong shape or local constraint | Missing required field      |
+| Domain validator | Cross-field and external rules  | Unknown database identifier |
+
+Constrained decoding should make parser failure unreachable under supported conditions. Schema validation remains useful as a defense against implementation bugs and unsupported keywords. Domain validation is mandatory before side effects.
+
+For tool calls, treat model output as untrusted input even when it matches the schema. Resolve authorization from server-side identity. Do not allow a generated account identifier or file path to expand permissions.
+
+## Recursion and termination
+
+A recursive grammar can generate an unbounded document. The model still needs a token budget. If the budget ends before an accepting state, the result is structurally incomplete.
+
+The runtime should distinguish:
+
+- accepted completion
+- token-budget exhaustion in non-accepting state
+- grammar with no legal continuation
+- model end token masked because the document is incomplete
+- internal grammar-engine failure
+
+Returning partial bytes as ordinary JSON hides the failure. Return an explicit structured-generation status outside the generated payload.
+
+## Operational failure modes
+
+**Empty legal set:** the recognizer or tokenizer integration has reached a state with no accepted token. Log the grammar state, recent token bytes, tokenizer revision, and schema digest.
+
+**Schema explosion:** a large union or deeply recursive schema creates expensive state sets. Enforce compilation limits before model execution.
+
+**Cache poisoning:** a compiled-grammar cache uses an incomplete key. Include compiler version, tokenizer identity, schema bytes, and generation options.
+
+**Unsupported keyword drift:** a library upgrade changes which constraints are enforced. Pin compiler versions and run conformance fixtures.
+
+**Unicode mismatch:** validation operates on characters while masking operates on token bytes. Use one explicit byte-to-text policy and test invalid sequences.
+
+## Conformance testing
+
+Generate tests from the constraint rather than collecting a few successful prompts:
+
+- schemas with nested objects and arrays
+- escaped strings and Unicode boundaries
+- overlapping unions
+- optional and required fields
+- recursive definitions up to configured depth
+- outputs ending exactly at the token budget
+- adversarial property names that share token prefixes
+
+For each case, assert parser validity, schema validity, accepted-state termination, and deterministic failure classification. Separately evaluate factual accuracy. Grammar conformance and task quality are different metrics.
+
+Structured generation is reliable when the contract is precise: a documented schema subset, a tokenizer-aware recognizer, state-specific masks, and post-generation domain validation. Prompt wording alone provides none of those guarantees.
+
+## References
+
+[^1]: Brandon T. Willard and Rémi Louf, "Efficient Guided Generation for Large Language Models," arXiv, 2023. [https://arxiv.org/abs/2307.09702](https://arxiv.org/abs/2307.09702)
+
+[^2]: Yixin Dong et al., "XGrammar: Flexible and Efficient Structured Generation Engine for Large Language Models," arXiv, 2024. [https://arxiv.org/abs/2411.15100](https://arxiv.org/abs/2411.15100)
+
+[^3]: Luca Beurer-Kellner, Marc Fischer, and Martin Vechev, "Guiding LLMs The Right Way: Fast, Non-Invasive Constrained Generation," ICML, 2024. [https://arxiv.org/abs/2403.06988](https://arxiv.org/abs/2403.06988)
+
+[^4]: Suresh G. K. et al., "SynCode: LLM Generation with Grammar Augmentation," arXiv, 2024. [https://arxiv.org/abs/2403.01632](https://arxiv.org/abs/2403.01632)

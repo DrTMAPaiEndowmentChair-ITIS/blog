@@ -1,0 +1,92 @@
+---
+const candidates = [
+  { token: 'The', state: 'accept' },
+  { token: 'cache', state: 'accept' },
+  { token: 'grows', state: 'accept' },
+  { token: 'slowly', state: 'reject' }
+]
+---
+
+<figure class="viz" aria-labelledby="sd-title">
+  <figcaption id="sd-title">Draft tokens are verified in one target-model pass</figcaption>
+  <div class="lane draft">
+    <strong>Draft model</strong>{candidates.map((c) => <code>{c.token}</code>)}
+  </div>
+  <div class="verify"><span>parallel target probabilities</span><i></i><i></i><i></i><i></i></div>
+  <div class="lane target">
+    <strong>Accepted output</strong>{
+      candidates.map((c) => (
+        <code class={c.state}>{c.state === 'reject' ? 'linearly' : c.token}</code>
+      ))
+    }
+  </div>
+  <p>
+    Rejection discards the rejected draft token and every draft token after it. The target
+    distribution supplies the correction.
+  </p>
+</figure>
+<style>
+  .viz {
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    font: 600 var(--font-size-s) var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1.2rem;
+  }
+  .lane {
+    display: grid;
+    grid-template-columns: 1.3fr repeat(4, 1fr);
+    gap: 0.45rem;
+    align-items: center;
+  }
+  .lane strong {
+    font: 0.78rem var(--mono);
+  }
+  code {
+    padding: 0.65rem 0.25rem;
+    text-align: center;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    font-size: 0.78rem;
+  }
+  .verify {
+    display: grid;
+    grid-template-columns: 1.3fr repeat(4, 1fr);
+    gap: 0.45rem;
+    align-items: center;
+    margin: 0.5rem 0;
+    font: 0.7rem var(--mono);
+    color: var(--text-tertiary);
+  }
+  .verify i {
+    height: 14px;
+    border-left: 1px solid var(--text-tertiary);
+  }
+  code.accept {
+    border-bottom: 3px solid var(--text-secondary);
+  }
+  code.reject {
+    border-style: dashed;
+  }
+  p {
+    font: 0.78rem/1.5 var(--mono);
+    color: var(--text-secondary);
+    margin: 1rem 0 0;
+  }
+  @media (max-width: 600px) {
+    .lane,
+    .verify {
+      grid-template-columns: 1fr repeat(2, 1fr);
+    }
+    .lane strong,
+    .verify span {
+      grid-column: 1/-1;
+    }
+  }
+</style>

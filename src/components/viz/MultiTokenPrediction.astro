@@ -1,0 +1,102 @@
+---
+const heads = [
+  ['next', 'token t+1', 'shared trunk'],
+  ['second', 'token t+2', 'independent head'],
+  ['third', 'token t+3', 'independent head'],
+  ['fourth', 'token t+4', 'independent head']
+]
+---
+
+<figure class="viz" aria-labelledby="mtp-title">
+  <figcaption id="mtp-title">One hidden state supervises several future-token heads</figcaption>
+  <div class="trunk">
+    <span>tokens through t</span><b>Transformer trunk</b><span>hidden state hₜ</span>
+  </div>
+  <div class="fan" aria-hidden="true">↙ ↓ ↓ ↘</div>
+  <div class="heads">
+    {
+      heads.map((head) => (
+        <section>
+          <>
+            <small>{head[0]}</small>
+            <strong>{head[1]}</strong>
+            <span>{head[2]}</span>
+          </>
+        </section>
+      ))
+    }
+  </div>
+  <div class="loss">L = Σ α<sub>k</sub> CE(p<sub>t+k</sub>, x<sub>t+k</sub>)</div>
+</figure>
+<style>
+  .viz {
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    font: 600 var(--font-size-s) var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1.2rem;
+  }
+  .trunk {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    font: 0.76rem var(--mono);
+  }
+  .trunk b {
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--text-secondary);
+    background: var(--bg);
+  }
+  .fan {
+    text-align: center;
+    letter-spacing: 2rem;
+    color: var(--text-tertiary);
+    margin: 0.65rem;
+  }
+  .heads {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.55rem;
+  }
+  .heads section {
+    display: grid;
+    gap: 0.35rem;
+    padding: 0.8rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  small,
+  section span {
+    font: 0.72rem var(--mono);
+    color: var(--text-tertiary);
+  }
+  strong {
+    font: 0.78rem var(--mono);
+  }
+  .loss {
+    text-align: center;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    font: 0.8rem var(--mono);
+  }
+  @media (max-width: 620px) {
+    .trunk {
+      flex-direction: column;
+    }
+    .fan {
+      letter-spacing: 0.8rem;
+    }
+    .heads {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+</style>

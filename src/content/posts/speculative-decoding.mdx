@@ -1,0 +1,152 @@
+---
+title: 'Speculative Decoding: Draft, Verify, and Accept'
+pubDate: 2026-03-25
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: 'Accelerate autoregressive generation with draft proposals and lossless target-model verification while preserving the output distribution.'
+topics: ['Speculative decoding', 'Sampling', 'Latency']
+---
+
+import SpeculativeDecodingFlow from '../../components/viz/SpeculativeDecodingFlow.astro'
+
+Autoregressive decoding normally invokes the target model once for each output token. Speculative decoding asks a cheaper draft process to propose several tokens, then evaluates those positions together with the target model.
+
+The target model remains authoritative. A correct acceptance rule preserves its output distribution; speculation changes the execution schedule, not the distribution being sampled. Independent work by Leviathan, Kalman, and Matias and by Chen and collaborators established this lossless sampling construction.[^1][^2]
+
+## Draft and target distributions
+
+Let $q(x)$ be the draft probability for a proposed token and $p(x)$ the target probability at the same position. The verifier accepts draft token $x$ with:
+
+$$
+a(x)=\min\left(1,\frac{p(x)}{q(x)}\right)
+$$
+
+If the token is rejected, the correction distribution is proportional to:
+
+$$
+p'(x)=\max(0,p(x)-q(x))
+$$
+
+Normalizing and sampling from this residual corrects the draft's over-allocation of probability. If every proposal is accepted, the verifier can also sample an additional target token from the final verified position.[^1][^2]
+
+This is not the same as accepting whenever the target model's argmax matches the draft. Greedy matching can preserve greedy output, but it does not implement sampling from the target distribution.
+
+<SpeculativeDecodingFlow />
+
+## Verification uses parallel positions
+
+Suppose the draft model proposes $k$ tokens. The target receives the original prefix plus those candidates and returns logits for each proposed position in one forward pass. Causal masking prevents a position from reading later candidates, so each target distribution matches the distribution that ordinary autoregressive decoding would compute at that prefix.
+
+The execution loop is:
+
+```python
+while not finished:
+    proposals, q_probs = draft(prefix, draft_length)
+    p_probs = target(prefix + proposals)
+
+    accepted = []
+    for token, q, p in zip(proposals, q_probs, p_probs):
+        if uniform() <= min(1.0, p[token] / q[token]):
+            accepted.append(token)
+        else:
+            accepted.append(sample(normalize(maximum(p - q, 0))))
+            break
+
+    if len(accepted) == len(proposals):
+        accepted.append(sample(p_probs.after_last_candidate))
+
+    prefix.extend(accepted)
+```
+
+Real implementations must use the exact distributions after temperature, top-$k$, top-$p$, penalties, and any token masks. Applying a transform to only one model invalidates the acceptance ratio.
+
+## Speed depends on accepted tokens per target pass
+
+Speculation trades draft work and a wider target pass for fewer sequential target invocations. The useful quantity is not draft accuracy alone. Measure accepted output tokens per verification pass.
+
+Let $C_T(k)$ be target verification cost for a candidate span, $C_D(k)$ draft cost, and $E[A]$ expected committed tokens. A simple average cost is:
+
+$$
+\text{cost per committed token}=
+\frac{C_D(k)+C_T(k)}{E[A]}
+$$
+
+The best draft length depends on batch size, prompt length, target architecture, draft architecture, and workload. Longer spans expose more parallel target work but risk wasting later candidates after an early rejection.
+
+An adaptive controller can choose draft length from recent acceptance:
+
+```ts
+function nextDraftLength(emaAcceptance: number, current: number) {
+  if (emaAcceptance > highThreshold) return Math.min(current + step, maximum)
+  if (emaAcceptance < lowThreshold) return Math.max(current - step, minimum)
+  return current
+}
+```
+
+Thresholds must come from serving measurements. Hard-coded values copied from another model pair do not transfer reliably.
+
+## Draft model selection
+
+A draft model must be cheaper and sufficiently aligned with the target. It also needs compatible tokenization. Different vocabularies require a mapping scheme and make probability correction more complex.
+
+Evaluate candidates on:
+
+- target-pass reduction
+- draft latency under production batch sizes
+- acceptance by prompt class
+- device memory consumed by draft weights and cache
+- scheduler interference with target execution
+- tokenizer and logits-processor compatibility
+
+A small model on the same accelerator can compete with the target for memory bandwidth. A draft on another device adds communication and synchronization. The fastest isolated draft is not necessarily the best colocated draft.
+
+## Cache management
+
+Both models need state for the accepted prefix. Draft tokens beyond the rejection point must be rolled back. The target cache can retain verified accepted positions, while rejected suffix blocks become free.
+
+Paged caches simplify rollback when each speculative span receives provisional blocks. Commit accepted positions, truncate the final partial block, and release later blocks. Avoid copying the entire cache for each attempt.
+
+Continuous batching adds divergence. Requests accept different counts, so their logical sequence lengths change by different amounts after one verification iteration. The scheduler must update block tables and sampling state per request before forming the next batch.
+
+## Sampling details that break correctness
+
+**Mismatched temperature:** draft and target probabilities refer to different transformed distributions.
+
+**Penalties applied at different prefixes:** repetition or presence penalties see speculative tokens on one side but not the other.
+
+**Grammar masks applied only to the target:** the draft assigns mass to illegal tokens, reducing acceptance and complicating residual sampling.
+
+**Rounded probabilities:** low-precision acceptance ratios introduce bias. Keep probability arithmetic at a precision validated against a non-speculative sampler.
+
+**Random-number reuse:** batched rollback changes random-number consumption. Counter-based generators indexed by request and logical sample step make replay easier.
+
+## Tree and head-based variants
+
+The draft need not be a separate autoregressive model. Multiple heads can propose future tokens from the target's hidden state. Medusa adds decoding heads and verifies a tree of candidates, avoiding a separate draft model.[^3] Tree verification trades more candidate positions for a greater chance that one path matches the target.
+
+The verifier must construct a causal mask that represents the tree. Tokens on one branch cannot attend to siblings. Cache positions also need branch-specific ownership until a path is accepted.
+
+## Production evaluation
+
+Report latency distributions and acceptance together:
+
+| Metric                               | Diagnostic value                          |
+| ------------------------------------ | ----------------------------------------- |
+| Accepted tokens per target pass      | Direct measure of sequential work removed |
+| Rejection position histogram         | Detects spans that are too long           |
+| Draft time per proposed token        | Captures draft bottlenecks                |
+| Verification time by candidate count | Reveals target-kernel scaling             |
+| Rollback bytes and blocks            | Finds cache churn                         |
+| Acceptance by request class          | Supports adaptive routing                 |
+
+Compare against the same target model, sampling configuration, and scheduler without speculation. Verify distributional equivalence with seeded tests over many prompts, then run task-level quality evaluation to catch integration errors.
+
+Speculative decoding wins when cheap proposals align with the target and the hardware can verify several positions more efficiently than it can execute the same number of sequential decode steps. Its acceptance mathematics is exact; its systems benefit is empirical.
+
+## References
+
+[^1]: Yaniv Leviathan, Matan Kalman, and Yossi Matias, "Fast Inference from Transformers via Speculative Decoding," ICML, 2023. [https://arxiv.org/abs/2211.17192](https://arxiv.org/abs/2211.17192)
+
+[^2]: Charlie Chen et al., "Accelerating Large Language Model Decoding with Speculative Sampling," arXiv, 2023. [https://arxiv.org/abs/2302.01318](https://arxiv.org/abs/2302.01318)
+
+[^3]: Tianle Cai et al., "Medusa: Simple LLM Inference Acceleration Framework with Multiple Decoding Heads," ICML, 2024. [https://arxiv.org/abs/2401.10774](https://arxiv.org/abs/2401.10774)

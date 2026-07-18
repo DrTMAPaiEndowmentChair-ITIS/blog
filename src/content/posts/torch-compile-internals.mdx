@@ -1,0 +1,175 @@
+---
+title: 'How torch.compile Turns PyTorch Programs into Fused Kernels'
+pubDate: '2026-02-24'
+author: 'Aadit Agrawal'
+category: 'Ecosystems & Tooling'
+description: 'Trace a PyTorch program through Dynamo, AOTAutograd, Inductor, guards, graph breaks, and generated Triton kernels.'
+topics: ['torch.compile', 'Compilers', 'PyTorch']
+---
+
+import TorchCompilePipeline from '../../components/viz/TorchCompilePipeline.astro'
+
+**Author**: Aadit Agrawal
+
+`torch.compile` is not a single compiler pass. It is a guarded path from a live Python program to reusable machine code. TorchDynamo captures tensor operations from Python frames, AOTAutograd constructs forward and backward graphs, and TorchInductor lowers those graphs into device code. On supported GPUs, Inductor uses Triton as a code-generation building block.[^compiler-stack]
+
+<TorchCompilePipeline />
+
+## Dynamo captures a program specialization
+
+Dynamo hooks Python frame evaluation and symbolically executes bytecode. Tensor operations become nodes in an FX graph. Python values that affect execution become assumptions. A guard records each assumption needed to reuse the graph, including tensor shape, dtype, device, object identity, or a global value.[^guards]
+
+This distinction matters. Dynamo does not prove that a function has one universal tensor graph. It records one graph for one set of observed conditions, then emits checks that decide whether later calls fit that specialization.
+
+```python
+import torch
+
+def normalize_or_zero(x, enabled):
+    if enabled:
+        return x / x.norm()
+    return torch.zeros_like(x)
+
+compiled = torch.compile(normalize_or_zero)
+```
+
+Here, `enabled` is a Python boolean. Dynamo can specialize on its value and cache separate graphs for the branches. A tensor-dependent condition is different:
+
+```python
+def branch_on_data(x):
+    if x.sum() > 0:
+        return x.sin()
+    return x.cos()
+```
+
+The branch requires a tensor value that is available only after execution. PyTorch documents tensor-dependent control flow and direct scalar extraction with `.item()` as common graph-break causes.[^graph-breaks]
+
+## Graph breaks define optimization boundaries
+
+At a graph break, Dynamo compiles the graph captured so far, returns to ordinary Python for the unsupported operation, then resumes tracing. Correctness is preserved, but fusion cannot cross the boundary. A break inside a transformer block can therefore cost more than one in preprocessing because the former separates operators that exchange large intermediate tensors.
+
+Use the compiler logs before rewriting code:
+
+```bash
+TORCH_LOGS="graph_breaks,guards,recompiles" python train.py
+```
+
+`fullgraph=True` converts the first graph break into an error and requires one captured graph. PyTorch recommends it when the goal is to find and remove breaks in a performance-critical region.[^fullgraph]
+
+```python
+@torch.compile(fullgraph=True)
+def block(x, weight, bias):
+    return torch.nn.functional.gelu(x @ weight + bias)
+```
+
+Do not force file I/O, metrics emission, or data decoding into that function. Mark a problematic helper with `torch.compiler.disable`, or place compilation around the numerical core. The boundary should express the part of the program whose inputs, side effects, and shapes are stable.
+
+## AOTAutograd exposes the backward pass
+
+Eager autograd records operations while the forward pass runs. AOTAutograd instead traces a functional forward graph and constructs a corresponding backward graph ahead of execution. This gives the compiler visibility into saved tensors, recomputation choices, and backward operators. PyTorch describes AOTAutograd as the component that captures backpropagation for acceleration by Inductor.[^compiler-stack]
+
+Suppose a forward graph computes:
+
+$$
+y = \operatorname{GELU}(xW + b)
+$$
+
+The backward needs values derived from the matrix product and activation. A partitioner decides what the forward should save versus what the backward can recompute. Saving reduces arithmetic and increases live memory. Recomputation makes the opposite trade. This is why a compiled training step can have a different memory profile from eager execution while retaining the same differentiation result.
+
+Mutation and aliasing complicate this graph. AOTAutograd functionalizes many in-place operations into functional equivalents, then tracks the mutations that must be reflected at the boundary. Custom operators need correct aliasing and mutation declarations; a wrong schema can turn a local implementation mistake into a compiler-wide correctness problem.
+
+## Inductor turns graphs into loop nests
+
+Inductor receives ATen-level graphs after decomposition. It reasons about iteration domains, dependencies, device placement, layouts, and reuse. Elementwise chains are strong fusion candidates because their loop domains align.
+
+An eager expression such as:
+
+```python
+y = torch.nn.functional.gelu(x @ weight + bias)
+z = y * scale + residual
+```
+
+can launch separate kernels for bias addition, activation, multiplication, and residual addition around a matrix multiplication. Inductor can select a matrix-multiplication template and fuse compatible pointwise epilogues, or generate a separate fused pointwise kernel when the template boundary prevents full fusion. The useful question is not the number of FX nodes. It is how many times large tensors are written to and read from device memory.
+
+Fusion is constrained by:
+
+- incompatible iteration orders or layouts;
+- reductions that require synchronization;
+- mutations and aliasing;
+- device transfers;
+- graph breaks;
+- operator implementations treated as opaque calls.
+
+On GPUs, Triton code expresses blocked loads, arithmetic, and stores. On CPUs, Inductor emits C++ with vectorized loops. Backend choice changes the generated code, but Dynamo guards and graph partitioning remain part of the contract.
+
+## Shapes determine code reuse
+
+Static dimensions give Inductor concrete loop bounds and specialization opportunities. Variable sequence lengths can trigger recompilation when a guard fails. PyTorch first assumes static shapes under `dynamic=None`, then can retry with dynamic dimensions after a shape-driven recompilation.[^guards]
+
+There are three operational responses:
+
+| Workload property          | Compiler policy                  | Cost                                  |
+| -------------------------- | -------------------------------- | ------------------------------------- |
+| Few stable shapes          | Specialize and cache             | More kernels, stronger specialization |
+| Broad bounded shapes       | Mark selected dimensions dynamic | Fewer recompiles, more general code   |
+| Unbounded irregular shapes | Bucket or pad before compilation | Extra padding work, predictable cache |
+
+Do not set every dimension dynamic as a reflex. Batch and sequence axes often vary; head width and vocabulary partition usually do not. Encode the variability that exists in production traces.
+
+## Compilation modes change the optimization budget
+
+The default mode balances compile time and runtime work. `reduce-overhead` uses CUDA graphs where applicable to reduce Python and launch overhead. `max-autotune` benchmarks candidate matrix-multiplication or convolution implementations and enables CUDA graphs on supported GPU paths.[^compile-api]
+
+```python
+compiled_step = torch.compile(
+    train_step,
+    mode="max-autotune",
+    dynamic=None,
+)
+```
+
+Warm-up measurements must be separated from steady-state measurements. Compilation and autotuning run on early calls, and a new shape or guard value can cause later recompilation. Measure:
+
+- cold latency from process start;
+- warm latency for each supported shape bucket;
+- compilation count and reason;
+- peak memory during compilation and execution;
+- numerical agreement against eager mode.
+
+## Diagnose one layer at a time
+
+PyTorch exposes backend ablations that isolate the failing stage.[^troubleshooting]
+
+```python
+# Dynamo capture only
+torch.compile(fn, backend="eager")
+
+# Add AOTAutograd
+torch.compile(fn, backend="aot_eager")
+
+# Run the complete default stack
+torch.compile(fn, backend="inductor")
+```
+
+If eager capture fails, inspect Python semantics and graph breaks. If `aot_eager` fails, inspect autograd, functionalization, mutation, and custom-operator schemas. If only Inductor fails, preserve the FX graph and generated debug trace, then reduce the operator pattern.
+
+Accuracy testing should compare outputs and gradients across representative dtypes and shapes. Compiler speed is irrelevant if a custom kernel mishandles non-contiguous inputs or a low-precision reduction exceeds the application tolerance.
+
+## Deployment checklist
+
+Compile the numerical step rather than the surrounding service loop. Establish shape buckets from observed traffic. Warm each bucket before accepting latency-sensitive work. Record guard failures and recompiles. Keep an eager fallback for unsupported paths, but alert when it is used. Pin the PyTorch and driver environment used for performance qualification because generated kernels and compiler behavior are environment-dependent.
+
+`torch.compile` works best when the program exposes stable tensor regions with explicit boundaries. Dynamo supplies guarded capture, AOTAutograd supplies differentiable graphs, and Inductor supplies loop-level optimization. Performance work consists of preserving those regions, controlling specialization, and verifying the generated execution rather than treating the decorator as a universal switch.
+
+## References
+
+[^compiler-stack]: [PyTorch compiler documentation](https://docs.pytorch.org/docs/stable/user_guide/torch_compiler/torch.compiler.html).
+
+[^guards]: [PyTorch compiler troubleshooting: guards and recompilation](https://docs.pytorch.org/docs/main/user_guide/torch_compiler/torch.compiler_troubleshooting.html#terminology).
+
+[^graph-breaks]: [PyTorch compiler troubleshooting: data-dependent operations](https://docs.pytorch.org/docs/main/user_guide/torch_compiler/torch.compiler_troubleshooting.html#data-dependent-operations).
+
+[^fullgraph]: [PyTorch documentation for `fullgraph=True`](https://docs.pytorch.org/docs/stable/user_guide/torch_compiler/compile/programming_model.fullgraph_true.html).
+
+[^compile-api]: [PyTorch `torch.compile` API](https://docs.pytorch.org/docs/stable/generated/torch.compile.html).
+
+[^troubleshooting]: [PyTorch compiler troubleshooting: backend ablation](https://docs.pytorch.org/docs/main/user_guide/torch_compiler/torch.compiler_troubleshooting.html#ablation).

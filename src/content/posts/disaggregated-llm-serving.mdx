@@ -1,0 +1,192 @@
+---
+title: 'Disaggregated LLM Serving: Separating Prefill from Decode'
+pubDate: 2026-02-12
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: 'Separate compute-heavy prefill from memory-bound decode, then scale each worker pool around its own latency objective.'
+topics: ['LLM serving', 'Prefill', 'Distributed systems']
+---
+
+import PrefillDecodeArchitecture from '../../components/viz/PrefillDecodeArchitecture.astro'
+
+An LLM request contains two workloads with different shapes. Prefill evaluates all prompt tokens and produces the first output token. Decode repeatedly evaluates one new position while reading the accumulated key-value cache.
+
+Colocating both phases is operationally simple. It also couples their batching, parallelism, and latency. Disaggregated serving assigns prefill and decode to different worker pools, transfers the cache between them, and scales each pool against its own service objective. DistServe formalized this design around time to first token and time per output token.[^1]
+
+## Phase-specific resource plans
+
+Prefill exposes matrix dimensions large enough to use compute units efficiently. Decode uses small per-request matrix dimensions and repeatedly streams model weights and cache state. A shared worker must compromise between large prompt batches and decode cadence.
+
+Disaggregation permits separate plans:
+
+| Decision        | Prefill pool                 | Decode pool                        |
+| --------------- | ---------------------------- | ---------------------------------- |
+| Primary latency | Time to first token          | Time per output token              |
+| Batching unit   | Prompt tokens or chunks      | Active sequences                   |
+| Parallelism     | Favor prompt throughput      | Favor low collective overhead      |
+| Capacity signal | Queued prompt tokens         | Active sequences and live KV bytes |
+| Scale trigger   | Predicted prefill queue time | Predicted inter-token delay        |
+
+DistServe reports that phase separation removes prefill-decode interference and allows different resource and parallelism choices for each phase.[^1] The paper's evaluation found up to $7.4\times$ higher request rate or $12.6\times$ tighter service objectives than its baselines, with more than $90\%$ of requests meeting the specified constraints.[^1]
+
+<PrefillDecodeArchitecture />
+
+## Cache transfer is part of request latency
+
+After prefill, decode cannot start until the required keys and values are available. For cache size $M_{KV}$, effective link bandwidth $W$, and fixed transfer overhead $T_0$, a lower-bound model is:
+
+$$
+T_{\text{handoff}} \ge T_0 + \frac{M_{KV}}{W}
+$$
+
+This is a planning bound, not a latency prediction. Contention, serialization, topology, registration, and synchronization increase elapsed time.
+
+A transfer protocol needs:
+
+- model revision and cache-layout identity
+- source and destination block handles
+- sequence positions and valid token count
+- per-layer completion state
+- cancellation and timeout semantics
+- acknowledgement before source reclamation
+
+Do not send a monolithic opaque tensor if the runtime stores paged blocks. Transfer complete blocks directly and preserve logical block order in metadata. This avoids repacking into a contiguous buffer.
+
+## Pipeline the handoff
+
+Waiting for all layers to finish before beginning transfer leaves the link idle during prefill. Layerwise or blockwise streaming overlaps later prefill work with earlier cache movement:
+
+```text
+prefill layer l
+  -> record completion event
+  -> enqueue KV blocks for layer l
+  -> transport waits on event
+  -> destination records receive completion
+  -> decode waits before first read of layer l
+```
+
+Correctness depends on event ordering. A destination-visible pointer does not prove that the corresponding device writes have completed.
+
+Backpressure is also required. If the destination cannot reserve blocks, the source should not compute a cache that has nowhere to land. Reserve destination capacity before admitting prefill, or allow an explicit spill path with its own latency budget.
+
+## Scheduling with two queues
+
+The router now controls a distributed pipeline. A useful estimate for candidate prefill worker $p$ and decode worker $d$ is:
+
+$$
+\widehat{T}_{first}(p,d)=
+\widehat{Q}_{p}+
+\widehat{P}_{p}+
+\widehat{X}_{p,d}+
+\widehat{D}_{d}
+$$
+
+The terms represent prefill queue, prefill execution, transfer, and decode admission. Each estimate must use current topology and cache reservations.
+
+Routing on queue length alone is weak because a queued long prompt carries more work than a queued short prompt. Count scheduled prompt tokens and use profiled execution curves. For decode, active sequence count also misses context length and cache pressure.
+
+### Prefix locality
+
+A prefill worker may already hold a reusable prefix. A decode worker may hold the previous turn of a conversation. Routing should compare reuse savings with queue and transfer costs.
+
+Use explicit estimates:
+
+```ts
+type PlacementCost = {
+  queueMs: number
+  computeMs: number
+  transferMs: number
+  recomputeMs: number
+  capacityRisk: number
+}
+```
+
+Keeping the terms visible prevents a cache-hit heuristic from silently overriding latency objectives.
+
+## Parallelism can differ by phase
+
+Tensor parallelism reduces per-device weight and compute, but each layer introduces collectives. Pipeline parallelism partitions layers and introduces pipeline scheduling. Prefill can amortize communication over larger token matrices. Decode executes collectives at every token step.
+
+DistServe searches phase-specific parallelism and places communicating prefill and decode instances according to cluster bandwidth.[^1] Treat the selected topology as part of the deployment artifact. A scheduler cannot compensate for a prefill-decode pair split across a congested or oversubscribed path.
+
+## Designs beyond a single handoff
+
+Splitwise profiles prompt and token generation separately, then assigns them to machine pools selected for each phase.[^2] Its architecture includes mixed machines that can absorb imbalances rather than leaving a saturated phase blocked behind an idle pool.[^2] This matters because a fixed prefill-to-decode ratio assumes a stable workload mix.
+
+Mooncake treats the cache as the center of a disaggregated architecture. It separates cache storage and transfer from compute scheduling, with a distributed cache that can reuse state across requests and workers.[^3] P/D-Serve focuses on fine-grained organization and dynamic adjustment of prefill and decode instances.[^4]
+
+These systems expose separate controls:
+
+| Control         | Question                                     |
+| --------------- | -------------------------------------------- |
+| Phase placement | Which worker executes prompt or token work?  |
+| Cache placement | Where do completed blocks remain available?  |
+| Elasticity      | How does the pool ratio change with traffic? |
+
+Do not conflate them in one autoscaler. A phase replica count can change without moving warm cache. A cache tier can become full while compute workers remain underutilized.
+
+A near-runnable planner can turn sampled requests into initial offered-work estimates:
+
+```python
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class Request:
+    prompt_tokens: int
+    output_tokens: int
+
+def offered_work(requests, prefill_ms, decode_ms):
+    prefill = sum(prefill_ms(r.prompt_tokens) for r in requests)
+    decode = sum(
+        decode_ms(r.prompt_tokens, r.output_tokens)
+        for r in requests
+    )
+    return prefill, decode
+```
+
+The functions must come from profiles on the intended hardware. Replace aggregate work with a queue simulation before deployment because service objectives depend on burst arrivals. Add measured transfer time to each prefill completion and enforce destination cache reservations.
+
+## Failure modes
+
+**Destination allocation failure:** prefill finishes, but decode has no cache pages. Reserve before execution and release the reservation on cancellation.
+
+**Orphaned transfers:** the client disconnects while cache movement is in flight. Propagate cancellation through router, source, transport, and destination; make cleanup idempotent.
+
+**Version skew:** pools run different model revisions or cache formats. Reject handoff on an exact layout identifier.
+
+**Link saturation:** more prefill replicas increase offered transfer traffic without increasing decode capacity. Autoscaling must include link utilization and transfer queue time.
+
+**Decode starvation:** routing admits more completed prefills than decode can drain. Apply pipeline admission control at the request boundary.
+
+**Replica hotspots:** prefix-aware routing concentrates traffic. Bound affinity and fall back when predicted queue delay exceeds recomputation savings.
+
+## When colocated serving is the correct choice
+
+Disaggregation adds a networked state transfer, another admission boundary, and more failure states. It is not automatically faster. Keep phases colocated when transfer time consumes the expected interference savings, traffic is too small to fill separate pools, the topology lacks a predictable device-to-device path, or operational simplicity matters more than independent scaling.
+
+Benchmark both designs with the same arrival trace and service objectives. Compare goodput, not raw tokens per second: count requests that satisfy both first-token and inter-token latency. That is the metric DistServe uses to connect resource planning to user-visible constraints.[^1]
+
+## Deployment checklist
+
+Before production traffic:
+
+- profile prefill by uncached token count
+- profile decode by batch size and context length
+- measure transfer by cache bytes and topology path
+- test cancellation at every pipeline boundary
+- verify source blocks remain live until acknowledgement
+- inject worker and link failures
+- enforce compatible model and cache-layout identifiers
+- report service-objective attainment by phase
+
+Disaggregated serving is a scheduling architecture, not a socket between two model servers. Its value comes from independent phase control. Its cost is that cache placement, transport, and admission become part of inference correctness.
+
+## References
+
+[^1]: Yinmin Zhong et al., "DistServe: Disaggregating Prefill and Decoding for Goodput-optimized Large Language Model Serving," OSDI, 2024. [https://arxiv.org/abs/2401.09670](https://arxiv.org/abs/2401.09670)
+
+[^2]: Pratyush Patel et al., "Splitwise: Efficient Generative LLM Inference Using Phase Splitting," ISCA, 2024. [https://arxiv.org/abs/2311.18677](https://arxiv.org/abs/2311.18677)
+
+[^3]: Ruoyu Qin et al., "Mooncake: A KVCache-centric Disaggregated Architecture for LLM Serving," FAST, 2025. [https://arxiv.org/abs/2407.00079](https://arxiv.org/abs/2407.00079)
+
+[^4]: Yuhang Jin et al., "P/D-Serve: Serving Disaggregated Large Language Model at Scale," arXiv, 2024. [https://arxiv.org/abs/2408.08147](https://arxiv.org/abs/2408.08147)

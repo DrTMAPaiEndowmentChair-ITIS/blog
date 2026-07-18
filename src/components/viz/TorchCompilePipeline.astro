@@ -1,0 +1,70 @@
+<figure class="viz" aria-labelledby="tcp-title">
+  <figcaption id="tcp-title">Compilation path and its runtime boundaries</figcaption>
+  <div class="pipeline">
+    <div><b>Python frames</b><span>Dynamo intercepts bytecode</span></div>
+    <i>guards</i>
+    <div><b>FX graph</b><span>ATen operations and metadata</span></div>
+    <i>decompose</i>
+    <div><b>AOTAutograd</b><span>forward and backward graphs</span></div>
+    <i>schedule</i>
+    <div><b>Inductor</b><span>fusion, layouts, code generation</span></div>
+    <i>launch</i>
+    <div><b>Kernels</b><span>Triton GPU or C++ CPU</span></div>
+  </div>
+  <div class="boundary">
+    <b>Guard failure</b><span>re-enter Python, trace a new specialization, then cache it</span>
+  </div>
+</figure>
+<style>
+  .viz {
+    margin: 2rem 0;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text);
+  }
+  figcaption {
+    font: 600 0.85rem var(--mono);
+    margin-bottom: 1rem;
+  }
+  .pipeline {
+    display: grid;
+    grid-template-columns: repeat(9, minmax(0, 1fr));
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .pipeline div,
+  .boundary {
+    border: 1px solid var(--border);
+    padding: 0.8rem;
+    background: var(--background);
+  }
+  b,
+  span {
+    display: block;
+  }
+  span {
+    margin-top: 0.35rem;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    line-height: 1.35;
+  }
+  i {
+    text-align: center;
+    color: var(--text-secondary);
+    font: normal 0.7rem var(--mono);
+  }
+  .boundary {
+    margin-top: 1rem;
+    border-left: 3px solid #d97706;
+  }
+  @media (max-width: 720px) {
+    .pipeline {
+      grid-template-columns: 1fr;
+    }
+    .pipeline i {
+      transform: rotate(90deg);
+      height: 1rem;
+    }
+  }
+</style>

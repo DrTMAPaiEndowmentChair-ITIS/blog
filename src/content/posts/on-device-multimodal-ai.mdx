@@ -1,0 +1,186 @@
+---
+title: 'On-Device Multimodal AI: Text, Vision, and Audio Under a Memory Budget'
+pubDate: '2026-05-08'
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: 'Schedule text, vision, and audio pipelines within the shared memory, thermal, energy, and latency limits of edge devices.'
+topics: ['Multimodal', 'On-device', 'Memory']
+---
+
+import OnDeviceMultimodal from '../../components/viz/OnDeviceMultimodal.astro'
+
+**Author**: Aadit Agrawal
+
+An on-device multimodal model is a scheduling problem over shared memory. Camera buffers, audio capture, encoders, language-model weights, KV cache, and UI surfaces compete for the same physical resources. A model that fits at rest can still fail when an encoder and decoder reach peak allocation together.
+
+<OnDeviceMultimodal />
+
+## Account for peak live memory
+
+A useful budget separates persistent and transient allocations:
+
+$$
+M_{\text{peak}} =
+M_{\text{weights}} +
+M_{\text{KV}} +
+M_{\text{active encoders}} +
+M_{\text{activations}} +
+M_{\text{workspace}} +
+M_{\text{application}}
+$$
+
+Weight-file size is not peak memory. Runtimes can unpack weights, allocate graph plans, retain caches, and copy buffers between CPU and accelerator address spaces. The operating system also needs headroom for the camera, microphone, display compositor, and the rest of the application.
+
+Instrument resident memory and accelerator allocations around each phase:
+
+```text
+load language model
+load vision encoder
+encode image
+release vision workspace
+append visual tokens
+load or activate audio encoder
+encode audio window
+release audio workspace
+decode text
+```
+
+Serial encoder scheduling lowers peak concurrency when the application does not need simultaneous frame and audio processing. The cost is latency. Measure the user-visible critical path before selecting concurrency.
+
+## Encoders turn media into token sequences
+
+A vision encoder maps image patches or feature maps into embeddings. An adapter projects those embeddings into the language model's hidden space. A speech encoder performs a related conversion over acoustic frames. The language model then consumes an interleaved token sequence containing text and modality embeddings.
+
+Gemma 3n provides a concrete mobile architecture: it combines text with image, video, and audio inputs, uses a MobileNet-V5 vision encoder, and derives its audio encoder from Universal Speech Model work.[^gemma] Google's implementation reports one audio token per $160$ milliseconds and offers image input resolutions of $256 \times 256$, $512 \times 512$, and $768 \times 768$ pixels.[^gemma] Those are model-specific interface facts, not defaults for all multimodal systems.
+
+Media preprocessing must match training:
+
+- image color space, resizing, crop policy, and normalization;
+- audio sample rate, channel mixing, windowing, and feature extraction;
+- special tokens that delimit each modality;
+- positional encoding used for media tokens;
+- adapter weights paired with the correct encoder and language model.
+
+An apparently plausible response does not prove preprocessing is correct. Validate embeddings or logits against a reference runtime with fixed media fixtures.
+
+## Sequence length is a memory input
+
+The language model sees encoder outputs as tokens. More image tiles, video frames, or audio windows extend the prefill sequence. KV cache memory for an autoregressive decoder grows with retained sequence length:
+
+$$
+M_{\text{KV}} \propto
+L \times S \times H_{\text{KV}} \times b
+$$
+
+Here $L$ is cached layer count, $S$ is sequence length, $H_{\text{KV}}$ is the cached key-value width, and $b$ is bytes per stored element. Grouped-query or multi-query attention changes $H_{\text{KV}}$ by sharing key-value heads. Quantized cache storage changes $b$ but adds conversion and accuracy considerations.
+
+Gemma 3n documents KV cache sharing in which middle-layer key and value representations are shared with upper layers to reduce prefill work.[^gemma] That is an architectural optimization built into the model. A runtime cannot apply it to an arbitrary checkpoint without matching training and graph structure.
+
+Set modality budgets before preprocessing:
+
+```kotlin
+data class RequestBudget(
+    val maxImageTokens: Int,
+    val maxAudioTokens: Int,
+    val maxTextTokens: Int,
+    val maxOutputTokens: Int,
+)
+
+fun validate(b: RequestBudget, contextLimit: Int) {
+    require(
+        b.maxImageTokens +
+        b.maxAudioTokens +
+        b.maxTextTokens +
+        b.maxOutputTokens <= contextLimit
+    )
+}
+```
+
+The application should reject or downsample input before allocating an oversized cache.
+
+## Vision needs an explicit frame policy
+
+Video is not one large image. It is a sequence of frames with temporal redundancy. Feeding every captured frame wastes encoder work and context. Define a policy based on the task:
+
+- periodic sampling for scene summaries;
+- motion- or event-triggered frames for monitoring;
+- keyframes plus crops for document or screen understanding;
+- a rolling window when recent state matters;
+- frame replacement when the model supports external memory.
+
+Retain timestamps and orientation metadata. If visual tokens from multiple frames are concatenated without temporal markers, the language model cannot reliably infer capture order from pixels alone.
+
+Camera images often arrive in a hardware-native pixel format. Converting full-resolution frames on the CPU can become the bottleneck before inference begins. Prefer runtime-supported texture or buffer paths, and crop or resize before expensive format conversion when the APIs permit it.
+
+## Audio needs streaming state
+
+Audio capture produces a continuous stream while language-model decoding is bursty. A bounded ring buffer separates the two schedules. The encoder consumes windows with overlap or streaming state, then emits tokens or transcript segments.
+
+Google describes the Gemma 3n audio encoder as streaming-capable, while its launch implementation accepts clips up to $30$ seconds.[^gemma] That limit belongs to the released implementation. Long-form support requires the runtime and model training needed to preserve streaming state.
+
+For a speech request, track:
+
+- capture timestamp and dropped frames;
+- resampling configuration;
+- encoder state reset points;
+- token timestamps if exposed;
+- end-of-speech decision;
+- time from speech end to first generated token.
+
+Voice activity detection saves encoder and language-model work, but a false endpoint can cut a word or reset context. Keep the raw audio window needed to reproduce failures, subject to the product's privacy policy.
+
+## Choose placement per operator
+
+Mobile systems may expose CPU, GPU, neural accelerator, or vendor delegate paths. One model can span them, but every boundary risks a copy or synchronization. A placement plan should use measured operator coverage:
+
+| Subgraph         | Placement question                                                                  |
+| ---------------- | ----------------------------------------------------------------------------------- |
+| Vision encoder   | Does the delegate support its convolution and attention blocks without fallback?    |
+| Audio frontend   | Is feature extraction cheaper on vector CPU code than through accelerator dispatch? |
+| Language prefill | Which backend sustains the matrix shapes produced by media tokens?                  |
+| Token decode     | Which backend gives low latency at a small batch?                                   |
+
+An unsupported operator in the middle of an accelerator graph can force partitioning and transfers. Inspect the compiled delegate graph rather than relying on an API call that reports delegate initialization.
+
+## Quantization requires modality tests
+
+Weight quantization reduces resident model memory. Activation quantization can reduce bandwidth and accelerator requirements. It can also alter small embedding differences at modality adapters or attention logits.
+
+Evaluate text-only, image-only, audio-only, and interleaved inputs separately. Include:
+
+- small text in images;
+- low-contrast objects;
+- accented and noisy speech;
+- silence and non-speech audio;
+- long media prefixes;
+- repeated modality switches.
+
+Compare task metrics and intermediate outputs where possible. A single language benchmark cannot qualify a multimodal quantization.
+
+## Thermal behavior changes the service policy
+
+Short benchmark runs do not show sustained device behavior. Heat can reduce clock frequency and make a formerly valid real-time policy fall behind. Run capture, encoding, and decoding together for the expected session length. Record throughput, latency, temperature or platform thermal state, and battery or power telemetry exposed by the device.
+
+Degradation should be explicit:
+
+1. reduce video sampling frequency;
+2. reduce image resolution or crop count;
+3. shorten retained media context;
+4. switch to a nested or smaller model when available;
+5. pause background interpretation while preserving direct user requests.
+
+Gemma 3n uses MatFormer nesting and per-layer embeddings so its released variants can operate with active memory footprints associated with smaller nested models.[^gemma-preview] That capability depends on its architecture. Other models need separate checkpoints or different elastic mechanisms.
+
+## Privacy is a data-flow property
+
+Local inference does not prove that media stays local. Crash reporters, analytics payloads, debug logging, model downloads, and remote fallbacks can transmit derived or raw data. Document every boundary and make fallback behavior visible to the user.
+
+Encrypt cached media if it must persist. Prefer ephemeral buffers. Strip prompt and media content from default logs. Verify that application lifecycle transitions release microphone and camera access. Test airplane-mode operation if offline behavior is a requirement.
+
+On-device multimodal design starts with a peak-memory timeline and a token budget. Encoders compress media into language-model inputs, but those inputs still consume prefill time and KV cache. The reliable implementation schedules encoders deliberately, validates preprocessing against a reference, measures delegate coverage, and reduces work predictably under thermal or memory pressure.
+
+## References
+
+[^gemma]: [Google Developers Blog: Gemma 3n developer guide](https://developers.googleblog.com/en/introducing-gemma-3n-developer-guide/).
+
+[^gemma-preview]: [Google Developers Blog: Gemma 3n preview architecture](https://developers.googleblog.com/en/introducing-gemma-3n).

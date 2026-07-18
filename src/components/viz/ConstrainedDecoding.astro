@@ -1,0 +1,102 @@
+---
+const steps = [
+  { prefix: '{', legal: ['"', ' }'] },
+  { prefix: '{"status"', legal: [':'] },
+  { prefix: '{"status":', legal: ['"', 'null'] },
+  { prefix: '{"status":"ok"', legal: [',', '}'] }
+]
+---
+
+<figure class="viz" aria-labelledby="cd-title">
+  <figcaption id="cd-title">Grammar state restricts the token mask after each prefix</figcaption>
+  <div class="steps">
+    {
+      steps.map((step, i) => (
+        <section>
+          <>
+            <small>state {i}</small>
+            <code>{step.prefix}</code>
+            <div>
+              {step.legal.map((token) => (
+                <kbd>{token}</kbd>
+              ))}
+            </div>
+          </>
+        </section>
+      ))
+    }
+  </div>
+  <div class="flow">
+    <span>schema</span><b>compile</b><span>grammar state</span><b>mask logits</b><span
+      >sample legal token</span
+    >
+  </div>
+</figure>
+<style>
+  .viz {
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    font: 600 var(--font-size-s) var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1.2rem;
+  }
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.55rem;
+  }
+  section {
+    display: grid;
+    gap: 0.55rem;
+    padding: 0.8rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    overflow: hidden;
+  }
+  small {
+    font: 0.72rem var(--mono);
+    color: var(--text-tertiary);
+  }
+  code {
+    font: 0.78rem var(--mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  section div {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+  }
+  kbd {
+    font: 0.72rem var(--mono);
+    padding: 0.2rem 0.4rem;
+    border: 1px solid var(--text-tertiary);
+    background: var(--selection);
+  }
+  .flow {
+    display: flex;
+    gap: 0.55rem;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    font: 0.74rem var(--mono);
+  }
+  .flow b {
+    color: var(--text-tertiary);
+  }
+  @media (max-width: 650px) {
+    .steps {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+</style>

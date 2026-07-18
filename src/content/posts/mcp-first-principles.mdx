@@ -1,0 +1,243 @@
+---
+title: 'Model Context Protocol from First Principles: Messages, Capabilities, and Authorization'
+pubDate: 2026-03-17
+author: 'Aadit Agrawal'
+category: 'Ecosystems & Tooling'
+description: 'Understand MCP as a stateful boundary between hosts and capability servers, including negotiation, transport, and authorization.'
+topics: ['MCP', 'Protocols', 'Tool use']
+---
+
+import MCPProtocolFlow from '../../components/viz/MCPProtocolFlow.astro'
+
+Model Context Protocol is a stateful protocol for connecting an AI host to servers that expose context and actions. Its useful abstraction is not a universal tool API. It is a boundary: the host retains the conversation and policy decisions, while each client maintains an isolated connection to one server.[^architecture]
+
+That distinction determines where permissions, user consent, context selection, and model calls belong. A server describes what it offers. The host decides what enters the model context and which action requests are allowed to execute.
+
+## Host, client, and server responsibilities
+
+An MCP host creates clients, coordinates model integration, controls connection permissions, and aggregates context. Each client owns a stateful session with one server. A server exposes focused capabilities without receiving the host's complete conversation or the state of other servers.[^architecture]
+
+| Process | Owns                                                    | Must not assume                             |
+| ------- | ------------------------------------------------------- | ------------------------------------------- |
+| Host    | Conversation, user consent, policy, model orchestration | That a server is safe because it speaks MCP |
+| Client  | Protocol session, message correlation, capability state | That an undeclared method is supported      |
+| Server  | Tools, resources, prompts, server-side access checks    | That a tool call proves user intent         |
+
+This split prevents a calendar server from silently reading repository context supplied by a source-control server. Cross-server data movement is a host decision, not a protocol side effect.
+
+## JSON-RPC message forms
+
+MCP messages use JSON-RPC. A request carries an `id` and expects either a result or an error. A notification has no `id` and receives no response. A response must contain a result or an error, never both.[^base]
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "req-42",
+  "method": "tools/call",
+  "params": {
+    "name": "read_invoice",
+    "arguments": { "invoice_id": "INV-1042" }
+  }
+}
+```
+
+The `id` is a correlation key. It is not an authorization token, idempotency key, or tracing policy. A host that retries a side-effecting request must define idempotency above the protocol or include an application-level key in the tool input.
+
+MCP's current base specification does not support JSON-RPC batching. Each request, notification, and response travels as its own protocol message.[^changelog]
+
+<MCPProtocolFlow />
+
+## Initialization and capability negotiation
+
+Initialization must be the first client-server interaction. The client proposes a protocol version and declares client capabilities. The server returns its selected version and server capabilities. The client then sends `notifications/initialized` before normal operation.[^lifecycle]
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "protocolVersion": "2025-06-18",
+    "capabilities": {
+      "roots": { "listChanged": true },
+      "sampling": {},
+      "elicitation": {}
+    },
+    "clientInfo": {
+      "name": "research-workbench",
+      "version": "1.0.0"
+    }
+  }
+}
+```
+
+The version and example fields above follow the published lifecycle example.[^lifecycle] If the server selects a version the client does not support, the client should disconnect. For HTTP transport, later requests carry the negotiated version in the `MCP-Protocol-Version` header.[^transports]
+
+Capabilities are executable protocol state, not descriptive metadata. A server may call client sampling only when the client advertised `sampling`. A server may emit resource update notifications only when it advertised the relevant resource subscription support. Method dispatch should check negotiated state before parsing business arguments.
+
+```ts
+type Session = {
+  phase: 'new' | 'operating' | 'closed'
+  protocolVersion?: string
+  serverCapabilities?: {
+    tools?: { listChanged?: boolean }
+    resources?: { subscribe?: boolean; listChanged?: boolean }
+  }
+}
+
+function assertToolCallAllowed(session: Session): void {
+  if (session.phase !== 'operating' || !session.serverCapabilities?.tools) {
+    throw new Error('tools/call was not negotiated')
+  }
+}
+```
+
+## Tools, resources, and prompts
+
+The server primitives have different control semantics. Prompts are user-controlled templates, resources are application-controlled context, and tools are model-controlled actions.[^server]
+
+### Resources carry addressable context
+
+A resource has a URI and content. It suits files, schemas, records, logs, or generated views that a client may inspect and selectively place in context. Servers must validate resource URIs and should enforce access controls on sensitive resources.[^resources]
+
+Resources are not passive just because they are read-only. Retrieved text can contain instructions aimed at the model. The host should attach provenance and treat resource content as untrusted data.
+
+### Prompts expose reusable workflows
+
+Prompts package messages and arguments for explicit user selection. They work well for named tasks such as code review or incident summarization. A prompt does not override host policy. It supplies content for the host to inspect and render.
+
+### Tools expose executable behavior
+
+A tool definition combines a stable name, description, and input schema. Tool results can return text, images, embedded resources, resource links, and structured content. The protocol revision published on 18 June 2025 added structured tool output.[^changelog]
+
+```json
+{
+  "name": "create_change_request",
+  "description": "Create a draft change request in the selected repository",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "repository": { "type": "string" },
+      "title": { "type": "string", "minLength": 1 },
+      "body": { "type": "string", "minLength": 1 }
+    },
+    "required": ["repository", "title", "body"],
+    "additionalProperties": false
+  }
+}
+```
+
+The schema constrains shape, not authority. A valid repository string can still point at a repository the user did not authorize.
+
+## Transport boundaries
+
+MCP defines standard input and output transport for local process connections and Streamable HTTP for remote connections.[^transports] Transport choice changes the threat model.
+
+With standard input and output, the host launches a process and exchanges newline-delimited JSON-RPC messages. Credentials should come from the environment rather than the HTTP authorization flow.[^authorization] The host must still control executable paths, environment variables, inherited file descriptors, and working directories.
+
+With Streamable HTTP, the server exposes an MCP endpoint that accepts POST and may support GET for server-sent events. Implementations must validate the `Origin` header to defend against DNS rebinding, bind local servers to loopback rather than all interfaces, and add authentication when appropriate.[^transports]
+
+## HTTP authorization
+
+Authorization is optional at the protocol level. When an HTTP server protects resources, the MCP authorization specification treats it as an OAuth resource server. The client acts as an OAuth client, and a separate authorization server issues tokens.[^authorization]
+
+The discovery path is deliberate:
+
+1. The MCP server publishes protected-resource metadata.
+2. The metadata identifies an authorization server.
+3. The client reads authorization-server metadata.
+4. The client requests authorization for the MCP resource.
+5. The client presents the resulting access token to that MCP server.
+
+The client must include the OAuth `resource` parameter in authorization and token requests. The server must validate that the token was issued for itself.[^authorization] This audience binding prevents a token meant for one MCP server from becoming a bearer credential accepted by another.
+
+Public clients must use Proof Key for Code Exchange. Authorization endpoints must use HTTPS, while redirect URIs must use HTTPS or localhost. Redirect URI matching must be exact, and clients should bind the flow with `state`.[^authorization]
+
+### Token passthrough is a boundary violation
+
+An MCP server that calls an upstream API is a separate OAuth client to that API. It must not forward the token received from the MCP client. The upstream token has a different audience and should be acquired through a separate authorization relationship.[^authorization]
+
+```text
+MCP client -- token audience: files.example --› Files MCP server
+Files MCP server -- separate token audience: storage-api --› Storage API
+```
+
+Forwarding the first token erases the resource boundary and creates a confused-deputy path.
+
+## Tool authorization and user consent
+
+OAuth answers which client can call a server on behalf of which resource owner. It does not answer whether a model-generated action is appropriate in the current conversation.
+
+Tool execution needs a second control plane:
+
+```ts
+type Decision = 'allow' | 'deny' | 'require_user'
+
+function authorizeTool(input: {
+  tool: string
+  arguments: unknown
+  user: { id: string; roles: string[] }
+  conversationId: string
+}): Decision {
+  if (input.tool === 'read_invoice') return 'allow'
+  if (input.tool === 'create_refund') return 'require_user'
+  return 'deny'
+}
+```
+
+The host should show the actual target and material arguments before approval. A button labeled "Allow tool" provides less information than "Create a refund for invoice INV-1042." Servers must also apply their own authorization because a client can call them without using a model.
+
+## Failure handling
+
+Protocol errors and tool errors belong to different layers. Malformed JSON-RPC, unknown methods, and invalid protocol state should produce JSON-RPC errors. A valid tool invocation that fails in its domain should return a tool result marked as an error so the model can reason about the failure.
+
+Operational safeguards include:
+
+- Timeouts for every request and cancellation propagation where supported.
+- Bounded result sizes before content enters model context.
+- Schema validation on inputs and structured outputs.
+- Audit records containing server identity, tool name, policy decision, and result status.
+- Redaction before logging credentials or resource bodies.
+- Connection teardown when version or capability invariants fail.
+
+Retries should be method-aware. Listing tools is naturally repeatable. Creating a record is not repeatable unless the tool contract includes an idempotency mechanism.
+
+## A minimal implementation checklist
+
+An interoperable implementation begins with protocol correctness:
+
+- Keep one isolated client session per server.
+- Require initialization before operation.
+- Store the negotiated version and capabilities.
+- Correlate request identifiers without treating them as authority.
+- Reject notifications that incorrectly include identifiers.
+- Validate tool arguments and resource URIs.
+- Separate protocol errors from domain failures.
+
+A deployable implementation adds security controls:
+
+- Pin executable identity for local servers.
+- Validate origins and bind safely for HTTP.
+- Discover authorization metadata rather than hard-coding authorization endpoints.
+- Bind access tokens to the MCP resource.
+- Never pass client tokens through to upstream APIs.
+- Require contextual authorization for sensitive tools.
+- Treat all returned content as untrusted input to the model.
+
+MCP standardizes the wire conversation. It does not remove the need for access control, policy, validation, or user-visible consent. Those controls remain with the host and each resource-owning server.
+
+[^architecture]: [Model Context Protocol, Architecture, protocol revision 2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/architecture).
+
+[^base]: [Model Context Protocol, Base Protocol overview, protocol revision 2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/basic).
+
+[^lifecycle]: [Model Context Protocol, Lifecycle, protocol revision 2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle).
+
+[^changelog]: [Model Context Protocol, key changes in protocol revision 2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/changelog).
+
+[^server]: [Model Context Protocol, Server Features overview, protocol revision 2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/server).
+
+[^resources]: [Model Context Protocol, Resources, protocol revision 2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/server/resources).
+
+[^transports]: [Model Context Protocol, Transports, protocol revision 2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports).
+
+[^authorization]: [Model Context Protocol, Authorization, protocol revision 2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization).

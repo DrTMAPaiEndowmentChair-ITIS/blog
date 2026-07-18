@@ -9,6 +9,7 @@ export interface TOCProps {
 export interface PostLayoutProps {
   title: string
   pubDate: Date
+  description: string
   image?: string
   readingTime?: ReadingTime
   toc?: TOCItem[]
@@ -24,6 +25,7 @@ export interface TransitionProps {
 export interface LayoutProps extends TransitionProps {
   title?: string
   description?: string
+  wide?: boolean
 }
 
 // BaseHead component props interface

@@ -1,0 +1,233 @@
+---
+title: 'AI Cluster Networking: NVLink, Infinity Fabric, InfiniBand, and RoCE'
+pubDate: 2026-06-26
+author: 'Aadit Agrawal'
+category: 'Hardware & Systems'
+description: 'Map scale-up and scale-out AI fabrics across NVLink, Infinity Fabric, InfiniBand, RoCE, topology, and collective communication.'
+topics: ['Cluster networking', 'NVLink', 'InfiniBand']
+---
+
+import ClusterNetworkTopology from '../../components/viz/ClusterNetworkTopology.astro'
+
+Distributed AI performance depends on moving tensors at the time the computation graph needs them. Link rate matters, but topology, collective algorithm, message size, congestion, and synchronization determine how much of that rate becomes useful work.
+
+NVLink, Infinity Fabric, InfiniBand, and RoCE do not occupy one interchangeable layer. NVLink and accelerator-facing Infinity Fabric build scale-up domains. InfiniBand and RoCE connect nodes across a scale-out fabric. PCIe and network adapters bridge those domains.
+
+<ClusterNetworkTopology />
+
+## Start from communication volume
+
+Data parallel training commonly uses reduce-scatter followed by all-gather to average gradients. Tensor parallelism adds collectives inside transformer layers. Pipeline parallelism sends activations between stages. Expert parallelism routes token representations to selected experts.
+
+For a ring all-reduce with $p$ participants and a payload of $n$ bytes per participant, each participant transfers:
+
+$$
+V_{\text{ring}} = 2\frac{p-1}{p}n
+$$
+
+The formula shows why a bandwidth bottleneck affects large gradient buffers. It does not predict latency by itself. A performance model also needs per-step latency, effective bandwidth, and overlap with compute:
+
+$$
+T \approx \alpha N_{\text{steps}} + \frac{V}{B_{\text{effective}}}
+$$
+
+Here, $\alpha$ is the per-step latency term and $B_{\text{effective}}$ is measured application bandwidth.
+
+## Communication domains
+
+### Package and board
+
+Accelerator packages connect compute dies, memory stacks, and I/O dies through internal fabrics. AMD's MI300X combines eight accelerator complex dies, eight HBM3 stacks, and four I/O dies through Infinity Fabric. The package provides an aggregate theoretical memory bandwidth of 5.3 TB/s.[^mi300]
+
+That figure is HBM bandwidth inside one accelerator package. It is not GPU-to-GPU link bandwidth.
+
+### Scale-up
+
+A scale-up domain gives accelerators direct peer access and collective paths without crossing a conventional data-center network. NVIDIA NVLink links GPUs to peers or NVSwitch. AMD Infinity Fabric links accelerators inside supported nodes.
+
+### Scale-out
+
+Scale-out fabrics connect many compute nodes through network interface cards and switches. InfiniBand supplies an integrated RDMA fabric. RoCE carries RDMA transport over Ethernet.
+
+The boundary can extend across racks on newer platforms, but the diagnostic distinction remains useful: first identify the package, local accelerator fabric, host I/O, and network hop involved.
+
+## NVLink and NVSwitch
+
+NVLink is NVIDIA's high-bandwidth GPU interconnect. NVSwitch provides switched connectivity so a GPU can reach peers through an NVLink fabric rather than a point-to-point-only layout.
+
+Fifth-generation NVLink in Blackwell systems provides up to 1,800 GB/s of aggregate bandwidth per GPU. NVIDIA's GB300 NVL72 reference architecture uses nine NVLink switch trays, with two NVSwitch ASICs per tray, to connect 72 GPUs in one rack-scale domain.[^nvlink]
+
+Those specifications describe a particular platform generation and topology. Do not apply them to an H100 server or a PCIe-only deployment.
+
+NVLink is useful for:
+
+- Tensor-parallel collectives that occur within layers.
+- Peer reads and writes between accelerator memories.
+- Unified scale-up domains managed by the platform fabric.
+- Collective algorithms optimized for local topology.
+
+NVSwitch does not make every pairwise transfer free. Collective libraries still choose channels, chunk sizes, trees, or rings. Contention appears when concurrent jobs or collective phases share fabric paths.
+
+## AMD Infinity Fabric
+
+Infinity Fabric is AMD's interconnect family across package and node scopes. On MI300X, it connects package components and supports an eight-accelerator node in which each accelerator has seven high-bandwidth Infinity Fabric links, forming a fully connected topology.[^mi300]
+
+The topology reduces the need for intermediate accelerator hops inside that node. Collective placement still matters:
+
+```text
+rank → accelerator mapping → Infinity Fabric peer path → NIC affinity
+```
+
+If the network interface is closest to one CPU socket or accelerator group, a poor rank map can send scale-out traffic across additional host or fabric links.
+
+Inspect the platform topology rather than assuming device numbering follows physical adjacency. Use the communication library's topology dump and measure peer bandwidth for the installed firmware, driver, and link state.
+
+## InfiniBand
+
+InfiniBand defines an I/O architecture for servers, storage, and communication infrastructure. It supports send and receive messaging plus RDMA memory operations without software involvement in the data movement path.[^ibta]
+
+An InfiniBand network contains:
+
+- Host channel adapters.
+- Switches and links.
+- A subnet manager.
+- Queue pairs and completion queues.
+- Memory regions registered for RDMA.
+- Routing and service-level configuration.
+
+NVIDIA's QM9700 and QM9790 NDR switches expose 64 ports at 400 Gb/s per port in a one-rack-unit chassis.[^ndr] Port rate is not collective bandwidth. Encoding, protocol overhead, PCIe, host memory registration, message size, and fabric contention all affect delivered throughput.
+
+InfiniBand fabrics can supply adaptive routing, virtual lanes, and in-network collective operations on supported platforms. These features need topology-aware configuration and telemetry. A nominally nonblocking topology can still hotspot if routing sends synchronized flows through the same spine links.
+
+## RoCE
+
+RDMA over Converged Ethernet uses RDMA semantics on Ethernet infrastructure. RoCE version one operates at the link layer and remains within an Ethernet broadcast domain. RoCE version two carries the InfiniBand transport protocol over UDP and IP, so it can cross routed networks.[^roce]
+
+RoCE makes Ethernet a viable AI transport, but Ethernet loss and congestion behavior must be engineered for synchronized, high-rate flows.
+
+Two controls appear often:
+
+**Priority Flow Control:** pauses one Ethernet priority rather than the whole link. NVIDIA's switch documentation describes eight virtual links that can be paused independently.[^pfc]
+
+**Explicit Congestion Notification:** marks packets instead of dropping them when queues cross configured thresholds. A RoCEv2 receiver generates a congestion notification packet toward the sender, which reduces its sending rate.[^roce]
+
+PFC and ECN solve different problems. PFC prevents loss for a traffic class through hop-by-hop pause. ECN provides end-to-end congestion signaling. Poor PFC design can propagate pauses and create head-of-line blocking. Poor ECN thresholds can react too late or throttle too aggressively.
+
+## InfiniBand and RoCE selection
+
+| Question           | InfiniBand                                             | RoCEv2                                               |
+| ------------------ | ------------------------------------------------------ | ---------------------------------------------------- |
+| Link and transport | Purpose-built InfiniBand stack                         | RDMA transport over routed Ethernet                  |
+| Fabric operations  | Subnet management and InfiniBand routing               | Ethernet routing, VLAN, QoS, ECN, and optional PFC   |
+| Operational reuse  | Separate fabric skill set                              | Can share Ethernet platform and practices            |
+| Failure focus      | Routing, link state, credit and service-level behavior | Queueing, ECN, PFC, loss, and Ethernet configuration |
+
+The choice is operational as much as architectural. A well-instrumented RoCE fabric can outperform a poorly operated InfiniBand fabric for a workload, and the reverse is also true. Evaluate delivered collective performance and recovery behavior.
+
+## Topology determines collective cost
+
+A node can have fast local peer links and fewer network interfaces than accelerators. Scale-out traffic must then reach a NIC through a local path.
+
+Consider a topology with accelerator groups attached to different CPU sockets:
+
+```text
+GPU group A ─ local fabric ─ NIC A ─ leaf switch
+      │
+  host interconnect
+      │
+GPU group B ─ local fabric ─ NIC B ─ leaf switch
+```
+
+Bind processes so each rank uses the nearest accelerator and NIC. Crossing the host interconnect for every collective adds a bottleneck not visible in the network port rate.
+
+Hierarchical collectives exploit this structure:
+
+1. Reduce within the local scale-up domain.
+2. Exchange reduced chunks across the scale-out fabric.
+3. Broadcast or gather within each local domain.
+
+The best algorithm depends on payload size and topology. Trees reduce startup steps for some small messages. Rings make predictable use of bandwidth for large messages. Communication libraries select algorithms dynamically, but their decision needs accurate topology discovery.
+
+## Congestion patterns in AI workloads
+
+AI communication is synchronized. Many ranks enter the same collective near the same time, creating burst patterns unlike independent storage flows.
+
+Common problems:
+
+- **Incast:** many senders target one receiver or reduction point.
+- **All-to-all pressure:** expert routing spreads traffic across many destinations.
+- **Rail imbalance:** one NIC or spine path carries more ranks.
+- **Pause propagation:** PFC on a congested queue blocks unrelated flows in the same class.
+- **Collective interference:** overlapping jobs share links without isolation.
+- **Stragglers:** one slow link delays every rank at the synchronization point.
+
+Average link utilization can look low while short queue spikes dominate step time. Collect high-resolution queue, ECN, PFC, retransmission, and link-error counters.
+
+## Benchmark by layer
+
+Use a ladder:
+
+1. Peer memory bandwidth inside one accelerator.
+2. Accelerator-to-accelerator bandwidth inside one node.
+3. Host-to-device and device-to-NIC paths.
+4. RDMA read, write, send, and receive between two nodes.
+5. Collective operations at several message sizes.
+6. Application step time with communication traces.
+
+A point-to-point benchmark does not validate all-reduce. An all-reduce benchmark does not validate expert all-to-all.
+
+Report topology and software with results:
+
+```yaml
+accelerators_per_node: 8
+nics_per_node: 8
+fabric: 'RoCEv2'
+collective: 'all_reduce'
+payload_bytes: '<measured case>'
+driver_revision: '<pinned revision>'
+firmware_revision: '<pinned revision>'
+```
+
+The values in this configuration are an example schema, not a recommended cluster design.
+
+## Diagnose slow collectives
+
+**One node is slow:** check accelerator link state, NIC affinity, PCIe width, firmware, thermal state, and error counters.
+
+**Performance drops only across racks:** inspect oversubscription, routing entropy, spine utilization, and optical errors.
+
+**Large messages are slow:** inspect effective bandwidth, rail balance, and algorithm selection.
+
+**Small messages are slow:** inspect launch, synchronization, and per-step latency.
+
+**RoCE stalls under load:** inspect PFC pause frames, ECN marks, congestion notification packets, queue occupancy, and packet loss.
+
+**Runs vary despite stable bandwidth:** inspect competing jobs, adaptive routing, CPU scheduling, and collective synchronization.
+
+## Capacity planning
+
+Model the communication phase from workload bytes, not advertised FLOPS:
+
+```text
+required fabric time
+  = bytes transferred per step
+  / measured effective bandwidth
+```
+
+Then compare it with the compute phase and determine which communication can overlap. If an exposed collective occupies the critical path, faster compute makes the network fraction larger.
+
+Include failure capacity. A fabric that meets the target only with every link healthy has no room for maintenance, rerouting, or a failed rail.
+
+Cluster networking is a hierarchy. Preserve that hierarchy in topology maps, benchmarks, and alerts. A single "network bandwidth" number erases the exact boundary that must be fixed.
+
+[^mi300]: [AMD ROCm documentation, “AMD Instinct MI300 series microarchitecture”](https://rocm.docs.amd.com/en/docs-6.2.0/conceptual/gpu-arch/mi300.html).
+
+[^nvlink]: [NVIDIA Enterprise Reference Architecture, “NVL72 AI Factory System Hardware and Components”](https://docs.nvidia.com/enterprise-reference-architectures/nvl72-ai-factory/latest/components.html).
+
+[^ibta]: [InfiniBand Trade Association, “About InfiniBand”](https://www.infinibandta.org/about-infiniband/).
+
+[^ndr]: [NVIDIA, “QM9700 and QM9790 1U NDR 400Gb/s InfiniBand Switch Systems User Manual”](https://docs.nvidia.com/networking/display/qm9700-and-qm9790-1u-ndr-400gbps-infiniband-switch-systems-user-manual.pdf).
+
+[^roce]: [NVIDIA Cumulus Linux documentation, “RDMA over Converged Ethernet”](https://docs.nvidia.com/networking-ethernet-software/cumulus-linux-43/Network-Solutions/RDMA-over-Converged-Ethernet-RoCE/).
+
+[^pfc]: [NVIDIA DOCA documentation, “Flow Control”](https://docs.nvidia.com/doca/archive/3-2-2/Flow-Control/index.html).

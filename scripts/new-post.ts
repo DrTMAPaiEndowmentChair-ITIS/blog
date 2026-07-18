@@ -37,6 +37,9 @@ mkdirSync(dirname(fullPath), { recursive: true })
 const content: string = `---
 title: ${displayTitle}
 pubDate: '${new Date().toISOString().split('T')[0]}'
+category: 'Ecosystems & Tooling'
+description: 'A new technical field guide.'
+topics: []
 ---
 
 `

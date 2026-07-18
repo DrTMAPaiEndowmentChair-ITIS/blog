@@ -1,0 +1,179 @@
+---
+title: 'Distributed LLM Training: Data, Tensor, Pipeline, and Expert Parallelism'
+pubDate: '2026-04-15'
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Place model state and computation across devices with data, tensor, pipeline, sequence, and expert parallelism.'
+topics: ['Distributed training', 'Parallelism', 'GPU clusters']
+---
+
+import ParallelismStrategies from '../../components/viz/ParallelismStrategies.astro'
+
+**Author**: Aadit Agrawal
+
+Large-model training is a placement problem before it is an optimizer problem. Parameters, optimizer state, gradients, activations, and temporary buffers must fit across devices. The selected placement also determines which bytes cross links on every step.
+
+<ParallelismStrategies />
+
+## Start from the memory equation
+
+For parameter count $P$, bytes per parameter $b_w$, gradient bytes $b_g$, and optimizer-state bytes $b_o$, persistent training state is approximately:
+
+$$
+M_{\text{persistent}} = P(b_w + b_g + b_o)
+$$
+
+Activations, communication buffers, allocator fragmentation, and kernel workspaces sit on top. Mixed precision does not imply that every term uses the same dtype. Many training stacks retain higher-precision master weights or optimizer statistics.
+
+Parallelism changes which terms each rank owns. It also introduces communication. A valid strategy must satisfy both device capacity and step-time constraints.
+
+## Data parallelism replicates compute
+
+Each data-parallel rank holds the model and processes a different microbatch. Gradients are combined, commonly with all-reduce. With global batch $B$, data-parallel degree $D$, and local batch $B_\ell$:
+
+$$
+B = D B_\ell
+$$
+
+The arithmetic per sample is unchanged. Communication scales with gradient state rather than activation size. This makes data parallelism attractive while a full training replica fits.
+
+Gradient accumulation decouples microbatch size from the optimizer batch. It reduces activation residency per forward pass but does not reduce the parameter or optimizer footprint.
+
+Fully sharded data parallel methods partition parameters, gradients, and optimizer state across the data-parallel group, gathering parameter shards when a layer executes and discarding or resharding them afterward. ZeRO introduced staged partitioning of optimizer state, gradients, and parameters to remove data-parallel memory redundancy.[^zero]
+
+Failure modes include:
+
+- all-gather latency exposed because computation is too small to hide it;
+- uneven parameter groups causing transient memory peaks;
+- gradient accumulation configured differently across ranks;
+- checkpoint code assuming each rank owns a complete state dictionary.
+
+## Tensor parallelism partitions operators
+
+Tensor parallelism splits a matrix multiplication across devices. For a linear layer $Y=XW$, column partitioning divides $W$ by output features:
+
+$$
+W = [W_1, W_2, \ldots, W_T]
+$$
+
+Each rank computes $XW_i$. The result is sharded along its feature dimension. A later row-parallel layer can consume those shards and reduce partial outputs. Megatron-LM arranged column- and row-parallel transformer operators to limit synchronization points while preserving dense matrix multiplications.[^megatron]
+
+Tensor parallelism reduces per-rank parameter and compute load, but introduces collectives inside every transformer layer. It belongs within the fastest network domain available. Crossing a slow inter-node boundary for each layer can dominate step time.
+
+Sequence parallelism complements tensor parallelism by sharding operations whose activations would otherwise remain replicated across the sequence axis. It targets activation memory, not just parameter memory.
+
+Check tensor-parallel configurations for:
+
+- head counts and hidden widths divisible by the partition degree;
+- identical collective ordering on every rank;
+- dropout randomness that follows the intended replicated or sharded semantics;
+- numerical drift from changing reduction order;
+- network topology that matches the process group.
+
+## Pipeline parallelism partitions layers
+
+Pipeline parallelism assigns consecutive layer ranges to stages. A minibatch is divided into microbatches so stages can work concurrently. GPipe formalized this approach with microbatch pipelining and rematerialization for large networks.[^gpipe]
+
+An all-forward-then-all-backward schedule has simple dependencies but retains activations for many microbatches. A one-forward-one-backward schedule starts backward work earlier and reduces the number of live activations. Interleaved schedules assign multiple model chunks to a physical stage to reduce idle periods, at the cost of more transfers and scheduling complexity.
+
+Pipeline efficiency depends on balance. Equal layer counts do not imply equal stage times because embedding, attention, mixture-of-experts, and output layers have different compute and memory profiles. Measure stage latency and move whole blocks or split points based on traces.
+
+The pipeline boundary transmits activations in the forward direction and their gradients in the reverse direction. A boundary at a wide hidden representation consumes more bandwidth than one after a compact projection.
+
+Operational failures include a last stage slowed by vocabulary projection, microbatch count too small to fill the pipeline, activation checkpointing that recomputes across a communication boundary, and batches with different sequence lengths producing stage imbalance.
+
+## Expert parallelism partitions sparse feed-forward capacity
+
+A mixture-of-experts layer routes each token to selected expert networks. Expert parallelism places different experts on different ranks. Tokens are exchanged so each expert receives its assigned inputs, then returned to their original sequence positions.
+
+Switch Transformers demonstrated sparse expert routing in which only selected parameters execute for a token.[^switch] The memory benefit is conditional capacity: total parameters can grow without executing every expert for every token. The systems cost is token dispatch, usually implemented with all-to-all communication.
+
+Load balance is not guaranteed. A router can send too many tokens to a subset of experts. Capacity limits, auxiliary balancing losses, token dropping policies, and expert replication change quality and throughput. Each must be logged, not hidden behind an average utilization number.
+
+Measure per expert:
+
+- assigned tokens before capacity enforcement;
+- accepted and dropped tokens;
+- dispatch bytes and collective duration;
+- compute duration;
+- routing probability distribution.
+
+## Compose parallel dimensions around topology
+
+Production training combines dimensions. Let $D$, $T$, $L$, and $E$ denote data, tensor, pipeline, and expert parallel degrees. The world size is often factored as:
+
+$$
+N = D \times T \times L \times E
+$$
+
+This equation is a process-grid description, not proof that a configuration is efficient. Some implementations share or nest groups differently.
+
+Map frequent, latency-sensitive collectives to fast links. Tensor-parallel collectives occur inside layers, so they usually remain within a tightly connected node. Data-parallel reductions occur on gradients and can span nodes with bucketed overlap. Pipeline traffic is point-to-point between adjacent stages. Expert dispatch is all-to-all and needs special attention to oversubscribed network fabrics.
+
+One reasonable placement order is:
+
+1. Choose tensor parallelism so a layer and its working set fit inside a fast-link group.
+2. Add pipeline stages until the model state fits across groups.
+3. Place experts within network domains that can sustain dispatch.
+4. Use remaining devices for data-parallel replicas.
+
+The order is a design procedure, not a universal optimum. Profile the actual architecture and cluster.
+
+## Checkpointing must encode the process grid
+
+A distributed checkpoint is not merely a set of files. It records how tensors are partitioned. Changing the tensor-parallel degree requires resharding matrix dimensions. Changing pipeline degree moves layer ownership. Expert changes alter expert identifiers and routing state. Optimizer state must follow the same transformations as its parameter.
+
+Store:
+
+- global tensor names and shapes;
+- shard offsets and partition axes;
+- dtype and optimizer-state relation;
+- parallel degrees and rank topology;
+- random-number-generator state;
+- data-loader position and sample identity;
+- software and model configuration.
+
+Test restore under the same topology before testing topology conversion. Compare loss on a fixed batch before and after restoration.
+
+## A configuration example
+
+```yaml
+parallelism:
+  data: ${DATA_PARALLEL_DEGREE}
+  tensor: ${TENSOR_PARALLEL_DEGREE}
+  pipeline: ${PIPELINE_PARALLEL_DEGREE}
+  expert: ${EXPERT_PARALLEL_DEGREE}
+
+schedule:
+  microbatches: ${MICROBATCH_COUNT}
+  activation_checkpointing: selective
+
+checkpoint:
+  format: distributed
+  save_rng_state: true
+  save_data_position: true
+```
+
+Configuration validation should reject incompatible hidden widths, attention heads, expert counts, and world sizes before processes initialize.
+
+## Measure exposed communication
+
+Collective duration alone does not show the performance cost. Communication overlapped with useful compute is cheaper than an equally long collective on the critical path. Use a timeline and calculate exposed communication:
+
+$$
+T_{\text{exposed}} = T_{\text{step}} - T_{\text{compute-only critical path}}
+$$
+
+Also report tokens processed per unit time, model FLOP utilization under a documented accounting convention, peak allocated memory per rank, and straggler spread. An aggregate average can conceal one stage that limits the complete pipeline.
+
+Distributed training succeeds when partitioning, scheduling, and topology agree. Data parallelism distributes samples, tensor parallelism distributes operators, pipeline parallelism distributes layers, and expert parallelism distributes conditional modules. Their communication patterns are different enough that treating them as interchangeable memory switches leads to slow or unstable runs.
+
+## References
+
+[^zero]: [ZeRO: Memory Optimizations Toward Training Trillion Parameter Models](https://arxiv.org/abs/1910.02054).
+
+[^megatron]: [Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism](https://arxiv.org/abs/1909.08053).
+
+[^gpipe]: [GPipe: Efficient Training of Giant Neural Networks Using Pipeline Parallelism](https://arxiv.org/abs/1811.06965).
+
+[^switch]: [Switch Transformers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity](https://arxiv.org/abs/2101.03961).

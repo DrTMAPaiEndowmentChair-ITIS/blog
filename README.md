@@ -31,9 +31,23 @@ Official website for Dr. TMA Pai Endowment Chair - ITIS, built with [Astro](http
    pnpm dev
    ```
 
-3. Edit `src/config.ts` and `src/content/about/about.md` to your liking.
+2. Edit `src/config.ts` and `src/content/about/about.md` to your liking.
 
-4. Use `pnpm new <title>` to create new posts, or add your posts to `src/content/posts`.
+3. Use `pnpm new <title>` to create new posts, or add your posts to `src/content/posts`.
+
+### Organizing posts
+
+Every post includes three discovery fields in its frontmatter:
+
+```yaml
+category: 'Models & Training'
+description: 'A concise standfirst shown on the front page and in search results.'
+topics: ['Fine-tuning', 'LoRA', 'Training']
+```
+
+Choose one category from `Models & Training`, `Inference & Deployment`, `Hardware & Systems`, or
+`Ecosystems & Tooling`. Keep topics specific and use two or three per post. Set `featured: true` on
+the single article that should lead the newspaper-style front page.
 
 5. You need to set adapter as follows before deploying to Netlify, Vercel, or other platforms, but you can set `linkCard` to `false` in `src/config.ts` to skip this step:
    - **Netlify**: `pnpm add @astrojs/netlify` and add `adapter: netlify()` in `astro.config.ts`.

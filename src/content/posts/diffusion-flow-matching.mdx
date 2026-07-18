@@ -1,0 +1,157 @@
+---
+title: 'Diffusion and Flow Matching: Architectures for Image and Video Generation'
+pubDate: '2026-06-19'
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Compare diffusion and flow-matching objectives, time parameterizations, architectures, and samplers for image and video generation.'
+topics: ['Diffusion', 'Flow matching', 'Generative media']
+---
+
+import DiffusionFlowComparison from '../../components/viz/DiffusionFlowComparison.astro'
+
+**Author**: Aadit Agrawal
+
+Diffusion and flow matching define learning problems over paths between a tractable noise distribution and the data distribution. The neural network architecture can be shared, but the target, time parameterization, and sampler determine what the network predicts and how generation integrates it.
+
+<DiffusionFlowComparison />
+
+## Diffusion learns a reverse corruption process
+
+A forward diffusion process gradually corrupts data $x_0$ into $x_t$. A common Gaussian parameterization is:
+
+$$
+x_t = \alpha_t x_0 + \sigma_t \epsilon,
+\qquad \epsilon \sim \mathcal{N}(0, I)
+$$
+
+Training samples a data point, a time $t$, and noise $\epsilon$. A network can predict $\epsilon$, the score $\nabla_{x_t}\log p_t(x_t)$, the clean sample, or a velocity parameterization derived from them. Denoising Diffusion Probabilistic Models connected this training objective to denoising score matching and a learned reverse Markov chain.[^ddpm]
+
+The noise schedule controls signal-to-noise ratio across time. Loss weighting determines which regions of that schedule dominate updates. These choices affect optimization even when the architecture is unchanged.
+
+At inference, generation starts from noise and applies a numerical solver. A stochastic reverse SDE injects randomness along the path. A probability-flow ODE follows a deterministic trajectory for a fixed initial noise. Sampler order and step placement trade network evaluations, truncation error, and stability.
+
+## Flow matching regresses a vector field
+
+Flow matching chooses a probability path $p_t$ and trains a vector field $v_\theta(x,t)$ to transport samples along it:
+
+$$
+\frac{dx}{dt} = v_\theta(x,t)
+$$
+
+The Flow Matching paper showed that conditional vector fields can provide a simulation-free training objective and include diffusion paths as a special case.[^flow-matching] Training does not require solving the ODE for every update. It samples points on a conditional path and regresses the target velocity.
+
+For a simple linear interpolation between noise $x_0$ and data $x_1$:
+
+$$
+x_t = (1-t)x_0 + tx_1
+$$
+
+the conditional velocity is $x_1-x_0$. In practice, the coupling between noise and data and the selected path affect trajectory geometry. A straight conditional interpolation does not imply that the marginal vector field is trivial.
+
+## Prediction targets are coordinate choices
+
+Noise, clean-sample, score, and velocity prediction can often be converted when $\alpha_t$ and $\sigma_t$ are known. They do not produce identical numerical conditioning under finite precision, imperfect networks, or weighted losses.
+
+Use one canonical internal definition:
+
+```python
+def interpolate(clean, noise, alpha_t, sigma_t):
+    sample = alpha_t * clean + sigma_t * noise
+    velocity = alpha_t * noise - sigma_t * clean
+    return sample, velocity
+```
+
+The exact velocity formula depends on the schedule convention. Tests should verify conversions at schedule endpoints and intermediate times.
+
+## U-Nets and transformers solve the same field problem
+
+A U-Net uses multiscale convolutional features, skip connections, and attention blocks. It matches image locality and provides feature maps at several resolutions. A diffusion transformer tokenizes latent patches and applies transformer blocks conditioned on time and text. Diffusion Transformers demonstrated that transformer compute can replace the conventional U-Net backbone in latent diffusion.[^dit]
+
+Architecture selection changes:
+
+- how spatial resolution maps to compute;
+- where text conditioning enters;
+- whether variable aspect ratios require padding or packed tokens;
+- how temporal features are introduced for video;
+- which kernels dominate training and inference.
+
+The network output still represents the selected denoising or flow target.
+
+## Latent models move the path out of pixel space
+
+Pixel-space generation carries high-dimensional spatial tensors through every network evaluation. Latent diffusion uses an encoder to map images into a lower-dimensional representation, trains the generative process in that space, then decodes the result.[^latent-diffusion]
+
+This introduces a separate reconstruction contract. Fine texture, text, faces, and high-frequency patterns can be limited by the autoencoder even if the denoiser is accurate. Evaluate reconstruction error independently by encoding and decoding real samples without generation.
+
+Latent scaling must match training. A missing scale factor changes the effective noise distribution and can produce washed-out or saturated samples.
+
+## Conditioning enters through several paths
+
+Text conditioning commonly uses cross-attention from image or video tokens to text-encoder outputs. Time is embedded and injected through adaptive normalization or residual modulation. Class labels, camera parameters, masks, depth, or motion controls can use related adapters.
+
+Classifier-free guidance combines conditional and unconditional predictions:
+
+$$
+\hat{u} =
+u_\varnothing +
+w(u_c-u_\varnothing)
+$$
+
+where $u$ denotes the chosen prediction target and $w$ is guidance strength. Guidance changes the vector field followed by the sampler. High guidance can improve prompt alignment while reducing diversity or causing saturation; the acceptable range is model- and sampler-specific.
+
+Batching the conditional and unconditional passes can increase throughput but doubles some activation and conditioning work. Cache text embeddings when prompts repeat.
+
+## Video adds a temporal allocation problem
+
+Video tensors add frame count to spatial resolution, channel width, and batch size. Full spatiotemporal attention grows with the square of the token count. Architectures therefore factor spatial and temporal attention, use local windows, compress time in a latent autoencoder, or process temporal chunks.
+
+Temporal consistency is not guaranteed by generating each frame with the same prompt. The model needs temporal operators or shared latent structure. Conditioning should preserve frame order, frame rate, aspect ratio, and camera metadata used during training.
+
+A serving plan must choose:
+
+- frame count and resolution buckets;
+- latent temporal compression;
+- attention window or context;
+- whether decoding is tiled;
+- where intermediate latents are stored;
+- how previews are generated without changing the final path.
+
+Tiled decoding lowers peak memory but can expose seams if receptive-field overlap and blending do not match the decoder.
+
+## Solvers need model-specific validation
+
+An ODE solver advances:
+
+$$
+x_{t+\Delta t} \approx x_t + \Delta t\,v_\theta(x_t,t)
+$$
+
+Higher-order methods evaluate the network at additional points to reduce integration error. Fewer steps reduce latency but can miss curved regions of the learned field. A solver qualified on one parameterization or schedule may be unstable on another.
+
+Benchmark quality against network evaluation count, not loop iteration alone. Some iterations call the model more than once. Also report text-encoder and decoder time so denoiser optimizations are not overstated.
+
+## Training and serving failure modes
+
+**Time convention mismatch:** Training uses noise-to-data time while the sampler assumes data-to-noise time. Endpoint tests catch the sign and schedule reversal.
+
+**Target conversion mismatch:** The model predicts velocity but guidance or solver code treats it as noise. Centralize conversions and record the checkpoint prediction type.
+
+**Latent scale mismatch:** Encoder outputs are scaled during training but not inference. Compare training-pipeline latents with serving latents.
+
+**Conditioning dropout mismatch:** Classifier-free guidance requires an unconditional path trained with conditioning dropout. Replacing conditioning with arbitrary empty text can differ from the trained null condition.
+
+**Video padding leakage:** Padded frames participate in attention because the mask is wrong. Test variable-length batches against individually evaluated clips.
+
+**Sampler benchmark bias:** Quality is compared at equal step count despite different model evaluations. Compare equal evaluation budgets and wall-clock latency.
+
+Diffusion and flow matching are not competing network brands. They are ways to specify a time-dependent learning target and a generative path. A production system must keep schedule, target parameterization, architecture, conditioning, latent codec, and sampler in one versioned contract.
+
+## References
+
+[^ddpm]: [Denoising Diffusion Probabilistic Models](https://arxiv.org/abs/2006.11239).
+
+[^flow-matching]: [Flow Matching for Generative Modeling](https://arxiv.org/abs/2210.02747).
+
+[^dit]: [Scalable Diffusion Models with Transformers](https://arxiv.org/abs/2212.09748).
+
+[^latent-diffusion]: [High-Resolution Image Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752).

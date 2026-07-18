@@ -1,0 +1,72 @@
+<figure class="viz" aria-labelledby="osc-title">
+  <figcaption id="osc-title">Optimizer state attached to one matrix parameter W</figcaption>
+  <div class="rows">
+    <div>
+      <b>AdamW</b><span class="full">first moment: shape(W)</span><span class="full"
+        >second moment: shape(W)</span
+      >
+    </div>
+    <div>
+      <b>Adafactor</b><span class="full">first moment, optional</span><span>row factors</span><span
+        >column factors</span
+      >
+    </div>
+    <div>
+      <b>Shampoo</b><span>left covariance</span><span>right covariance</span><span
+        >matrix roots</span
+      >
+    </div>
+    <div>
+      <b>Muon</b><span class="full">momentum matrix</span><span>orthogonalization workspace</span>
+    </div>
+  </div>
+  <p>
+    Boxes show state structure, not byte-equivalent area. Precision and distributed sharding
+    determine physical storage.
+  </p>
+</figure>
+<style>
+  .viz {
+    margin: 2rem 0;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+  }
+  figcaption {
+    font: 600 0.85rem var(--mono);
+    margin-bottom: 1rem;
+  }
+  .rows {
+    display: grid;
+    gap: 0.55rem;
+  }
+  .rows div {
+    display: grid;
+    grid-template-columns: 7rem repeat(3, 1fr);
+    gap: 0.35rem;
+  }
+  .rows b,
+  .rows span {
+    padding: 0.65rem;
+    border: 1px solid var(--border);
+    font-size: 0.73rem;
+    background: var(--background);
+  }
+  .rows .full {
+    grid-column: span 1;
+    background: color-mix(in srgb, #2563eb 12%, var(--background));
+  }
+  p {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    margin: 0.7rem 0 0;
+  }
+  @media (max-width: 640px) {
+    .rows div {
+      grid-template-columns: 1fr;
+    }
+    .rows .full {
+      grid-column: auto;
+    }
+  }
+</style>

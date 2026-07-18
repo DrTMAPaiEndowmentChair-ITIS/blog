@@ -1,0 +1,91 @@
+---
+const rows = [
+  { doc: 'D1', lexical: 1, dense: 4, fused: 1, reranked: 2 },
+  { doc: 'D2', lexical: 5, dense: 1, fused: 2, reranked: 1 },
+  { doc: 'D3', lexical: 2, dense: 5, fused: 3, reranked: 4 },
+  { doc: 'D4', lexical: 4, dense: 2, fused: 4, reranked: 3 },
+  { doc: 'D5', lexical: 3, dense: 3, fused: 5, reranked: 5 }
+]
+---
+
+<figure class="ranking" aria-labelledby="ranking-title">
+  <figcaption id="ranking-title">Candidate ranks through a hybrid retrieval pipeline</figcaption>
+  <div class="stage-head">
+    <span>Document</span><span>BM25</span><span>Dense</span><span>RRF</span><span
+      >Cross-encoder</span
+    >
+  </div>
+  {
+    rows.map((row) => (
+      <div class="rank-row">
+        <strong>{row.doc}</strong>
+        <span style={`--rank:${row.lexical}`}>{row.lexical}</span>
+        <span style={`--rank:${row.dense}`}>{row.dense}</span>
+        <span style={`--rank:${row.fused}`}>{row.fused}</span>
+        <span style={`--rank:${row.reranked}`}>{row.reranked}</span>
+      </div>
+    ))
+  }
+  <p>Ranks are illustrative. The diagram shows the mechanism, not benchmark results.</p>
+</figure>
+
+<style>
+  .ranking {
+    margin: 2rem 0;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    background: var(--code-bg);
+  }
+  figcaption {
+    margin-bottom: 1rem;
+    color: var(--text-primary);
+    font: 600 0.82rem/1.4 var(--mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .stage-head,
+  .rank-row {
+    display: grid;
+    grid-template-columns: 0.8fr repeat(3, 1fr) 1.5fr;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .stage-head {
+    padding-bottom: 0.5rem;
+    color: var(--text-tertiary);
+    font: 0.75rem var(--mono);
+    text-align: center;
+  }
+  .stage-head span:first-child {
+    text-align: left;
+  }
+  .rank-row {
+    padding: 0.45rem 0;
+    border-top: 1px solid var(--border);
+  }
+  .rank-row strong {
+    font: 600 0.82rem var(--mono);
+  }
+  .rank-row span {
+    display: grid;
+    place-items: center;
+    min-height: 2rem;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--text-primary) calc((6 - var(--rank)) * 3%), var(--bg));
+    font: 600 0.8rem var(--mono);
+  }
+  p {
+    margin: 0.8rem 0 0;
+    color: var(--text-tertiary);
+    font-size: 0.76rem;
+  }
+  @media (max-width: 560px) {
+    .ranking {
+      overflow-x: auto;
+    }
+    .stage-head,
+    .rank-row {
+      min-width: 34rem;
+    }
+  }
+</style>

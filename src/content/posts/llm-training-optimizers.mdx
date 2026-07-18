@@ -1,0 +1,196 @@
+---
+title: 'LLM Training Optimizers: AdamW, Adafactor, Shampoo, and Muon'
+pubDate: '2026-07-02'
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Compare optimizer update rules alongside the memory, communication, numerical stability, and checkpoint costs they create at scale.'
+topics: ['Optimizers', 'AdamW', 'Distributed training']
+---
+
+import OptimizerStateComparison from '../../components/viz/OptimizerStateComparison.astro'
+
+**Author**: Aadit Agrawal
+
+An optimizer defines both an update rule and a distributed state system. For a large transformer, moment tensors, matrix statistics, preconditioner roots, communication, and checkpoint format can consume as much engineering attention as the gradient formula.
+
+<OptimizerStateComparison />
+
+## AdamW stores coordinate-wise moments
+
+Adam maintains exponential moving averages of gradients and squared gradients:
+
+$$
+m_t = \beta_1 m_{t-1} + (1-\beta_1)g_t
+$$
+
+$$
+v_t = \beta_2 v_{t-1} + (1-\beta_2)g_t^2
+$$
+
+Bias-corrected estimates scale the update coordinate-wise. The original Adam paper introduced this adaptive first-order method.[^adam]
+
+AdamW applies weight decay separately from the loss-gradient update:
+
+$$
+\theta_{t+1} =
+(1-\eta\lambda)\theta_t -
+\eta \frac{\hat m_t}{\sqrt{\hat v_t}+\epsilon}
+$$
+
+Decoupling matters because adding an $L_2$ penalty to the gradient is not equivalent to weight decay under an adaptive preconditioner.[^adamw]
+
+Each parameter normally has full-shape first- and second-moment state. Distributed optimizers shard these states across data-parallel ranks and gather updated parameter partitions as needed. Checkpoint conversion must preserve the association among a parameter and both moments.
+
+Exclude parameters such as normalization scales or biases from decay only through an explicit, reviewed grouping rule:
+
+```python
+decay, no_decay = [], []
+for name, parameter in model.named_parameters():
+    if not parameter.requires_grad:
+        continue
+    target = no_decay if is_no_decay_parameter(name, parameter) else decay
+    target.append(parameter)
+
+groups = [
+    {"params": decay, "weight_decay": weight_decay},
+    {"params": no_decay, "weight_decay": 0.0},
+]
+```
+
+Test that every trainable parameter appears once and only once.
+
+## Adafactor factors second-moment state
+
+For a matrix parameter, Adafactor approximates the full second-moment accumulator using row and column statistics. This changes state from matrix-sized storage to vectors sized by its dimensions. The Adafactor paper presents sublinear auxiliary storage for large parameter matrices.[^adafactor]
+
+The approximation preserves less coordinate-level information than a full accumulator. It is most useful when large matrix parameters dominate. Vectors and small tensors need a different state rule because row-column factorization is not meaningful.
+
+Adafactor also introduced relative-step and update-clipping choices. Libraries expose different defaults, so a configuration copied by optimizer name alone may not reproduce another implementation. Record:
+
+- whether first-moment momentum is enabled;
+- relative or externally scheduled learning rate;
+- parameter-scale adaptation;
+- update clipping threshold;
+- epsilon conventions;
+- weight decay placement.
+
+Memory savings are not free if the training recipe silently changes several of these at once. Run an ablation that holds schedule and decay semantics constant where the implementation permits it.
+
+## Shampoo preconditions tensor dimensions
+
+Shampoo builds statistics along tensor dimensions and applies matrix inverse roots as a preconditioner. For a matrix gradient $G$, simplified left and right statistics accumulate forms related to:
+
+$$
+L_t = L_{t-1} + G_tG_t^\top
+$$
+
+$$
+R_t = R_{t-1} + G_t^\top G_t
+$$
+
+The preconditioned update uses inverse roots of $L_t$ and $R_t$. The Shampoo paper develops this tensor-aware preconditioning while controlling dependence on the full flattened parameter dimension.[^shampoo]
+
+Matrix roots are more expensive than elementwise square roots. Practical systems update preconditioners periodically, block large dimensions, run root computations in higher precision, or distribute them across ranks. These implementation choices define the optimizer's real cost.
+
+Monitor:
+
+- time spent updating statistics;
+- time spent computing roots;
+- condition and numerical validity of preconditioners;
+- blocked versus unblocked parameter coverage;
+- communication for distributed statistics;
+- fallback path when a root computation fails.
+
+If a preconditioner contains non-finite values, skipping only that parameter update can desynchronize replicas unless every rank makes the same decision.
+
+## Muon orthogonalizes matrix updates
+
+Muon applies momentum to matrix gradients, then approximately orthogonalizes the update with an iterative Newton-Schulz procedure. The scalable Muon work applies it to hidden-layer matrix parameters while using AdamW for embeddings, output heads, and other parameters.[^muon]
+
+This split is part of the algorithmic contract. Matrix orthogonalization is not defined the same way for vectors, and very rectangular or partitioned matrices require careful handling.
+
+A conceptual update is:
+
+```python
+momentum = update_momentum(gradient, momentum, beta)
+matrix_update = orthogonalize_newton_schulz(momentum)
+parameter -= learning_rate * scale(parameter.shape) * matrix_update
+```
+
+The iteration count, polynomial coefficients, normalization, accumulation dtype, and shape-dependent scale affect output. Pin them in checkpoints and experiment records.
+
+Tensor parallelism creates another question: orthogonalize each local shard or the logical global matrix. Local orthogonalization is cheaper but is a different preconditioner. The training code must state which object the optimizer sees.
+
+## Compare state and compute separately
+
+| Optimizer | Dominant state for a matrix                     | Extra compute              | Main systems concern              |
+| --------- | ----------------------------------------------- | -------------------------- | --------------------------------- |
+| AdamW     | full first and second moments                   | elementwise updates        | state sharding and bandwidth      |
+| Adafactor | factored second moment, optional momentum       | reductions over dimensions | implementation-specific schedule  |
+| Shampoo   | dimension-wise covariance matrices              | periodic matrix roots      | blocking, precision, distribution |
+| Muon      | momentum plus temporary orthogonalization state | iterative matrix products  | parameter selection and sharding  |
+
+This table describes structure, not a universal speed ranking. Kernel fusion, dtype, matrix shape, update frequency, and network topology determine runtime.
+
+## Learning-rate transfer is optimizer-specific
+
+Do not compare optimizers under one shared learning rate and call the result controlled. Their preconditioners produce updates with different scales. Tune learning rate, warmup, decay, clipping, and optimizer-specific parameters on a smaller proxy that preserves architecture and data characteristics.
+
+Track the update-to-weight norm:
+
+$$
+\rho_t = \frac{\lVert \Delta \theta_t \rVert}{\lVert \theta_t \rVert}
+$$
+
+Report it by parameter class. Embeddings, attention projections, feed-forward matrices, and normalization parameters can behave differently. Aggregate loss can hide one group with unstable updates.
+
+## Clipping occurs at a specific point
+
+Gradient norm clipping before optimizer state update is not equivalent to clipping the preconditioned update. Adafactor's update clipping and external gradient clipping are different mechanisms. Muon's orthogonalized update changes norm geometry again.
+
+Document the order:
+
+```text
+unscale mixed-precision gradients
+check finite values
+apply gradient clipping
+update optimizer statistics
+construct preconditioned update
+apply decoupled weight decay
+update parameters
+advance scheduler
+```
+
+Distributed global-norm clipping requires a reduction over all shards. A local norm threshold changes with shard count.
+
+## Checkpoint and recovery tests
+
+An optimizer checkpoint must include step counters, moments or factors, preconditioner statistics, loss-scaler state, scheduler state, and parameter-group mapping. For periodic Shampoo roots, include enough state to resume the same update cadence. For Muon, preserve momentum and the exact parameter classification.
+
+Run a deterministic recovery test:
+
+1. Train to a checkpoint boundary.
+2. Save model, optimizer, scheduler, random state, and data position.
+3. Continue for a fixed batch sequence.
+4. Restore in a fresh process and replay the same sequence.
+5. Compare loss, parameters, and optimizer state under a documented tolerance.
+
+Topology changes require resharding. Verify on a small checkpoint before applying it to a full run.
+
+## Select by bottleneck
+
+Choose AdamW when a proven recipe, broad implementation support, and predictable coordinate-wise adaptation matter more than state volume. Choose Adafactor when matrix state is the binding capacity constraint and the recipe has been qualified. Evaluate Shampoo when training can amortize stronger preconditioning and the system can support matrix-statistic work. Evaluate Muon when hidden matrix updates dominate and the implementation defines parameter selection, scaling, and distributed semantics.
+
+No optimizer removes the need to inspect data, model initialization, and loss scaling. The useful comparison includes convergence per processed token, wall-clock time, peak memory, communication, recovery behavior, and final evaluation under equal data budgets.
+
+## References
+
+[^adam]: [Adam: A Method for Stochastic Optimization](https://arxiv.org/abs/1412.6980).
+
+[^adamw]: [Decoupled Weight Decay Regularization](https://arxiv.org/abs/1711.05101).
+
+[^adafactor]: [Adafactor: Adaptive Learning Rates with Sublinear Memory Cost](https://arxiv.org/abs/1804.04235).
+
+[^shampoo]: [Shampoo: Preconditioned Stochastic Tensor Optimization](https://arxiv.org/abs/1802.09568).
+
+[^muon]: [Muon is Scalable for LLM Training](https://arxiv.org/abs/2502.16982).

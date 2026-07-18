@@ -1,0 +1,80 @@
+<figure class="viz" aria-labelledby="ps-title">
+  <figcaption id="ps-title">What each parallelism axis partitions</figcaption>
+  <div class="grid">
+    <section>
+      <h3>Data</h3><div class="chips">
+        <b>GPU A<br />full model</b><b>GPU B<br />full model</b>
+      </div><p>Different microbatches. Gradients synchronize.</p>
+    </section>
+    <section>
+      <h3>Tensor</h3><div class="split"><b>W left</b><b>W right</b></div><p>
+        One operator spans devices. Activations communicate.
+      </p>
+    </section>
+    <section>
+      <h3>Pipeline</h3><div class="split"><b>layers 0..k</b><b>layers k+1..n</b></div><p>
+        Microbatches move through stage boundaries.
+      </p>
+    </section>
+    <section>
+      <h3>Expert</h3><div class="chips"><b>experts A, B</b><b>experts C, D</b></div><p>
+        Tokens route with all-to-all communication.
+      </p>
+    </section>
+  </div>
+</figure>
+<style>
+  .viz {
+    margin: 2rem 0;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+  }
+  figcaption {
+    font: 600 0.85rem var(--mono);
+    margin-bottom: 1rem;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.8rem;
+  }
+  section {
+    padding: 1rem;
+    border: 1px solid var(--border);
+    background: var(--background);
+  }
+  h3 {
+    margin: 0 0 0.7rem;
+    font-size: 0.9rem;
+  }
+  .chips,
+  .split {
+    display: flex;
+    gap: 0.4rem;
+  }
+  .chips b,
+  .split b {
+    flex: 1;
+    padding: 0.65rem;
+    text-align: center;
+    border: 1px solid var(--border);
+    font: 500 0.73rem var(--mono);
+  }
+  .split b:first-child {
+    background: color-mix(in srgb, #2563eb 14%, transparent);
+  }
+  .split b:last-child {
+    background: color-mix(in srgb, #16a34a 14%, transparent);
+  }
+  p {
+    margin: 0.7rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+  }
+  @media (max-width: 640px) {
+    .grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

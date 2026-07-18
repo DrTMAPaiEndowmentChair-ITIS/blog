@@ -1,0 +1,183 @@
+---
+title: 'Multi-Token Prediction: Training Draft Heads for Faster Decoding'
+pubDate: 2026-07-12
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Train offset-specific draft heads, verify their candidates, and measure when denser supervision produces faster autoregressive decoding.'
+topics: ['Multi-token prediction', 'Speculative decoding', 'Training']
+---
+
+import MultiTokenPrediction from '../../components/viz/MultiTokenPrediction.astro'
+
+Next-token language modeling supervises one future token at each position. Multi-token prediction attaches several output heads to a shared representation and trains each head to predict a different future offset.
+
+The training objective provides denser supervision. At inference, those heads can propose a short continuation for verification by the main model. The mechanism connects model training and speculative execution without requiring a separate draft model.
+
+## Multi-offset objective
+
+Given tokens $x_1,\ldots,x_T$, a conventional causal model minimizes:
+
+$$
+\mathcal L_1=-\sum_t\log p(x_{t+1}\mid x_{\leq t})
+$$
+
+With $n$ future heads, the objective becomes:
+
+$$
+\mathcal L_{MTP}=
+-\sum_t\sum_{k=1}^{n}
+\alpha_k\log p_k(x_{t+k}\mid x_{\leq t})
+$$
+
+Each head sees the same causal prefix but has a different target offset. Gloeckle and collaborators use independent output heads built from a shared model trunk and report that the added training-time overhead can be removed at deployment when only the next-token head is retained.[^1]
+
+<MultiTokenPrediction />
+
+## Architecture choices
+
+A minimal design projects the final hidden state through independent linear heads. A richer head can include a small transformer block that combines the shared state with an embedding of a previously predicted future token.
+
+The choices affect:
+
+| Design                       | Training cost | Proposal dependence                         | Inference role           |
+| ---------------------------- | ------------- | ------------------------------------------- | ------------------------ |
+| Independent linear heads     | Low           | Heads do not condition on sibling proposals | Parallel candidate tuple |
+| Sequential lightweight heads | Higher        | Later proposals condition on earlier ones   | Autoregressive draft     |
+| Tree heads                   | Higher        | Multiple alternatives per depth             | Branch verification      |
+| Auxiliary heads removed      | Training only | None at serving                             | Better trunk supervision |
+
+Independent heads can disagree structurally because the offset head predicts a marginal future token without knowing which earlier proposal was selected. A verification tree can retain several combinations, but candidate count grows with branching.
+
+## Training alignment and shifting
+
+Target construction is easy to get wrong. For head $k$, logit position $t$ must align with token $x_{t+k}$. Tail positions without that future target must be masked from the loss.
+
+Near-runnable PyTorch code:
+
+```python
+import torch
+import torch.nn.functional as F
+
+def multi_token_loss(head_logits, token_ids, weights):
+    # head_logits[k]: [batch, sequence, vocabulary]
+    total = token_ids.new_zeros((), dtype=torch.float32)
+
+    for offset, (logits, weight) in enumerate(
+        zip(head_logits, weights), start=1
+    ):
+        usable = token_ids.size(1) - offset
+        if usable <= 0:
+            continue
+
+        predictions = logits[:, :usable].reshape(-1, logits.size(-1))
+        targets = token_ids[:, offset:].reshape(-1)
+        total = total + weight * F.cross_entropy(predictions, targets)
+
+    return total
+```
+
+Production code also masks padding, packed-document boundaries, and loss-excluded tokens. A future head must not cross from one packed document into another. Build an offset-specific validity mask from segment identifiers.
+
+## Shared trunk gradients
+
+Every head contributes gradients to the trunk. Large auxiliary weights can optimize distant predictions at the expense of the primary next-token distribution. Log loss and gradient norms by head.
+
+Useful controls include:
+
+- offset-dependent loss weights
+- a warm-up schedule for auxiliary heads
+- per-head normalization before summing
+- gradient clipping measured before and after aggregation
+- validation perplexity for the primary head
+
+The multi-token prediction paper reports stronger gains for larger models and on code tasks, while finding no advantage for small models in some evaluated settings.[^1] Treat those results as evidence for the paper's configurations, not a guarantee that more heads improve every model.
+
+## From heads to draft tokens
+
+At inference, auxiliary heads propose tokens for offsets ahead of the current prefix. The target path verifies candidates with causal attention. A simple linear chain uses one top candidate from each head. A tree uses several candidates at each depth.
+
+Medusa trains multiple decoding heads and verifies a tree of candidate continuations in parallel.[^2] Its tree attention mask permits a node to attend to its ancestors but not to nodes on other branches.
+
+For a chain:
+
+```text
+shared hidden state
+  -> head for offset one proposes a
+  -> head for offset two proposes b
+  -> head for offset three proposes c
+  -> target verifies prefix + [a, b, c]
+```
+
+If the target rejects $b$, candidate $c$ is invalid because its prefix is no longer the proposed chain. The runtime commits the accepted prefix and a target correction, then drafts again.
+
+## Draft heads and lossless sampling
+
+Heads produce a proposal distribution $q$; the target produces $p$. Lossless speculative sampling accepts a proposed token with probability:
+
+$$
+\min\left(1,\frac{p(x)}{q(x)}\right)
+$$
+
+On rejection, it samples from the normalized positive residual $p-q$. This is the same correction used in speculative sampling with a separate draft model.[^3] Greedy verification can use token equality but preserves only greedy behavior.
+
+Temperature, top-$p$, top-$k$, repetition penalties, and grammar masks must be reflected consistently in proposal and target probabilities. Independent heads that expose only selected token identifiers are insufficient for exact stochastic correction; the verifier needs proposal probabilities.
+
+## Inference memory and kernels
+
+Auxiliary heads add parameters and logits. Materializing full vocabulary logits for every head can consume substantial memory bandwidth. Fused top-$k$ selection can avoid writing complete logits to global memory when the verification method needs only candidate tokens and probabilities.
+
+Serving options:
+
+- retain heads on the same device as the trunk
+- place head weights with the final pipeline stage
+- quantize auxiliary head weights separately after acceptance validation
+- disable heads for batches whose measured acceptance is low
+- select a smaller active head count by request class
+
+The shared trunk avoids a second model's KV cache, but verification candidates still require provisional target-cache positions. Roll back unaccepted suffix blocks without copying the accepted prefix.
+
+## Candidate-tree budgeting
+
+Tree width should be based on verification cost and acceptance, not a fixed aesthetic shape. Let node $v$ have estimated probability of being reached $r_v$ and verification cost contribution $c_v$. Candidate selection can prioritize high $r_v/c_v$ while respecting kernel shape and maximum nodes.
+
+Calibrate reach probability from held-out traffic. Do not interpret head softmax values as calibrated branch probabilities without checking them. Code, prose, and structured output can have different predictability.
+
+## Failure modes
+
+**Cross-document targets:** packed training shifts a target into the next document. Mask by segment identifier at every offset.
+
+**Primary-head regression:** auxiliary gradients reduce next-token quality. Track the primary objective and downstream evaluations independently.
+
+**Head collapse:** distant heads learn frequent-token priors rather than prefix-specific futures. Measure conditional accuracy by token class and entropy.
+
+**Verification-mask leak:** a candidate reads a sibling branch or later token. Compare tree verification logits against independent autoregressive reference runs.
+
+**Memory-bandwidth regression:** writing head logits costs more than the saved target steps. Profile end-to-end time per committed token.
+
+**Static head count:** easy prompts waste available candidates or difficult prompts waste verification slots. Route using measured acceptance.
+
+**Tokenizer or processor mismatch:** head proposals bypass grammar masks or sampling transforms. Centralize logits processing and test equivalence.
+
+## Evaluation
+
+Training evaluation needs primary-head perplexity, per-offset loss, downstream task quality, and gradient statistics. Serving evaluation needs:
+
+- committed tokens per target pass
+- acceptance by offset and request type
+- draft-head kernel time
+- target verification time by candidate count
+- provisional cache blocks allocated and released
+- output-distribution equivalence against ordinary sampling
+- latency percentiles under continuous batching
+
+Compare three deployments from the same checkpoint: primary head only, auxiliary heads enabled without speculative verification, and verified multi-token decoding. This separates representation gains from serving gains.
+
+Multi-token prediction is useful in two independent ways. It changes the training signal by requiring a prefix representation to predict several future offsets. It also supplies model-native proposals for speculative decoding. Each claim needs its own baseline, because better training loss does not prove faster serving and high acceptance does not prove unchanged sampling.
+
+## References
+
+[^1]: Fabian Gloeckle et al., "Better & Faster Large Language Models via Multi-token Prediction," ICML, 2024. [https://arxiv.org/abs/2404.19737](https://arxiv.org/abs/2404.19737)
+
+[^2]: Tianle Cai et al., "Medusa: Simple LLM Inference Acceleration Framework with Multiple Decoding Heads," ICML, 2024. [https://arxiv.org/abs/2401.10774](https://arxiv.org/abs/2401.10774)
+
+[^3]: Charlie Chen et al., "Accelerating Large Language Model Decoding with Speculative Sampling," arXiv, 2023. [https://arxiv.org/abs/2302.01318](https://arxiv.org/abs/2302.01318)

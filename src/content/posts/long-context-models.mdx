@@ -1,0 +1,159 @@
+---
+title: 'Long-Context Models: Position Encoding, Memory, and Retrieval'
+pubDate: 2026-06-05
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Separate position extension, attention computation, cache capacity, context parallelism, and retrieval when designing long-context systems.'
+topics: ['Long context', 'RoPE', 'Retrieval']
+---
+
+import LongContextStrategies from '../../components/viz/LongContextStrategies.astro'
+
+A context window is a capacity limit, not a guarantee that every supplied token affects the answer equally. Long-context systems combine positional representation, attention computation, device memory, distributed execution, data composition, and evaluation.
+
+Extending one layer does not extend the others. A position encoding can represent a distant index while the cache does not fit. An exact attention kernel can process the sequence while the model fails to retrieve a fact placed in its middle.
+
+## Position enters attention
+
+Transformer attention without position is permutation-equivariant. Position methods change token representations or attention scores.
+
+Rotary position embedding applies a position-dependent rotation to query and key pairs. Their dot product then contains relative-position structure.[^1] For one two-dimensional feature pair:
+
+$$
+R_{\theta,m}=
+\begin{bmatrix}
+\cos(m\theta)&-\sin(m\theta)\\
+\sin(m\theta)&\cos(m\theta)
+\end{bmatrix}
+$$
+
+The model is trained over a range of phases determined by position $m$ and frequency $\theta$. Extrapolating beyond the training range can expose phase patterns not learned during training.
+
+ALiBi takes a different route. It adds a head-specific linear penalty proportional to query-key distance rather than adding a positional embedding to token states.[^2] Its authors trained a $1.3$-billion-parameter model at length $1024$ and evaluated length $2048$; they report matching the perplexity of a sinusoidal baseline trained at the longer length while using $11\%$ less training memory and time.[^2]
+
+<LongContextStrategies />
+
+## RoPE extension changes frequency mapping
+
+Position interpolation compresses a longer inference range into coordinates observed during training. It avoids raw extrapolation but reduces angular resolution between nearby positions. Frequency-aware methods scale dimensions differently because high-frequency and low-frequency rotary pairs behave differently.
+
+LongRoPE searches non-uniform interpolation factors and uses progressive extension. The paper reports extending models to $2048$ thousand tokens with fine-tuning at lengths up to $256$ thousand tokens, then readjusting at $8$ thousand tokens to recover short-context behavior.[^3]
+
+Those figures describe the evaluated method, not a universal recipe. Extension factors depend on the base model, original training length, data, and fine-tuning setup. A configuration that loads successfully can still degrade short-context perplexity or retrieval.
+
+Store position policy with the model artifact:
+
+```yaml
+position:
+  type: rope
+  original_max_positions: ${TRAINING_LIMIT}
+  scaling:
+    method: ${METHOD}
+    factor: ${FACTOR}
+    parameters_digest: ${DIGEST}
+evaluation:
+  short_context_suite: ${SHORT_SUITE}
+  long_context_suite: ${LONG_SUITE}
+```
+
+Placeholders force values to come from the trained artifact rather than a copied deployment snippet.
+
+## Memory grows even with efficient attention
+
+Exact self-attention score work grows with the product of query and key lengths. FlashAttention avoids materializing the complete score matrix but does not remove the arithmetic of dense attention.[^4]
+
+Inference also retains the key-value cache. For $L$ layers, $H_{kv}$ key-value heads, head dimension $D$, sequence length $S$, and scalar width $B$:
+
+$$
+M_{KV}=2LSH_{kv}DB
+$$
+
+The cache grows linearly with sequence length. Prefix caching avoids recomputation across repeated prefixes but does not make a unique long sequence free. Quantized cache and grouped-query attention reduce bytes per token; both require model and kernel support.
+
+Before admitting a long request, estimate weight memory, cache reservation, temporary attention workspace, communication buffers, and allocator headroom. Token limits that ignore concurrent requests produce late out-of-memory failures.
+
+## Context parallelism distributes exact attention
+
+When one device cannot hold sequence state, context parallelism partitions tokens across devices. Ring Attention rotates key-value blocks around a device ring and computes blockwise attention while communication overlaps with local work.[^5] Online softmax combines partial results without assembling the full score matrix on one device.
+
+For each local query block, a worker:
+
+1. computes scores against its current key-value block
+2. updates row maxima, normalization sums, and output accumulators
+3. sends the key-value block to the next worker
+4. receives another block and repeats
+
+The method preserves dense attention but adds communication proportional to the circulated state. Topology and link bandwidth become part of context-length capacity.
+
+## Sparse attention changes reachable evidence
+
+Sparse methods avoid evaluating every token pair. Sliding windows preserve local structure but remove direct long-range edges. Global tokens, vertical stripes, and selected blocks restore some long-range access.
+
+MInference identifies several sparse patterns per attention head and constructs dynamic sparse indices during prefill.[^6] Such methods accelerate a pattern observed in model attention; they do not preserve exact dense attention by definition.
+
+Validate sparse kernels on tasks requiring distant dependencies, not only language-model loss. A local window can score well on locally predictable text while dropping a document-level constraint.
+
+## Retrieval changes input rather than attention
+
+Retrieval selects a smaller evidence set before generation. Its cost shifts to indexing, query construction, ranking, and provenance. Long context and retrieval are complementary:
+
+- retrieval reduces irrelevant tokens and prefill cost
+- a longer context admits more retrieved chunks and surrounding text
+- reranking orders evidence before prompt construction
+- citations connect generated claims to supplied spans
+
+Chunking is a semantic decision. Fixed token windows can split tables, code definitions, and cross-references. Structure-aware chunking keeps those units intact, while overlap preserves boundary context at the cost of duplicate tokens.
+
+## Position-sensitive evaluation
+
+Liu and collaborators varied the position of relevant information within long inputs and observed that performance can be highest when relevant information is near the beginning or end and lower when it is in the middle.[^7] Their result motivates position sweeps rather than one fixed evidence placement.
+
+A useful evaluation matrix crosses:
+
+| Axis               | Values to cover                                |
+| ------------------ | ---------------------------------------------- |
+| Evidence position  | beginning, interior positions, end             |
+| Distractor count   | low through deployment maximum                 |
+| Evidence type      | prose, table, code, cross-document link        |
+| Required operation | retrieval, aggregation, comparison, exact copy |
+| Output contract    | free text and structured result                |
+
+Every test should record tokenized length, evidence offsets, truncation, retrieved chunk identifiers, and model position configuration. Otherwise a failure cannot be assigned to retrieval, prompt construction, model use, or runtime truncation.
+
+## Operational failure modes
+
+**Silent truncation:** the tokenizer or server drops tokens before model execution. Return accepted input length and truncation status in response metadata.
+
+**Position-config mismatch:** weights were tuned with one RoPE policy but served with another. Hash the position configuration into the engine identity.
+
+**Cache admission failure:** the request fits the advertised window alone but not under concurrency. Reserve cache before prefill.
+
+**Middle-position regression:** aggregate benchmark scores hide positional weakness. Report accuracy by evidence offset.
+
+**Sparse-index error:** a required block is omitted by an indexing heuristic. Maintain a dense reference path for reduced test cases.
+
+**Retrieval dilution:** adding lower-ranked chunks moves useful evidence farther apart and adds distractors. Evaluate answer quality as the retrieved-token budget changes.
+
+## Choosing the mechanism
+
+Use position extension when the model must represent indices beyond training and can be fine-tuned and re-evaluated. Use optimized dense attention when exact all-to-all access is required. Use sparse attention when model quality survives a restricted edge pattern. Use context parallelism when exact attention state exceeds one device. Use retrieval when only a subset of an external corpus is relevant to each request.
+
+These decisions compose. A production system can retrieve documents, serve an extended-RoPE model, run tiled attention, shard context across devices, and page its cache. Each layer needs a separate measurement and failure boundary.
+
+Long context becomes useful only when evidence survives tokenization, placement, attention, memory admission, and decoding. The maximum accepted token count measures just the first of those requirements.
+
+## References
+
+[^1]: Jianlin Su et al., "RoFormer: Enhanced Transformer with Rotary Position Embedding," Neurocomputing, 2024. [https://arxiv.org/abs/2104.09864](https://arxiv.org/abs/2104.09864)
+
+[^2]: Ofir Press, Noah A. Smith, and Mike Lewis, "Train Short, Test Long: Attention with Linear Biases Enables Input Length Extrapolation," ICLR, 2022. [https://arxiv.org/abs/2108.12409](https://arxiv.org/abs/2108.12409)
+
+[^3]: Yiran Ding et al., "LongRoPE: Extending LLM Context Window Beyond 2 Million Tokens," ICML, 2024. [https://arxiv.org/abs/2402.13753](https://arxiv.org/abs/2402.13753)
+
+[^4]: Tri Dao et al., "FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness," NeurIPS, 2022. [https://arxiv.org/abs/2205.14135](https://arxiv.org/abs/2205.14135)
+
+[^5]: Hao Liu et al., "Ring Attention with Blockwise Transformers for Near-Infinite Context," ICLR, 2024. [https://arxiv.org/abs/2310.01889](https://arxiv.org/abs/2310.01889)
+
+[^6]: Huiqiang Jiang et al., "MInference 1.0: Accelerating Pre-filling for Long-Context LLMs via Dynamic Sparse Attention," NeurIPS, 2024. [https://arxiv.org/abs/2407.02490](https://arxiv.org/abs/2407.02490)
+
+[^7]: Nelson F. Liu et al., "Lost in the Middle: How Language Models Use Long Contexts," TACL, 2024. [https://arxiv.org/abs/2307.03172](https://arxiv.org/abs/2307.03172)

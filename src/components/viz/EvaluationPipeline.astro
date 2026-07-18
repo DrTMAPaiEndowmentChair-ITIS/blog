@@ -1,0 +1,104 @@
+---
+const gates = [
+  ['Dataset', 'Versioned cases, provenance, contamination audit'],
+  ['Harness', 'Pinned prompt, sampler, tools, and parser'],
+  ['Scorers', 'Deterministic checks, calibrated judge, human review'],
+  ['Analysis', 'Slices, confidence intervals, disagreement'],
+  ['Production', 'Outcome, latency, cost, escalation, rollback']
+]
+---
+
+<figure class="eval" aria-labelledby="eval-title">
+  <figcaption id="eval-title">Evaluation pipeline with validity gates</figcaption>
+  <div class="flow">
+    {
+      gates.map(([name, detail], index) => (
+        <>
+          <section>
+            <span>{String(index + 1).padStart(2, '0')}</span>
+            <div>
+              <>
+                <strong>{name}</strong>
+                <p>{detail}</p>
+              </>
+            </div>
+          </section>
+          {index < gates.length - 1 && <b aria-hidden="true">↓</b>}
+        </>
+      ))
+    }
+  </div>
+  <aside>
+    <strong>Release gate</strong><span
+      >A model passes only against a frozen suite and explicit production thresholds.</span
+    >
+  </aside>
+</figure>
+
+<style>
+  .eval {
+    margin: 2rem 0;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    background: var(--code-bg);
+  }
+  figcaption {
+    margin-bottom: 1rem;
+    font: 600 0.82rem/1.4 var(--mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .flow {
+    max-width: 40rem;
+    margin: auto;
+  }
+  section {
+    display: grid;
+    grid-template-columns: 2.5rem 1fr;
+    gap: 0.75rem;
+    align-items: center;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  section > span {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    background: var(--selection);
+    font: 600 0.75rem var(--mono);
+  }
+  strong {
+    font: 600 0.84rem var(--mono);
+  }
+  p {
+    margin: 0.15rem 0 0;
+    color: var(--text-tertiary);
+    font-size: 0.8rem;
+  }
+  b {
+    display: block;
+    height: 1.5rem;
+    color: var(--text-tertiary);
+    text-align: center;
+    font: 1rem/1.5rem var(--mono);
+  }
+  aside {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.78rem;
+  }
+  aside span {
+    color: var(--text-tertiary);
+  }
+  @media (max-width: 500px) {
+    aside {
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+  }
+</style>

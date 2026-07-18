@@ -1,0 +1,104 @@
+---
+const architectures = [
+  {
+    name: 'Groq LPU',
+    flow: ['Compiler schedule', 'Distributed SRAM', 'SIMD function units', 'Direct chip links'],
+    rule: 'Time is assigned at compile time'
+  },
+  {
+    name: 'Cerebras WSE',
+    flow: ['Graph compiler', 'Core-local SRAM', '2D mesh of cores', 'Wafer I/O'],
+    rule: 'Space is allocated across one wafer'
+  }
+]
+---
+
+<figure class="compare" aria-labelledby="compare-title">
+  <figcaption id="compare-title">Two approaches to keeping data close to compute</figcaption>
+  <div class="columns">
+    {
+      architectures.map((architecture) => (
+        <section>
+          <h3>{architecture.name}</h3>
+          <div class="flow">
+            {architecture.flow.map((item, index) => (
+              <>
+                <span>{item}</span>
+                {index < architecture.flow.length - 1 && <b aria-hidden="true">↓</b>}
+              </>
+            ))}
+          </div>
+          <p>{architecture.rule}</p>
+        </section>
+      ))
+    }
+  </div>
+  <aside>
+    Shared principle: expose placement and movement to the compiler instead of relying on a
+    general-purpose cache hierarchy.
+  </aside>
+</figure>
+
+<style>
+  .compare {
+    margin: 2rem 0;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    background: var(--code-bg);
+  }
+  figcaption {
+    margin-bottom: 1rem;
+    font: 600 0.82rem/1.4 var(--mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  section {
+    padding: 1rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  h3 {
+    margin: 0 0 0.75rem;
+    font: 600 0.9rem var(--mono);
+  }
+  .flow {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .flow span {
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    text-align: center;
+  }
+  b {
+    height: 1.25rem;
+    color: var(--text-tertiary);
+    text-align: center;
+    font: 0.9rem/1.25rem var(--mono);
+  }
+  p {
+    margin: 0.8rem 0 0;
+    color: var(--text-tertiary);
+    font: 0.75rem var(--mono);
+  }
+  aside {
+    margin-top: 1rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-tertiary);
+    font-size: 0.78rem;
+  }
+  @media (max-width: 560px) {
+    .columns {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

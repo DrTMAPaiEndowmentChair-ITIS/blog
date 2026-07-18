@@ -1,0 +1,177 @@
+---
+title: 'Modern Attention Kernels: Tiling, FlashAttention, and Paged Attention'
+pubDate: 2026-04-04
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: 'Follow how tiling, online softmax, and paged memory reduce data movement in modern training and inference kernels.'
+topics: ['FlashAttention', 'Kernels', 'GPU memory']
+---
+
+import AttentionMemoryTraffic from '../../components/viz/AttentionMemoryTraffic.astro'
+
+Attention is often introduced as three matrix operations: form $QK^T$, apply softmax, then multiply by $V$. That description omits the storage hierarchy. A conventional implementation writes the score matrix to high-bandwidth memory, reads it for softmax, writes probabilities, and reads them again for the value product.
+
+FlashAttention computes exact attention while avoiding materialization of the full score matrix. Its central optimization is data movement: tile operands into on-chip memory, update softmax statistics online, and write only the final output.[^1]
+
+## Standard attention materializes quadratic state
+
+For query and key sequence lengths $N_q$ and $N_k$, the score matrix has $N_qN_k$ entries:
+
+$$
+S=\frac{QK^T}{\sqrt d},\qquad P=\operatorname{softmax}(S),\qquad O=PV
+$$
+
+Even when arithmetic fits the accelerator, storing and rereading $S$ and $P$ creates off-chip traffic proportional to their size. The original FlashAttention paper frames the algorithm as IO-aware and analyzes reads and writes across GPU memory levels.[^1]
+
+<AttentionMemoryTraffic />
+
+## Online softmax makes tiling exact
+
+Softmax appears to require an entire row because its denominator includes every key:
+
+$$
+\operatorname{softmax}(s_i)_j=
+\frac{e^{s_{ij}}}{\sum_k e^{s_{ik}}}
+$$
+
+The computation can be updated block by block. For a row, keep running maximum $m$, running normalization sum $\ell$, and an unnormalized output accumulator $o$. Given a new score tile with maximum $m_b$:
+
+$$
+m'=\max(m,m_b)
+$$
+
+$$
+\ell'=e^{m-m'}\ell+\sum_j e^{s_j-m'}
+$$
+
+$$
+o'=e^{m-m'}o+\sum_j e^{s_j-m'}v_j
+$$
+
+After the final key tile, output $o/\ell$. Rescaling by the new maximum preserves numerical stability. No approximation is introduced by the tiling rule.
+
+## Kernel structure
+
+A simplified forward kernel loops over query tiles and key-value tiles:
+
+```text
+for each Q tile:
+    load Q into on-chip memory
+    initialize row maxima, sums, output accumulators
+
+    for each K,V tile allowed by the mask:
+        load K and V
+        compute score tile
+        apply scale and mask
+        update online softmax state
+        accumulate weighted V
+
+    normalize and write output
+```
+
+Tile shapes depend on head dimension, element type, register pressure, on-chip memory, and accelerator generation. Larger tiles increase reuse but can reduce occupancy when each program consumes too many registers.
+
+Causal attention skips tiles wholly above the diagonal and masks the intersecting boundary tile. Local attention changes the visited tile range. Arbitrary sparse masks need an index structure that tells the kernel which blocks exist.
+
+## Backward pass recomputes scores
+
+Saving the full probability matrix would reintroduce quadratic storage. FlashAttention saves compact normalization statistics and recomputes score tiles during backpropagation.[^1] It spends arithmetic to avoid memory traffic and activation storage.
+
+This trade is useful only when recomputation is cheaper than writing and reading the intermediate. Profiling must include the whole layer because fused dropout, bias, and masking can change the balance.
+
+## Work partitioning in FlashAttention-2
+
+FlashAttention-2 changes work partitioning to improve parallelism and reduce non-matrix-multiplication work.[^2] It parallelizes across sequence length when batch size and head count do not expose enough thread blocks, and adjusts how work is shared within a thread block.[^2]
+
+The lesson is broader than a version comparison. An asymptotically efficient algorithm can leave hardware idle if its grid has too few independent programs. Kernel selection needs batch, head count, sequence length, and head dimension.
+
+## Prefill and decode need different kernels
+
+Prefill has many query positions and many key positions. Tiled matrix multiplication works well. Decode often has one query position per sequence and a long cache. It cannot reuse query work across a large query tile.
+
+Decode attention therefore focuses on:
+
+- coalesced cache reads
+- parallel reduction across the context
+- grouped-query head sharing
+- cache block indirection
+- combining many sequences in a batch
+
+Calling both implementations FlashAttention hides this shape difference. Record kernel choice separately for prefill and decode.
+
+## Paged attention changes addressing
+
+PagedAttention stores cache blocks in non-contiguous physical memory and resolves them through a per-sequence block table. The vLLM paper reports near-zero cache waste and flexible cache sharing from this design.[^3]
+
+A paged decode kernel maps logical token position to:
+
+```text
+logical block = position / block_size
+offset        = position % block_size
+physical      = block_table[sequence, logical_block]
+address       = cache_base + physical * block_stride + offset * token_stride
+```
+
+The extra loads and address arithmetic buy dynamic allocation. Performance depends on block-table locality, block layout, and vectorized loads from physical pages.
+
+Paged attention and FlashAttention solve related but distinct problems:
+
+| Technique               | Primary target               | Key mechanism                      |
+| ----------------------- | ---------------------------- | ---------------------------------- |
+| FlashAttention          | Score-matrix IO              | Tiling and online softmax          |
+| PagedAttention          | Dynamic KV allocation        | Logical-to-physical block mapping  |
+| Grouped-query attention | KV cache and projection size | Share KV heads across query groups |
+| Sparse attention        | Number of attended pairs     | Visit selected score blocks        |
+
+A serving engine can combine them: tiled prefill, paged decode, grouped-query cache layout, and sparse visitation for long contexts.
+
+## Numerical validation
+
+Fused kernels reorder floating-point operations. Validate against a reference implementation across:
+
+- causal and non-causal masks
+- ragged sequence boundaries
+- head dimensions supported by each path
+- mixed precision and accumulation precision
+- long rows with large logit ranges
+- grouped-query head mapping
+- paged blocks that cross sequence tails
+
+Use absolute and relative error tolerances tied to output precision. Also compare gradients for training kernels and sampled outputs for inference pipelines.
+
+## Failure modes
+
+**Register spilling:** a larger tile silently moves local values to off-chip memory. Inspect compiler resource reports and achieved occupancy.
+
+**Mask boundary errors:** the fast path reads future tokens or padding on partial tiles. Test every boundary around tile and page sizes.
+
+**Incorrect online rescaling:** output accumulators are not rescaled when a later tile raises the row maximum. Compare adversarial logits where the largest score appears late.
+
+**Page-table mismatch:** allocator and kernel disagree about block stride or layout version. Encode layout identity in engine metadata.
+
+**Wrong kernel for decode:** a prefill-optimized kernel launches too little useful work for single-query attention. Profile by phase and shape.
+
+## Benchmarking method
+
+Measure wall time, achieved bandwidth, arithmetic utilization, kernel launches, and temporary bytes. Sweep the real shape space rather than one square sequence:
+
+- batch size
+- query length
+- key length
+- head count and KV-head count
+- head dimension
+- causal, local, and arbitrary masks
+- cache block size
+- element and accumulation type
+
+Warm kernels, pin clocks where the environment allows it, and report medians plus tail behavior. End-to-end token latency remains the deciding metric because a fast attention kernel can expose another bottleneck in projections, collectives, sampling, or cache allocation.
+
+Modern attention kernels are memory-system programs expressed through tensor algebra. Their speed comes from deciding what never reaches off-chip memory, what is recomputed, and how logical sequence state maps onto physical storage.
+
+## References
+
+[^1]: Tri Dao et al., "FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness," NeurIPS, 2022. [https://arxiv.org/abs/2205.14135](https://arxiv.org/abs/2205.14135)
+
+[^2]: Tri Dao, "FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning," ICLR, 2024. [https://arxiv.org/abs/2307.08691](https://arxiv.org/abs/2307.08691)
+
+[^3]: Woosuk Kwon et al., "Efficient Memory Management for Large Language Model Serving with PagedAttention," SOSP, 2023. [https://arxiv.org/abs/2309.06180](https://arxiv.org/abs/2309.06180)

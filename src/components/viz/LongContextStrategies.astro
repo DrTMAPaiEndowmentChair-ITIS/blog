@@ -1,0 +1,86 @@
+---
+const strategies = [
+  ['Position scaling', 'Changes coordinate mapping', 'All tokens remain visible'],
+  ['Sparse attention', 'Changes attention edges', 'Selected tokens remain visible'],
+  ['Retrieval', 'Changes supplied context', 'Selected documents enter prompt'],
+  ['Context parallelism', 'Changes device placement', 'Exact attention is distributed']
+]
+---
+
+<figure class="viz" aria-labelledby="lc-title">
+  <figcaption id="lc-title">Long-context methods alter different layers of the system</figcaption>
+  <div class="axis"><span>training and model</span><span>runtime and system</span></div>
+  <div class="grid">
+    {
+      strategies.map((s, i) => (
+        <section style={`--offset:${i % 2}`}>
+          <>
+            <strong>{s[0]}</strong>
+            <span>{s[1]}</span>
+            <small>{s[2]}</small>
+          </>
+        </section>
+      ))
+    }
+  </div>
+  <p>
+    A larger advertised context window does not imply uniform retrieval quality across positions.
+  </p>
+</figure>
+<style>
+  .viz {
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    font: 600 var(--font-size-s) var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1.2rem;
+  }
+  .axis {
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.45rem;
+    font: 0.7rem var(--mono);
+    color: var(--text-tertiary);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+    margin-top: 0.7rem;
+  }
+  .grid section {
+    display: grid;
+    gap: 0.4rem;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--text-secondary);
+    background: var(--bg);
+  }
+  strong {
+    font: 0.8rem var(--mono);
+  }
+  section span {
+    font-size: 0.82rem;
+  }
+  small {
+    font: 0.7rem/1.4 var(--mono);
+    color: var(--text-tertiary);
+  }
+  p {
+    margin: 1rem 0 0;
+    font: 0.76rem/1.5 var(--mono);
+    color: var(--text-secondary);
+  }
+  @media (max-width: 560px) {
+    .grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

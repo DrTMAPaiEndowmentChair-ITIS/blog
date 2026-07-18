@@ -1,0 +1,81 @@
+<figure class="viz" aria-labelledby="df-title">
+  <figcaption id="df-title">Two training targets over a noise-to-data path</figcaption>
+  <div class="compare">
+    <section>
+      <h3>Diffusion</h3><svg
+        viewBox="0 0 320 100"
+        role="img"
+        aria-label="Curved stochastic denoising path"
+        ><path d="M20 70 C80 5 145 95 205 30 S275 18 300 25"></path><circle cx="20" cy="70" r="5"
+        ></circle><circle cx="300" cy="25" r="5"></circle></svg
+      ><p>
+        Learn noise, score, or velocity under a scheduled corruption process. Sampling integrates a
+        reverse SDE or its probability-flow ODE.
+      </p>
+    </section>
+    <section>
+      <h3>Flow matching</h3><svg
+        viewBox="0 0 320 100"
+        role="img"
+        aria-label="Conditional vector field path"
+        ><path d="M20 70 C95 58 205 38 300 25"></path><path class="arrow" d="M145 49l12-8-14-2"
+        ></path><circle cx="20" cy="70" r="5"></circle><circle cx="300" cy="25" r="5"></circle></svg
+      ><p>
+        Regress a conditional vector field for a chosen probability path. Sampling solves the
+        resulting ordinary differential equation.
+      </p>
+    </section>
+  </div>
+</figure>
+<style>
+  .viz {
+    margin: 2rem 0;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+  }
+  figcaption {
+    font: 600 0.85rem var(--mono);
+    margin-bottom: 1rem;
+  }
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.8rem;
+  }
+  section {
+    border: 1px solid var(--border);
+    padding: 1rem;
+    background: var(--background);
+  }
+  h3 {
+    margin: 0;
+    font-size: 0.9rem;
+  }
+  svg {
+    width: 100%;
+    height: auto;
+  }
+  path {
+    fill: none;
+    stroke: #2563eb;
+    stroke-width: 3;
+  }
+  .arrow {
+    stroke: #d97706;
+  }
+  circle {
+    fill: #111827;
+  }
+  p {
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+  @media (max-width: 640px) {
+    .compare {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

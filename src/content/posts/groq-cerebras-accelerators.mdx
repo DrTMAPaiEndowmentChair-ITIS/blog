@@ -1,0 +1,285 @@
+---
+title: 'Groq and Cerebras Accelerators: Deterministic Streaming and Wafer-Scale Compute'
+pubDate: 2026-07-17
+author: 'Aadit Agrawal'
+category: 'Hardware & Systems'
+description: 'Compare Groq compiler-scheduled tensor streaming with Cerebras wafer-scale compute, defect tolerance, and weight streaming.'
+topics: ['Groq', 'Cerebras', 'AI accelerators']
+---
+
+import GroqCerebrasArchitecture from '../../components/viz/GroqCerebrasArchitecture.astro'
+
+Groq and Cerebras attack the accelerator memory problem from different physical directions. Groq makes instruction timing and tensor movement explicit to a compiler across a streaming processor and scale-out network. Cerebras places a grid of compute cores, local memory, and fabric across one wafer, then maps tensor work spatially.
+
+Both designs reduce dependence on a conventional cache hierarchy. Their execution models, scaling boundaries, and software constraints are not interchangeable.
+
+This article separates published architectural facts from analysis. Product throughput and price claims are omitted because they vary with model, batch, precision, software revision, and service configuration.
+
+<GroqCerebrasArchitecture />
+
+## Memory movement sets the architecture
+
+Autoregressive decoding repeatedly reads model parameters and cached attention state for each generated token. At low batch size, arithmetic units can wait for data. General-purpose accelerators address this through HBM, caches, many threads, and runtime scheduling.
+
+Groq and Cerebras instead expose more data movement to compilation:
+
+- Groq schedules operations and communication at known times across distributed on-chip SRAM.
+- Cerebras maps work onto a two-dimensional core grid with core-local SRAM and a wafer-scale fabric.
+
+The shared principle is compiler-visible locality. The implementation differs in time, space, and system scale.
+
+## Groq's tensor streaming execution
+
+Groq's architecture is described in the ISCA paper as a software-defined Tensor Streaming Processor. Functional units act as one logical core and are statically scheduled at compile time. Architecturally visible state includes SRAM and stream registers, allowing the compiler to express computation and communication dependencies as a directed acyclic graph.[^groq-isca]
+
+### Static issue instead of runtime arbitration
+
+A conventional out-of-order processor discovers readiness and resource conflicts while running. A GPU schedules warps and kernels dynamically around latency and occupancy.
+
+Groq moves this work into the compiler:
+
+```text
+graph lowering
+  → place operations on function units
+  → allocate SRAM and stream registers
+  → schedule operand movement
+  → schedule compute
+  → schedule chip-to-chip transfers
+  → emit one coordinated program
+```
+
+Published Groq technical material states that the compiler accounts for instruction latency and schedules data and instructions at specific times, producing deterministic execution time for a compiled workload.[^groq-determinism]
+
+Deterministic here means the architectural schedule is known. It does not mean a cloud request has no queueing, network, admission-control, or host-side variance.
+
+### Distributed SRAM is primary storage
+
+Groq describes its on-chip SRAM as primary storage rather than a hardware-managed cache.[^groq-lpu] Data placement is explicit. The compiler knows which SRAM region holds an operand and when that operand moves to a function unit.
+
+This removes cache miss and coherence behavior from the execution schedule. It creates another requirement: the compiler must fit and coordinate program state across available SRAM and chips.
+
+For a model larger than one processor's SRAM, compilation partitions the graph and parameters across processors. Activations flow between stages while weights needed for each assigned stage remain local.
+
+### Function units form a streaming pipeline
+
+Groq's public architecture description uses a programmable assembly-line model. Data and instructions move through conveyor-like streams between SIMD function units, with software determining source, operation, and destination.[^groq-assembly]
+
+An abstract transformer layer can be scheduled as:
+
+```text
+input stream
+  → normalization unit
+  → matrix units for projections
+  → vector units for activation and scaling
+  → matrix units for output projection
+  → output stream
+```
+
+The exact placement is compiler-dependent. The important distinction is that hardware does not discover the flow by filling and draining a cache hierarchy.
+
+## Groq scale-out
+
+Static scheduling extends beyond one processor. The Groq scale-out paper describes a deterministic network in which software schedules vectors on physical links while accounting for channel bandwidth and latency. Hardware does not apply backpressure because unscheduled stalls would break the global timing model.[^groq-isca]
+
+Instead, local SRAM buffers tensor vectors between hops. Explicit send and receive instructions impose a total ordering that the compiler can reason about.
+
+The published system topology groups eight processors in a node with internal direct links. Nodes connect into a larger topology using a mix of electrical and optical paths.[^groq-isca] This is an architectural specification from the paper, not a claim that every deployed Groq service uses the same system generation.
+
+### Consequences of scheduled networking
+
+Architectural fact:
+
+- The compiler schedules communication paths and times.
+- The network avoids hardware backpressure.
+- SRAM provides intermediate buffering.
+- Compute and communication share one dependency schedule.[^groq-isca]
+
+Analysis:
+
+- Predictable communication can reduce collective tail effects when the compiled placement matches the workload.
+- The compiler carries more responsibility for placement, buffering, and avoiding link conflicts.
+- Dynamic workloads need bounded shapes, compilation strategies, or runtime routing outside the statically scheduled core.
+- A topology or hardware change can require recompilation because timing is part of correctness.
+
+## Cerebras wafer-scale integration
+
+Cerebras builds one processor across most of a silicon wafer rather than cutting the wafer into many reticle-sized dies. The third-generation Wafer-Scale Engine contains 900,000 active AI cores, 44 GB of on-chip SRAM, and 21 PB/s of aggregate on-chip memory bandwidth.[^wse3-inference]
+
+These are aggregate on-wafer specifications. They should not be compared directly with one memory channel or one network port.
+
+### Core-local compute and memory
+
+The WSE organizes cores in a two-dimensional grid. Each core combines compute, local SRAM, and router access. The fabric moves data between neighboring and distant cores while the compiler maps tensor dimensions across the grid.
+
+Cerebras describes transformer mapping by splitting hidden dimensions across one fabric axis and batch and sequence dimensions across the other, enabling weight broadcast and reductions over mapped tensor dimensions.[^cerebras-deep]
+
+This spatial mapping keeps activations near the cores that consume them. It replaces a small set of large compute engines sharing external memory with many smaller engines attached to distributed local memory.
+
+### On-wafer fabric
+
+A wafer-scale design needs communication across reticle boundaries. Cerebras fabric links continue across those boundaries so the wafer acts as one processor. The compiler routes tensor streams through the mesh and allocates local memory.
+
+The physical distance across a wafer is larger than across one conventional die, so mapping still matters. Nearby placement reduces hops for high-volume communication. The compiler must balance compute, memory, and fabric use.
+
+## Defect tolerance
+
+A wafer encounters manufacturing defects. Discarding the complete processor when one core or link fails would make wafer-scale integration impractical.
+
+Cerebras uses small fault-tolerant cores, spare cores, redundant fabric paths, and routing around defects. Its published WSE-3 material states that the physical design contains 970,000 cores and ships with 900,000 active cores. It reports an approximate core area of 0.05 square millimeters.[^defects]
+
+Architectural fact:
+
+- Defective cores can be disabled.
+- Spare cores replace unavailable capacity.
+- Redundant communication paths route around defective regions.
+- The compiled logical machine is presented over the usable physical fabric.[^defects]
+
+Analysis:
+
+- Fine-grained redundancy limits the capacity lost to a local defect.
+- Fault maps become an input to placement and routing.
+- Software abstraction is essential because applications cannot target one fixed physical core grid across manufactured wafers.
+
+Do not read the active-core ratio as a universal manufacturing yield. Yield also includes packaging, power delivery, cooling, and system qualification.
+
+## Weight streaming for training
+
+On-wafer SRAM cannot hold every parameter and optimizer state of a large model. Cerebras Weight Streaming separates parameter storage from compute.
+
+MemoryX stores weights and optimizer state. It streams layer weights to the Wafer-Scale Engine. Activations remain on the engine. During backpropagation, gradients return through SwarmX, which reduces gradients from multiple systems before MemoryX applies updates.[^weight-streaming]
+
+```text
+MemoryX
+  │ broadcast layer weights
+  ▼
+SwarmX tree
+  ├── WSE: local activations → gradients
+  ├── WSE: local activations → gradients
+  └── WSE: local activations → gradients
+  ▲
+  │ reduce gradients
+MemoryX: optimizer update
+```
+
+The diagram is structural. It does not specify a cluster size or performance result.
+
+This execution model uses data parallelism across Wafer-Scale Engines while SwarmX handles weight broadcast and gradient reduction. Each engine runs the same model mapping on a different data shard.[^weight-streaming]
+
+### Inference placement differs
+
+Cerebras inference material describes storing model weights in on-wafer SRAM and splitting models larger than one wafer at layer boundaries across systems.[^wse3-inference] That differs from training Weight Streaming, where MemoryX supplies weights layer by layer and performs optimizer updates.
+
+The term weight streaming therefore needs context:
+
+- Training: stream layer weights from MemoryX and return gradients.
+- Inference service: place weights on one or more wafer systems and pipeline layer boundaries as required by model size.
+
+## Comparing the compiler contracts
+
+| Property             | Groq LPU                                              | Cerebras WSE                                      |
+| -------------------- | ----------------------------------------------------- | ------------------------------------------------- |
+| Primary abstraction  | Statically timed tensor streams                       | Spatial graph mapping across a wafer              |
+| Local memory         | Compiler-managed distributed SRAM                     | Core-local distributed SRAM                       |
+| Execution unit       | One logical scheduled core across function units      | Grid of independently programmable AI cores       |
+| Communication        | Explicitly scheduled on-chip and chip-to-chip streams | Routes over an on-wafer mesh                      |
+| Scale beyond device  | Scheduled processor network                           | System pipeline or Weight Streaming cluster       |
+| Large training state | Partitioning depends on compiled system               | MemoryX disaggregates weights and optimizer state |
+
+The table describes architecture, not relative performance.
+
+## Workload shape and compilation
+
+Both systems reward stable tensor shapes. Placement, memory allocation, and communication scheduling improve when dimensions are known.
+
+Variable request lengths create a serving problem:
+
+- Padding wastes compute and memory movement.
+- Bucketing increases the number of compiled shapes.
+- Dynamic batching changes arrival and queueing behavior.
+- Long contexts expand attention state even when weights remain fixed.
+
+The serving layer must map dynamic requests to compiled execution plans. Architecture-level determinism does not remove batching policy.
+
+## Memory capacity versus bandwidth
+
+High on-chip bandwidth does not imply that every model fits in local SRAM.
+
+For uncompressed weights:
+
+$$
+\text{weight bytes} = \text{parameter count} \times \text{bytes per parameter}
+$$
+
+A model using a 16-bit representation needs two bytes per parameter. Cerebras uses this arithmetic in its inference architecture explanation and reports 44 GB of WSE-3 SRAM.[^wse3-inference] Runtime memory also includes activations, attention state, buffers, and code.
+
+Groq distributes weights across processor SRAM when the model exceeds one device. Cerebras can divide an inference model at layer boundaries across systems. Both approaches turn capacity into a placement problem.
+
+## Operational failure modes
+
+### Compilation misses the deployed shape
+
+A request outside compiled bounds needs rejection, a fallback plan, or a new compilation. Silent padding can create latency and capacity regressions.
+
+### Pipeline imbalance
+
+If one stage takes longer, faster stages wait and buffers fill. Balance must include computation, memory, and communication.
+
+### Host path dominates
+
+Tokenization, request scheduling, output streaming, and admission control remain outside accelerator cores. Low accelerator latency can expose these costs.
+
+### Context state exceeds planning assumptions
+
+Attention state grows with active sequence length and concurrency. Weight locality does not remove key-value state capacity.
+
+### Scale-out faults invalidate timing or placement
+
+Groq's scheduled network depends on known links and timing. Cerebras placement depends on available wafer and system resources. Fault handling needs a supported remap, recompile, or job restart path.
+
+### Vendor benchmark scope is unclear
+
+Tokens per second can mean per user, per stream, or aggregate server throughput. Batch, prompt length, output length, precision, and model revision must accompany any comparison.
+
+## Benchmarking the architectures
+
+Use the same model weights, tokenizer, precision policy, prompt distribution, output lengths, and correctness checks.
+
+Measure:
+
+- Time to first token.
+- Inter-token latency distribution.
+- Per-request and aggregate throughput.
+- Queueing and admission delay.
+- Concurrency at the reported latency.
+- Compile time and cache hit rate.
+- Energy at the system boundary.
+- Accuracy against the reference implementation.
+- Failure and fallback rate for unsupported shapes.
+
+Separate architecture measurements from managed-service measurements. A cloud endpoint includes routing, capacity, software releases, and tenant load that are not chip properties.
+
+## Architectural selection
+
+Groq's design fits workloads where a compiler can exploit a stable graph and where deterministic tensor and network schedules support latency-oriented execution. The cost is a stronger compiler contract and less reliance on dynamic hardware scheduling.
+
+Cerebras fits workloads that benefit from mapping large tensor graphs across a dense core and memory fabric. Wafer-scale integration reduces off-device communication inside the mapped graph, while defect tolerance and compilation make the physical wafer usable as one machine.
+
+Neither architecture abolishes distributed systems. Groq moves coordination into a static program across processors. Cerebras moves more of the graph inside one wafer and uses explicit system-level pipelines or Weight Streaming beyond it.
+
+That is the useful comparison: not which accelerator has the largest headline number, but where each design places memory, scheduling, communication, and failure handling.
+
+[^groq-isca]: [Abts et al., “A Software-defined Tensor Streaming Multiprocessor for Large-scale Machine Learning,” ISCA, 2022](https://doi.org/10.1145/3470496.3527405).
+
+[^groq-determinism]: [Groq, “Determinism and the Tensor Streaming Processor”](https://groq.com/GroqDocs/TechDoc_Predictability.pdf).
+
+[^groq-lpu]: [Groq, “Inside the LPU: Deconstructing Groq's Speed,” August 2025](https://groq.com/blog/inside-the-lpu-deconstructing-groq-speed).
+
+[^groq-assembly]: [Groq, “What is a Language Processing Unit?”](https://groq.com/blog/the-groq-lpu-explained).
+
+[^wse3-inference]: [Cerebras, “Introducing Cerebras Inference,” August 2024](https://www.cerebras.ai/blog/introducing-cerebras-inference-ai-at-instant-speed).
+
+[^cerebras-deep]: [Cerebras, “Architecture Deep Dive: HW/SW Co-Design for Deep Learning”](https://www.cerebras.ai/blog/cerebras-architecture-deep-dive-first-look-inside-the-hw-sw-co-design-for-deep-learning).
+
+[^defects]: [Cerebras, “100x Defect Tolerance: How Cerebras Solved the Yield Problem,” January 2025](https://www.cerebras.ai/blog/100x-defect-tolerance-how-cerebras-solved-the-yield-problem).
+
+[^weight-streaming]: [Cerebras, “Linear Scaling Made Possible with Weight Streaming,” September 2022](https://www.cerebras.ai/blog/linear-scaling-made-possible-with-weight-streaming).
