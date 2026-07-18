@@ -1,106 +1,250 @@
-<figure class="viz" aria-labelledby="alignment-loop-title">
-  <figcaption id="alignment-loop-title">
-    Alignment is a control loop, not a single loss function
-  </figcaption>
+<figure class="viz alignment-viz" aria-labelledby="alignment-loop-title" data-alignment-viz>
+  <div class="viz-header">
+    <figcaption id="alignment-loop-title">
+      Alignment closes the gap between intent and deployed behavior
+    </figcaption>
+    <button type="button" data-replay aria-label="Replay the alignment control loop">Replay</button>
+  </div>
 
-  <div class="loop">
-    <section>
+  <div class="forward-path" aria-label="Alignment control path">
+    <section class="stage" data-step>
       <span>Specify</span>
-      <strong>Write the intended behavior</strong>
-      <small>principles, examples, policies</small>
+      <strong>Intended behavior</strong>
+      <small>principles, policies, examples</small>
     </section>
-    <i aria-hidden="true">→</i>
-    <section>
+    <div class="edge" data-step>
+      <span aria-hidden="true">→</span>
+      <small>interpretation gap</small>
+    </div>
+    <section class="stage" data-step>
       <span>Supervise</span>
-      <strong>Turn intent into a training signal</strong>
+      <strong>Training signal</strong>
       <small>preferences, critiques, process labels</small>
     </section>
-    <i aria-hidden="true">→</i>
-    <section>
+    <div class="edge" data-step>
+      <span aria-hidden="true">→</span>
+      <small>proxy gap</small>
+    </div>
+    <section class="stage" data-step>
       <span>Optimize</span>
-      <strong>Change the model policy</strong>
+      <strong>Model policy</strong>
       <small>SFT, RL, direct preference losses</small>
     </section>
-    <i aria-hidden="true">→</i>
-    <section>
-      <span>Audit</span>
-      <strong>Search for hidden failure modes</strong>
-      <small>red teams, model organisms, interventions</small>
+    <div class="edge" data-step>
+      <span aria-hidden="true">→</span>
+      <small>generalization gap</small>
+    </div>
+    <section class="stage" data-step>
+      <span>Deploy</span>
+      <strong>Observed behavior</strong>
+      <small>new contexts, tools, weak oversight</small>
     </section>
   </div>
 
-  <div class="return">
-    <span>Observed failures revise the specification and supervision</span>
-    <span aria-hidden="true">↶</span>
+  <div class="evidence-path">
+    <section class="audit" data-step>
+      <span>Audit</span>
+      <strong>Search where the proxy breaks</strong>
+      <small>adversarial tests, model organisms, causal interventions</small>
+    </section>
+    <div class="feedback" data-step>
+      <span aria-hidden="true">↶</span>
+      <div>
+        <strong>Revise the specification and supervision</strong>
+        <small>A good score is evidence about the proxy, not proof of the original intent.</small>
+      </div>
+    </div>
   </div>
 </figure>
 
 <style>
   .viz {
+    container-type: inline-size;
     margin: 2em 0;
     padding: 1.5rem;
     border: 1px solid var(--border);
     background: var(--astro-code-background);
     color: var(--text-primary);
   }
+  .viz-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.35rem;
+  }
   figcaption {
-    margin-bottom: 1.25rem;
+    max-width: 34rem;
     font: 600 var(--font-size-s) var(--mono);
     letter-spacing: 0.05em;
     text-transform: uppercase;
   }
-  .loop {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
-    align-items: stretch;
-    gap: 0.55rem;
+  button {
+    flex: none;
+    min-width: 4.5rem;
+    min-height: 2.75rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    font: 0.72rem var(--mono);
+    cursor: pointer;
+    transition:
+      transform 140ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 140ms cubic-bezier(0.23, 1, 0.32, 1);
   }
-  section {
+  button:active {
+    transform: scale(0.97);
+  }
+  button:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
+  }
+  .forward-path {
+    display: grid;
+    grid-template-columns: 1.05fr 0.55fr 1.05fr 0.55fr 1.05fr 0.55fr 1.05fr;
+    align-items: stretch;
+  }
+  .stage {
     display: grid;
     align-content: start;
     gap: 0.45rem;
     min-width: 0;
-    padding: 0.9rem;
-    border: 1px solid var(--border);
-    background: var(--bg);
+    padding: 0.9rem 0.75rem 1rem;
+    border-top: 2px solid var(--text-secondary);
+    border-bottom: 1px solid var(--border);
   }
-  section span,
-  small,
-  .return {
-    font: 0.72rem/1.45 var(--mono);
-  }
-  section span {
+  .stage span,
+  .audit span {
     color: var(--text-tertiary);
-    text-transform: uppercase;
+    font: 0.68rem var(--mono);
     letter-spacing: 0.05em;
+    text-transform: uppercase;
   }
   strong {
     font: 600 0.82rem/1.35 var(--sans);
   }
   small {
     color: var(--text-secondary);
+    font: 0.7rem/1.45 var(--mono);
   }
-  i {
-    align-self: center;
-    color: var(--text-tertiary);
-    font-style: normal;
+  .edge {
+    display: grid;
+    place-content: center;
+    gap: 0.35rem;
+    min-width: 0;
+    padding: 0.5rem 0.25rem;
+    text-align: center;
   }
-  .return {
-    display: flex;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-top: 0.75rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--border);
+  .edge span {
     color: var(--text-secondary);
   }
-  @media (max-width: 760px) {
-    .loop {
+  .edge small {
+    color: var(--text-tertiary);
+    font-size: 0.6rem;
+  }
+  .evidence-path {
+    display: grid;
+    grid-template-columns: 1fr 1.45fr;
+    gap: 0.75rem;
+    margin-top: 0.85rem;
+  }
+  .audit,
+  .feedback {
+    display: grid;
+    gap: 0.45rem;
+    padding: 0.9rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .feedback {
+    grid-template-columns: auto 1fr;
+    align-items: center;
+  }
+  .feedback > span {
+    padding-right: 0.85rem;
+    color: var(--text-secondary);
+    font: 1.35rem var(--mono);
+  }
+  .feedback div {
+    display: grid;
+    gap: 0.35rem;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    button:hover {
+      opacity: 0.72;
+    }
+  }
+  @container (max-width: 620px) {
+    .forward-path {
       grid-template-columns: 1fr;
     }
-    i {
-      justify-self: center;
+    .stage {
+      padding-inline: 0.9rem;
+    }
+    .edge {
+      min-height: 3.2rem;
+    }
+    .edge span {
       transform: rotate(90deg);
+    }
+    .evidence-path {
+      grid-template-columns: 1fr;
+    }
+  }
+  @container (max-width: 430px) {
+    .viz-header {
+      display: grid;
+    }
+    button {
+      justify-self: start;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button {
+      display: none;
     }
   }
 </style>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-alignment-viz]').forEach((figure) => {
+    if (figure.dataset.motionBound) return
+    figure.dataset.motionBound = 'true'
+
+    let animations: Animation[] = []
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
+    const steps = Array.from(figure.querySelectorAll<HTMLElement>('[data-step]'))
+
+    const play = () => {
+      animations.forEach((animation) => animation.cancel())
+      animations = steps.map((step, index) =>
+        step.animate(
+          reduceMotion
+            ? [{ opacity: 0.55 }, { opacity: 1 }]
+            : [
+                { opacity: 0.28, transform: 'translateY(7px)' },
+                { opacity: 1, transform: 'translateY(0)' }
+              ],
+          {
+            duration: reduceMotion ? 160 : 280,
+            delay: index * (reduceMotion ? 45 : 170),
+            fill: 'both',
+            easing: 'cubic-bezier(0.23, 1, 0.32, 1)'
+          }
+        )
+      )
+    }
+
+    figure.querySelector('[data-replay]')?.addEventListener('click', play)
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return
+        play()
+        observer.disconnect()
+      },
+      { threshold: 0.35 }
+    )
+    observer.observe(figure)
+  })
+</script>

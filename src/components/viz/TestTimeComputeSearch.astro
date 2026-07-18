@@ -1,147 +1,295 @@
-<figure class="viz" aria-labelledby="test-time-title">
-  <figcaption id="test-time-title">
-    Test-time compute needs generation, verification, and allocation
-  </figcaption>
-
-  <div class="pipeline">
-    <section class="prompt">
-      <small>problem</small>
-      <strong>One prompt</strong>
-    </section>
-    <span aria-hidden="true">→</span>
-    <section class="search">
-      <small>generator</small>
-      <div class="branches" aria-label="Four candidate reasoning paths">
-        <i></i><i></i><i></i><i></i>
-      </div>
-      <strong>Candidate paths</strong>
-    </section>
-    <span aria-hidden="true">→</span>
-    <section class="verify">
-      <small>verifier</small>
-      <div class="scores" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <strong>Score steps or outcomes</strong>
-    </section>
-    <span aria-hidden="true">→</span>
-    <section class="answer">
-      <small>allocator</small>
-      <strong>Stop, expand, or select</strong>
-    </section>
+<figure class="viz search-viz" aria-labelledby="test-time-title" data-search-viz>
+  <div class="viz-header">
+    <figcaption id="test-time-title">
+      A verifier should spend the next unit of compute on the best partial path
+    </figcaption>
+    <button type="button" data-replay aria-label="Replay verifier-guided search">Replay</button>
   </div>
 
-  <p>
-    More tokens help only when the extra search is directed toward useful paths and the verifier can
-    distinguish them.
+  <div class="search-map">
+    <section class="prompt" data-step>
+      <span>Prompt</span>
+      <strong>Initial reasoning state</strong>
+    </section>
+
+    <div class="connector" data-step aria-hidden="true">↓ generate diverse candidates</div>
+
+    <div class="candidates" data-step>
+      <section>
+        <span>Candidate A</span>
+        <strong>Dead end</strong>
+        <small>low process value</small>
+      </section>
+      <section class="chosen">
+        <span>Candidate B</span>
+        <strong>Promising prefix</strong>
+        <small>uncertain, worth expanding</small>
+      </section>
+      <section>
+        <span>Candidate C</span>
+        <strong>Duplicate path</strong>
+        <small>adds little diversity</small>
+      </section>
+      <section>
+        <span>Candidate D</span>
+        <strong>Complete path</strong>
+        <small>high outcome value</small>
+      </section>
+    </div>
+
+    <div class="verifier-row" data-step>
+      <div>
+        <span>Process verifier</span>
+        <strong>Prune A and C</strong>
+      </div>
+      <div>
+        <span>Budget allocator</span>
+        <strong>Expand B, retain D</strong>
+      </div>
+    </div>
+
+    <div class="connector selected-connector" data-step aria-hidden="true">
+      ↓ spend compute where expected value is highest
+    </div>
+
+    <div class="expansion" data-step>
+      <section>
+        <span>B.1</span>
+        <strong>Fails verification</strong>
+      </section>
+      <section class="chosen">
+        <span>B.2</span>
+        <strong>Verified completion</strong>
+      </section>
+      <section class="answer">
+        <span>Stop rule</span>
+        <strong>Select B.2</strong>
+        <small>adequate verifier margin</small>
+      </section>
+    </div>
+  </div>
+
+  <p class="principle" data-step>
+    More tokens help only when generation explores useful alternatives, verification ranks them, and
+    a stopping rule prevents overthinking.
   </p>
 </figure>
 
 <style>
   .viz {
+    container-type: inline-size;
     margin: 2em 0;
     padding: 1.5rem;
     border: 1px solid var(--border);
     background: var(--astro-code-background);
     color: var(--text-primary);
   }
-  figcaption {
+  .viz-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
     margin-bottom: 1.2rem;
+  }
+  figcaption {
+    max-width: 34rem;
     font: 600 var(--font-size-s) var(--mono);
     letter-spacing: 0.05em;
     text-transform: uppercase;
   }
-  .pipeline {
-    display: grid;
-    grid-template-columns: 0.8fr auto 1.3fr auto 1.3fr auto 0.9fr;
-    align-items: center;
-    gap: 0.55rem;
-  }
-  section {
-    display: grid;
-    min-height: 7.5rem;
-    align-content: center;
-    gap: 0.75rem;
-    padding: 0.9rem;
+  button {
+    flex: none;
+    min-width: 4.5rem;
+    min-height: 2.75rem;
+    padding: 0.45rem 0.7rem;
     border: 1px solid var(--border);
     background: var(--bg);
+    color: var(--text-secondary);
+    font: 0.72rem var(--mono);
+    cursor: pointer;
+    transition:
+      transform 140ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 140ms cubic-bezier(0.23, 1, 0.32, 1);
   }
-  small {
+  button:active {
+    transform: scale(0.97);
+  }
+  button:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
+  }
+  .search-map {
+    display: grid;
+    gap: 0.65rem;
+  }
+  section {
+    min-width: 0;
+  }
+  .prompt {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.8rem 0.9rem;
+    border-left: 2px solid var(--text-secondary);
+    background: var(--bg);
+  }
+  span,
+  small,
+  .connector,
+  .principle {
+    font: 0.68rem/1.45 var(--mono);
+  }
+  span {
     color: var(--text-tertiary);
-    font: 0.7rem var(--mono);
     letter-spacing: 0.05em;
     text-transform: uppercase;
   }
   strong {
-    font: 600 0.82rem/1.35 var(--sans);
+    font: 600 0.8rem/1.35 var(--sans);
   }
-  .branches,
-  .scores {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    align-items: end;
-    gap: 0.3rem;
-    height: 2.8rem;
+  small {
+    color: var(--text-secondary);
   }
-  .branches i {
-    display: block;
-    height: var(--h, 100%);
-    border-left: 1px solid var(--text-secondary);
-    transform: skewX(var(--skew, 0deg));
-    transform-origin: bottom;
-  }
-  .branches i:nth-child(1) {
-    --h: 65%;
-    --skew: -18deg;
-  }
-  .branches i:nth-child(2) {
-    --h: 88%;
-    --skew: -7deg;
-  }
-  .branches i:nth-child(3) {
-    --h: 72%;
-    --skew: 7deg;
-  }
-  .branches i:nth-child(4) {
-    --h: 96%;
-    --skew: 18deg;
-  }
-  .scores i {
-    display: block;
-    height: var(--score);
-    background: var(--border);
-  }
-  .scores i:nth-child(1) {
-    --score: 35%;
-  }
-  .scores i:nth-child(2) {
-    --score: 82%;
-    background: var(--text-secondary);
-  }
-  .scores i:nth-child(3) {
-    --score: 48%;
-  }
-  .scores i:nth-child(4) {
-    --score: 58%;
-  }
-  .pipeline > span {
+  .connector {
+    padding-left: 0.85rem;
     color: var(--text-tertiary);
   }
-  p {
-    margin: 0.9rem 0 0;
-    padding-top: 0.9rem;
+  .candidates {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border: 1px solid var(--border);
+  }
+  .candidates section {
+    display: grid;
+    align-content: start;
+    gap: 0.45rem;
+    padding: 0.85rem;
+    border-right: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .candidates section:last-child {
+    border-right: 0;
+  }
+  .chosen {
+    box-shadow: inset 0 2px 0 var(--text-primary);
+  }
+  .verifier-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.65rem;
+  }
+  .verifier-row div {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 0.85rem;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .selected-connector {
+    color: var(--text-secondary);
+  }
+  .expansion {
+    display: grid;
+    grid-template-columns: 0.9fr 0.9fr 1.2fr;
+    gap: 0.65rem;
+  }
+  .expansion section {
+    display: grid;
+    gap: 0.4rem;
+    padding: 0.8rem 0.85rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .expansion .answer {
+    border-color: var(--text-secondary);
+  }
+  .principle {
+    margin: 0.85rem 0 0;
+    padding-top: 0.85rem;
     border-top: 1px solid var(--border);
     color: var(--text-secondary);
-    font: 0.74rem/1.55 var(--mono);
   }
-  @media (max-width: 760px) {
-    .pipeline {
+  @media (hover: hover) and (pointer: fine) {
+    button:hover {
+      opacity: 0.72;
+    }
+  }
+  @container (max-width: 560px) {
+    .candidates {
+      grid-template-columns: 1fr 1fr;
+    }
+    .candidates section:nth-child(2) {
+      border-right: 0;
+    }
+    .candidates section:nth-child(-n + 2) {
+      border-bottom: 1px solid var(--border);
+    }
+  }
+  @container (max-width: 430px) {
+    .viz-header {
+      display: grid;
+    }
+    button {
+      justify-self: start;
+    }
+    .verifier-row {
       grid-template-columns: 1fr;
     }
-    .pipeline > span {
-      justify-self: center;
-      transform: rotate(90deg);
+    .verifier-row div {
+      display: grid;
+      gap: 0.35rem;
     }
-    section {
-      min-height: auto;
+    .expansion {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button {
+      display: none;
     }
   }
 </style>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-search-viz]').forEach((figure) => {
+    if (figure.dataset.motionBound) return
+    figure.dataset.motionBound = 'true'
+
+    let animations: Animation[] = []
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
+    const steps = Array.from(figure.querySelectorAll<HTMLElement>('[data-step]'))
+
+    const play = () => {
+      animations.forEach((animation) => animation.cancel())
+      animations = steps.map((step, index) =>
+        step.animate(
+          reduceMotion
+            ? [{ opacity: 0.55 }, { opacity: 1 }]
+            : [
+                { opacity: 0.24, transform: 'translateY(7px)' },
+                { opacity: 1, transform: 'translateY(0)' }
+              ],
+          {
+            duration: reduceMotion ? 160 : 280,
+            delay: index * (reduceMotion ? 55 : 210),
+            fill: 'both',
+            easing: 'cubic-bezier(0.23, 1, 0.32, 1)'
+          }
+        )
+      )
+    }
+
+    figure.querySelector('[data-replay]')?.addEventListener('click', play)
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return
+        play()
+        observer.disconnect()
+      },
+      { threshold: 0.3 }
+    )
+    observer.observe(figure)
+  })
+</script>

@@ -1,48 +1,91 @@
-<figure class="viz" aria-labelledby="scaling-regimes-title">
+<figure
+  class="viz scaling-viz"
+  aria-labelledby="scaling-regimes-title"
+  data-scaling-viz
+  data-active="resource"
+>
   <figcaption id="scaling-regimes-title">
-    Three regimes hidden inside the phrase “scaling laws”
+    Scaling laws change when the limiting resource changes
   </figcaption>
 
-  <div class="regimes">
-    <section>
-      <div class="plot" aria-hidden="true">
-        <svg viewBox="0 0 220 110" role="img">
-          <path class="axis" d="M18 8v84h190"></path>
-          <path class="curve" d="M24 18C55 47 91 68 202 86"></path>
-        </svg>
-      </div>
-      <strong>Single-resource scaling</strong>
-      <p>Loss falls as model size, data, or compute increases while the others are not limiting.</p>
-    </section>
+  <div class="regime-tabs" aria-label="Scaling-law regime">
+    <button type="button" data-regime-button="resource" aria-pressed="true">One resource</button>
+    <button type="button" data-regime-button="compute" aria-pressed="false">Fixed compute</button>
+    <button type="button" data-regime-button="repeat" aria-pressed="false">Repeated data</button>
+  </div>
 
-    <section>
-      <div class="balance" aria-hidden="true">
-        <span>parameters</span>
-        <i></i>
-        <span>training tokens</span>
-      </div>
-      <strong>Compute-optimal allocation</strong>
-      <p>A fixed training budget must be split between a larger model and more tokens.</p>
-    </section>
+  <div class="explainer">
+    <div class="chart">
+      <svg viewBox="0 0 360 220" role="img" aria-labelledby="scaling-chart-title">
+        <title id="scaling-chart-title">Schematic curves for three scaling-law regimes</title>
+        <path class="axis" d="M42 20v158h286"></path>
+        <text class="axis-label y-label" x="16" y="102">loss</text>
+        <text class="axis-label x-label" x="176" y="207">allocated resource</text>
 
-    <section>
-      <div class="plot" aria-hidden="true">
-        <svg viewBox="0 0 220 110" role="img">
-          <path class="axis" d="M18 8v84h190"></path>
-          <path class="curve" d="M24 18C66 52 102 73 142 81S185 85 202 86"></path>
-          <path class="repeat" d="M145 12v78"></path>
-        </svg>
-      </div>
-      <strong>Data-constrained scaling</strong>
-      <p>
-        Repeated data has declining value, so the abundant-data fit stops describing the regime.
-      </p>
-    </section>
+        <g class="curve-state is-active" data-regime-curve="resource">
+          <path class="guide" d="M62 49C104 90 164 132 307 157"></path>
+          <circle cx="77" cy="61" r="3"></circle>
+          <circle cx="111" cy="91" r="3"></circle>
+          <circle cx="164" cy="122" r="3"></circle>
+          <circle cx="235" cy="145" r="3"></circle>
+          <text x="196" y="86">power-law fit</text>
+          <text x="197" y="104">within one regime</text>
+        </g>
+
+        <g class="curve-state" data-regime-curve="compute">
+          <path class="guide" d="M62 55C102 76 128 147 184 154C237 160 270 87 307 52"></path>
+          <path class="marker" d="M184 44v118"></path>
+          <text x="196" y="75">compute-optimal</text>
+          <text x="196" y="93">allocation</text>
+        </g>
+
+        <g class="curve-state" data-regime-curve="repeat">
+          <path class="guide" d="M62 48C112 91 170 137 226 151C260 159 286 159 307 160"></path>
+          <path class="marker" d="M222 39v128"></path>
+          <text x="230" y="76">unique data</text>
+          <text x="230" y="94">becomes limiting</text>
+        </g>
+      </svg>
+      <span class="schematic">Schematic curves, not fitted measurements</span>
+    </div>
+
+    <div class="regime-copy" aria-live="polite">
+      <section class="copy-state is-active" data-regime-copy="resource">
+        <span>Condition</span>
+        <strong>One resource is limiting</strong>
+        <p>Loss falls smoothly as model size, data, or compute grows.</p>
+        <dl>
+          <div><dt>Fit</dt><dd>L∞ + A / R<sup>α</sup></dd></div>
+          <div><dt>Breaks when</dt><dd>another resource becomes the bottleneck</dd></div>
+        </dl>
+      </section>
+
+      <section class="copy-state" data-regime-copy="compute">
+        <span>Condition</span>
+        <strong>The training budget is fixed</strong>
+        <p>More parameters leave fewer tokens, while more tokens leave a smaller model.</p>
+        <dl>
+          <div><dt>Choice</dt><dd>parameters versus training tokens</dd></div>
+          <div><dt>Target</dt><dd>the lowest-loss point on the budget constraint</dd></div>
+        </dl>
+      </section>
+
+      <section class="copy-state" data-regime-copy="repeat">
+        <span>Condition</span>
+        <strong>Useful unique data is exhausted</strong>
+        <p>Repeated tokens have declining marginal value and interact with model size.</p>
+        <dl>
+          <div><dt>Effect</dt><dd>the curve flattens earlier</dd></div>
+          <div><dt>Risk</dt><dd>an abundant-data fit overpredicts the gain</dd></div>
+        </dl>
+      </section>
+    </div>
   </div>
 </figure>
 
 <style>
   .viz {
+    container-type: inline-size;
     margin: 2em 0;
     padding: 1.5rem;
     border: 1px solid var(--border);
@@ -50,39 +93,58 @@
     color: var(--text-primary);
   }
   figcaption {
-    margin-bottom: 1.2rem;
+    margin-bottom: 1rem;
     font: 600 var(--font-size-s) var(--mono);
     letter-spacing: 0.05em;
     text-transform: uppercase;
   }
-  .regimes {
+  .regime-tabs {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.75rem;
+    grid-template-columns: repeat(3, 1fr);
+    margin-bottom: 0.9rem;
+    border: 1px solid var(--border);
   }
-  section {
+  button {
+    min-height: 2.8rem;
+    padding: 0.55rem 0.7rem;
+    border: 0;
+    border-right: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-tertiary);
+    font: 0.7rem var(--mono);
+    cursor: pointer;
+    transition:
+      transform 140ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  button:last-child {
+    border-right: 0;
+  }
+  button[aria-pressed='true'] {
+    color: var(--text-primary);
+    box-shadow: inset 0 -2px 0 var(--text-primary);
+  }
+  button:active {
+    transform: scale(0.98);
+  }
+  button:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: -3px;
+  }
+  .explainer {
     display: grid;
-    align-content: start;
-    gap: 0.65rem;
-    padding: 1rem;
+    grid-template-columns: minmax(0, 1.25fr) minmax(12rem, 0.75fr);
+    gap: 1rem;
+  }
+  .chart {
+    padding: 0.75rem;
     border: 1px solid var(--border);
     background: var(--bg);
-  }
-  strong {
-    font: 600 0.84rem var(--sans);
-  }
-  p {
-    margin: 0;
-    color: var(--text-secondary);
-    font: 0.75rem/1.55 var(--mono);
-  }
-  .plot {
-    min-height: 7rem;
   }
   svg {
     display: block;
     width: 100%;
-    height: 7rem;
+    min-height: 15rem;
   }
   path {
     fill: none;
@@ -91,40 +153,181 @@
   .axis {
     stroke: var(--border);
   }
-  .curve {
+  .guide {
     stroke: var(--text-primary);
     stroke-width: 2;
   }
-  .repeat {
+  .marker {
     stroke: var(--text-tertiary);
     stroke-dasharray: 3 4;
   }
-  .balance {
-    display: grid;
-    grid-template-columns: 1fr;
-    place-items: center;
-    min-height: 7rem;
-    color: var(--text-secondary);
-    font: 0.72rem var(--mono);
+  circle {
+    fill: var(--text-primary);
   }
-  .balance i {
-    width: 78%;
-    height: 1px;
-    background: var(--text-primary);
+  text {
+    fill: var(--text-secondary);
+    font: 0.66rem var(--mono);
+  }
+  .axis-label {
+    fill: var(--text-tertiary);
+    font-size: 0.6rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .y-label {
+    transform: rotate(-90deg);
+    transform-origin: 16px 102px;
+  }
+  .curve-state {
+    opacity: 0;
+    transform: translateY(6px);
+    transform-origin: center;
+    visibility: hidden;
+    transition:
+      opacity 200ms cubic-bezier(0.23, 1, 0.32, 1),
+      transform 200ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  .curve-state.is-active {
+    opacity: 1;
+    transform: translateY(0);
+    visibility: visible;
+  }
+  .schematic {
+    display: block;
+    color: var(--text-tertiary);
+    font: 0.62rem var(--mono);
+    text-align: right;
+  }
+  .regime-copy {
     position: relative;
+    min-height: 17rem;
+    border-top: 2px solid var(--text-secondary);
   }
-  .balance i::after {
-    content: '';
+  .copy-state {
     position: absolute;
-    left: 50%;
-    top: -0.45rem;
-    width: 1px;
-    height: 0.9rem;
-    background: var(--text-primary);
+    inset: 0;
+    display: grid;
+    align-content: start;
+    gap: 0.7rem;
+    padding: 1rem 0.1rem 0;
+    opacity: 0;
+    transform: translateY(6px);
+    visibility: hidden;
+    transition:
+      opacity 200ms cubic-bezier(0.23, 1, 0.32, 1),
+      transform 200ms cubic-bezier(0.23, 1, 0.32, 1);
   }
-  @media (max-width: 720px) {
-    .regimes {
+  .copy-state.is-active {
+    opacity: 1;
+    transform: translateY(0);
+    visibility: visible;
+  }
+  .copy-state > span {
+    color: var(--text-tertiary);
+    font: 0.66rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  strong {
+    font: 600 0.92rem/1.35 var(--sans);
+  }
+  p {
+    margin: 0;
+    color: var(--text-secondary);
+    font: 0.74rem/1.55 var(--mono);
+  }
+  dl {
+    display: grid;
+    gap: 0.65rem;
+    margin: 0.2rem 0 0;
+  }
+  dl div {
+    display: grid;
+    gap: 0.2rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+  }
+  dt,
+  dd {
+    margin: 0;
+    font: 0.68rem/1.45 var(--mono);
+  }
+  dt {
+    color: var(--text-tertiary);
+  }
+  dd {
+    color: var(--text-secondary);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    button:hover {
+      opacity: 0.72;
+    }
+  }
+  @container (max-width: 580px) {
+    .explainer {
       grid-template-columns: 1fr;
+    }
+    svg {
+      min-height: auto;
+    }
+    .regime-copy {
+      min-height: 14rem;
+    }
+  }
+  @container (max-width: 430px) {
+    .regime-tabs {
+      grid-template-columns: 1fr;
+    }
+    button {
+      border-right: 0;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+    button:last-child {
+      border-bottom: 0;
+    }
+    button[aria-pressed='true'] {
+      box-shadow: inset 2px 0 0 var(--text-primary);
+    }
+    .regime-copy {
+      min-height: 15rem;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .curve-state,
+    .copy-state {
+      transform: none;
+      transition: opacity 160ms cubic-bezier(0.23, 1, 0.32, 1);
     }
   }
 </style>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-scaling-viz]').forEach((figure) => {
+    if (figure.dataset.interactionBound) return
+    figure.dataset.interactionBound = 'true'
+
+    const buttons = Array.from(figure.querySelectorAll<HTMLButtonElement>('[data-regime-button]'))
+    const curves = Array.from(figure.querySelectorAll<HTMLElement>('[data-regime-curve]'))
+    const copies = Array.from(figure.querySelectorAll<HTMLElement>('[data-regime-copy]'))
+
+    const selectRegime = (regime: string) => {
+      figure.dataset.active = regime
+      buttons.forEach((button) => {
+        button.setAttribute('aria-pressed', String(button.dataset.regimeButton === regime))
+      })
+      curves.forEach((curve) => {
+        curve.classList.toggle('is-active', curve.dataset.regimeCurve === regime)
+      })
+      copies.forEach((copy) => {
+        copy.classList.toggle('is-active', copy.dataset.regimeCopy === regime)
+      })
+    }
+
+    buttons.forEach((button) => {
+      button.addEventListener('click', () =>
+        selectRegime(button.dataset.regimeButton ?? 'resource')
+      )
+    })
+  })
+</script>

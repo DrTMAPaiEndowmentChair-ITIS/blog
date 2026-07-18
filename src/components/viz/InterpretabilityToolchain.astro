@@ -1,104 +1,273 @@
-<figure class="viz" aria-labelledby="toolchain-title">
-  <figcaption id="toolchain-title">
-    Frontier interpretability works at four different levels
-  </figcaption>
+<figure class="viz toolchain-viz" aria-labelledby="toolchain-title" data-toolchain-viz>
+  <div class="viz-header">
+    <figcaption id="toolchain-title">
+      A causal audit combines interpretability methods instead of ranking them
+    </figcaption>
+    <button type="button" data-replay aria-label="Replay the interpretability audit">
+      Replay
+    </button>
+  </div>
 
-  <div class="levels">
-    <section>
-      <span>Features</span>
-      <strong>Sparse autoencoders</strong>
-      <p>Decompose activations into reusable directions.</p>
-      <small>Question: what is represented?</small>
+  <div class="audit-path" aria-label="Interpretability audit sequence">
+    <section data-step>
+      <span>Observe</span>
+      <strong>Behavior and activations</strong>
+      <small>find a suspicious trajectory</small>
     </section>
-    <section>
-      <span>Circuits</span>
-      <strong>Transcoders and attribution graphs</strong>
-      <p>Trace how features contribute to a chosen output.</p>
-      <small>Question: how is the output computed?</small>
+    <i data-step aria-hidden="true">→</i>
+    <section data-step>
+      <span>Surface</span>
+      <strong>SAEs and NLAs</strong>
+      <small>generate readable hypotheses</small>
     </section>
-    <section>
-      <span>Reports</span>
-      <strong>Natural-language autoencoders</strong>
-      <p>Translate an activation through a text bottleneck.</p>
-      <small>Question: what can a reader inspect quickly?</small>
+    <i data-step aria-hidden="true">→</i>
+    <section data-step>
+      <span>Trace</span>
+      <strong>Transcoders and J-lens</strong>
+      <small>locate a candidate mechanism</small>
     </section>
-    <section>
-      <span>Workspace</span>
-      <strong>Jacobian lens</strong>
-      <p>Read and edit concepts poised to affect future outputs.</p>
-      <small>Question: what is available for flexible reasoning?</small>
+    <i data-step aria-hidden="true">→</i>
+    <section data-step>
+      <span>Intervene</span>
+      <strong>Ablate, patch, or steer</strong>
+      <small>change the proposed cause</small>
+    </section>
+    <i data-step aria-hidden="true">→</i>
+    <section data-step>
+      <span>Validate</span>
+      <strong>Predicted behavior shifts</strong>
+      <small>check unrelated capabilities too</small>
     </section>
   </div>
 
-  <div class="rule">
-    A label becomes stronger evidence when a causal intervention changes the predicted behavior.
+  <div class="method-map">
+    <div data-step>
+      <span>Sparse autoencoder</span>
+      <strong>Activation → sparse features</strong>
+      <small>Useful for decomposition; incomplete features can hide a path.</small>
+    </div>
+    <div data-step>
+      <span>Natural-language autoencoder</span>
+      <strong>Activation → readable report</strong>
+      <small>Expressive and fast to inspect; fluent text can overstate certainty.</small>
+    </div>
+    <div data-step>
+      <span>Cross-layer transcoder</span>
+      <strong>Features → local computation graph</strong>
+      <small>Traces a selected output; replacement error limits completeness.</small>
+    </div>
+    <div data-step>
+      <span>Jacobian lens</span>
+      <strong>Activation ↔ future verbal effect</strong>
+      <small>Supports read and write tests; automatic computation may bypass it.</small>
+    </div>
+  </div>
+
+  <div class="evidence" data-step>
+    <span>Readable correlation</span>
+    <i aria-hidden="true">→</i>
+    <strong>Causal support</strong>
+    <small>A label earns confidence when an intervention changes the predicted behavior.</small>
   </div>
 </figure>
 
 <style>
   .viz {
+    container-type: inline-size;
     margin: 2em 0;
     padding: 1.5rem;
     border: 1px solid var(--border);
     background: var(--astro-code-background);
     color: var(--text-primary);
   }
-  figcaption {
+  .viz-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
     margin-bottom: 1.2rem;
+  }
+  figcaption {
+    max-width: 34rem;
     font: 600 var(--font-size-s) var(--mono);
     letter-spacing: 0.05em;
     text-transform: uppercase;
   }
-  .levels {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.65rem;
-  }
-  section {
-    display: grid;
-    align-content: start;
-    gap: 0.6rem;
-    padding: 0.95rem;
+  button {
+    flex: none;
+    min-width: 4.5rem;
+    min-height: 2.75rem;
+    padding: 0.45rem 0.7rem;
     border: 1px solid var(--border);
     background: var(--bg);
+    color: var(--text-secondary);
+    font: 0.72rem var(--mono);
+    cursor: pointer;
+    transition:
+      transform 140ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 140ms cubic-bezier(0.23, 1, 0.32, 1);
   }
-  section span,
-  small,
-  .rule {
-    font: 0.7rem/1.5 var(--mono);
+  button:active {
+    transform: scale(0.97);
   }
-  section span {
+  button:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
+  }
+  .audit-path {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr auto 1fr;
+    align-items: stretch;
+  }
+  .audit-path section {
+    display: grid;
+    align-content: start;
+    gap: 0.42rem;
+    min-width: 0;
+    padding: 0.85rem 0.65rem;
+    border-top: 2px solid var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+  }
+  .audit-path > i {
+    align-self: center;
+    padding: 0 0.25rem;
     color: var(--text-tertiary);
-    text-transform: uppercase;
+    font-style: normal;
+  }
+  span,
+  small,
+  .evidence {
+    font: 0.66rem/1.5 var(--mono);
+  }
+  span {
+    color: var(--text-tertiary);
     letter-spacing: 0.05em;
+    text-transform: uppercase;
   }
   strong {
-    font: 600 0.82rem/1.35 var(--sans);
-  }
-  p {
-    margin: 0;
-    color: var(--text-secondary);
-    font: 0.76rem/1.5 var(--mono);
+    font: 600 0.77rem/1.35 var(--sans);
   }
   small {
-    padding-top: 0.6rem;
-    border-top: 1px solid var(--border);
-    color: var(--text-tertiary);
+    color: var(--text-secondary);
   }
-  .rule {
-    margin-top: 0.75rem;
-    padding-top: 0.75rem;
+  .method-map {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.65rem;
+    margin-top: 0.85rem;
+  }
+  .method-map > div {
+    display: grid;
+    grid-template-columns: minmax(7rem, 0.65fr) 1fr;
+    gap: 0.35rem 0.75rem;
+    align-items: baseline;
+    padding: 0.75rem 0.85rem;
+    border-left: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .method-map small {
+    grid-column: 2;
+  }
+  .evidence {
+    display: grid;
+    grid-template-columns: auto auto auto 1fr;
+    align-items: center;
+    gap: 0.65rem;
+    margin-top: 0.85rem;
+    padding-top: 0.85rem;
     border-top: 1px solid var(--border);
     color: var(--text-secondary);
   }
-  @media (max-width: 780px) {
-    .levels {
-      grid-template-columns: 1fr 1fr;
+  .evidence i {
+    color: var(--text-tertiary);
+    font-style: normal;
+  }
+  .evidence strong {
+    white-space: nowrap;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    button:hover {
+      opacity: 0.72;
     }
   }
-  @media (max-width: 480px) {
-    .levels {
+  @container (max-width: 600px) {
+    .audit-path {
       grid-template-columns: 1fr;
+    }
+    .audit-path > i {
+      justify-self: center;
+      padding: 0.45rem;
+      transform: rotate(90deg);
+    }
+    .method-map {
+      grid-template-columns: 1fr;
+    }
+    .evidence {
+      grid-template-columns: auto auto 1fr;
+    }
+    .evidence small {
+      grid-column: 1 / -1;
+    }
+  }
+  @container (max-width: 430px) {
+    .viz-header {
+      display: grid;
+    }
+    button {
+      justify-self: start;
+    }
+    .method-map > div {
+      grid-template-columns: 1fr;
+    }
+    .method-map small {
+      grid-column: 1;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button {
+      display: none;
     }
   }
 </style>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-toolchain-viz]').forEach((figure) => {
+    if (figure.dataset.motionBound) return
+    figure.dataset.motionBound = 'true'
+
+    let animations: Animation[] = []
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
+    const steps = Array.from(figure.querySelectorAll<HTMLElement>('[data-step]'))
+
+    const play = () => {
+      animations.forEach((animation) => animation.cancel())
+      animations = steps.map((step, index) =>
+        step.animate(
+          reduceMotion
+            ? [{ opacity: 0.55 }, { opacity: 1 }]
+            : [
+                { opacity: 0.28, transform: 'translateY(7px)' },
+                { opacity: 1, transform: 'translateY(0)' }
+              ],
+          {
+            duration: reduceMotion ? 160 : 280,
+            delay: index * (reduceMotion ? 45 : 145),
+            fill: 'both',
+            easing: 'cubic-bezier(0.23, 1, 0.32, 1)'
+          }
+        )
+      )
+    }
+
+    figure.querySelector('[data-replay]')?.addEventListener('click', play)
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return
+        play()
+        observer.disconnect()
+      },
+      { threshold: 0.3 }
+    )
+    observer.observe(figure)
+  })
+</script>

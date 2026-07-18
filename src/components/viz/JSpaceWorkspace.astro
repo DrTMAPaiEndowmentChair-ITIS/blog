@@ -1,151 +1,304 @@
-<figure class="viz" aria-labelledby="jspace-title">
-  <figcaption id="jspace-title">
-    The J-lens reads a sparse verbalizable component of the residual stream
-  </figcaption>
-
-  <div class="flow">
-    <section>
-      <small>intermediate layer</small>
-      <div class="residual" aria-hidden="true">
-        <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-      </div>
-      <strong>Residual-stream activation</strong>
-    </section>
-    <span aria-hidden="true">→</span>
-    <section>
-      <small>averaged Jacobian</small>
-      <div class="matrix" aria-hidden="true">J<sub>ℓ</sub></div>
-      <strong>Map toward future output effects</strong>
-    </section>
-    <span aria-hidden="true">→</span>
-    <section>
-      <small>sparse readout</small>
-      <div class="tokens">
-        <b>spider</b><b>web</b><b>legs</b>
-      </div>
-      <strong>Active J-space concepts</strong>
-    </section>
+<figure class="viz jspace-viz" aria-labelledby="jspace-title" data-jspace-viz>
+  <div class="viz-header">
+    <figcaption id="jspace-title">
+      The J-lens can read an intermediate concept and test it by intervention
+    </figcaption>
+    <button type="button" data-replay aria-label="Replay the J-space intervention">Replay</button>
   </div>
 
-  <div class="broadcast">
-    <span>report</span><span>control</span><span>reason</span><span>reuse</span>
+  <div class="layer-map" data-step>
+    <div class="layer-labels">
+      <span>early processing</span>
+      <span>workspace layers</span>
+      <span>output layers</span>
+    </div>
+    <div class="layer-track" aria-hidden="true">
+      <i></i><i class="workspace"></i><i></i>
+      <b data-marker></b>
+    </div>
+    <small
+      >J-lens readouts are most useful where abstract content is available for further use.</small
+    >
   </div>
+
+  <div class="trace">
+    <section class="prompt" data-step>
+      <span>Prompt state</span>
+      <p>The number of legs on the animal that spins webs is...</p>
+    </section>
+
+    <div class="readout" data-step>
+      <span>J-lens readout</span>
+      <div class="tokens" aria-label="Active concepts">
+        <b>spider</b><b>web</b><b>animal</b>
+      </div>
+      <small>The intermediate concept is absent from the prompt and final answer.</small>
+    </div>
+
+    <div class="intervention" data-step>
+      <span>Causal edit</span>
+      <div class="swap">
+        <b>spider</b><i aria-hidden="true">→</i><b>ant</b>
+      </div>
+      <small>Swap one active J-space direction while preserving the remaining activation.</small>
+    </div>
+
+    <div class="effect" data-step>
+      <div>
+        <span>Unedited answer</span>
+        <strong>8</strong>
+      </div>
+      <i aria-hidden="true">→</i>
+      <div>
+        <span>Edited answer</span>
+        <strong>6</strong>
+      </div>
+    </div>
+  </div>
+
+  <p class="boundary" data-step>
+    The result supports a causal workspace role. It does not show that every computation enters
+    J-space.
+  </p>
 </figure>
 
 <style>
   .viz {
+    container-type: inline-size;
     margin: 2em 0;
     padding: 1.5rem;
     border: 1px solid var(--border);
     background: var(--astro-code-background);
     color: var(--text-primary);
   }
-  figcaption {
+  .viz-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
     margin-bottom: 1.2rem;
+  }
+  figcaption {
+    max-width: 34rem;
     font: 600 var(--font-size-s) var(--mono);
     letter-spacing: 0.05em;
     text-transform: uppercase;
   }
-  .flow {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr auto 1fr;
-    align-items: center;
-    gap: 0.7rem;
+  button {
+    flex: none;
+    min-width: 4.5rem;
+    min-height: 2.75rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    font: 0.72rem var(--mono);
+    cursor: pointer;
+    transition:
+      transform 140ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 140ms cubic-bezier(0.23, 1, 0.32, 1);
   }
-  section {
-    display: grid;
-    min-height: 8rem;
-    align-content: center;
-    gap: 0.75rem;
-    padding: 1rem;
+  button:active {
+    transform: scale(0.97);
+  }
+  button:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
+  }
+  .layer-map {
+    padding: 0.85rem 0.9rem;
     border: 1px solid var(--border);
     background: var(--bg);
   }
-  small {
+  .layer-labels,
+  .layer-track {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .layer-labels span {
+    padding-bottom: 0.45rem;
     color: var(--text-tertiary);
-    font: 0.7rem var(--mono);
+    font: 0.62rem var(--mono);
+    text-align: center;
+  }
+  .layer-track {
+    position: relative;
+    gap: 0.25rem;
+  }
+  .layer-track i {
+    display: block;
+    height: 0.45rem;
+    background: var(--border);
+  }
+  .layer-track .workspace {
+    background: var(--text-secondary);
+  }
+  .layer-track b {
+    position: absolute;
+    left: calc(50% - 0.28rem);
+    top: -0.32rem;
+    width: 0.56rem;
+    height: 1.08rem;
+    border: 1px solid var(--text-primary);
+    background: var(--bg);
+  }
+  .layer-map small {
+    display: block;
+    margin-top: 0.65rem;
+  }
+  .trace {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.7rem;
+    margin-top: 0.7rem;
+  }
+  .trace section,
+  .readout,
+  .intervention,
+  .effect {
+    min-width: 0;
+    padding: 0.9rem;
+    border-top: 2px solid var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+  }
+  .trace span {
+    color: var(--text-tertiary);
+    font: 0.66rem var(--mono);
     letter-spacing: 0.05em;
     text-transform: uppercase;
   }
-  strong {
-    font: 600 0.82rem/1.35 var(--sans);
+  .trace p {
+    margin: 0.65rem 0 0;
+    font: 600 0.82rem/1.5 var(--sans);
   }
-  .residual {
-    display: grid;
-    grid-template-columns: repeat(8, 1fr);
-    gap: 0.2rem;
-    height: 2.7rem;
-    align-items: end;
+  small,
+  .boundary {
+    color: var(--text-secondary);
+    font: 0.68rem/1.5 var(--mono);
   }
-  .residual i {
-    height: var(--h);
-    background: var(--border);
-  }
-  .residual i:nth-child(1) {
-    --h: 35%;
-  }
-  .residual i:nth-child(2) {
-    --h: 80%;
-  }
-  .residual i:nth-child(3) {
-    --h: 55%;
-  }
-  .residual i:nth-child(4) {
-    --h: 95%;
-  }
-  .residual i:nth-child(5) {
-    --h: 42%;
-  }
-  .residual i:nth-child(6) {
-    --h: 70%;
-  }
-  .residual i:nth-child(7) {
-    --h: 28%;
-  }
-  .residual i:nth-child(8) {
-    --h: 62%;
-  }
-  .matrix {
-    display: grid;
-    place-items: center;
-    height: 2.7rem;
-    border: 1px solid var(--text-secondary);
-    font: 0.95rem var(--mono);
-  }
-  .tokens {
+  .tokens,
+  .swap {
     display: flex;
+    align-items: center;
     flex-wrap: wrap;
     gap: 0.35rem;
+    margin: 0.65rem 0;
   }
   .tokens b,
-  .broadcast span {
+  .swap b {
     padding: 0.35rem 0.5rem;
     border: 1px solid var(--border);
-    background: var(--astro-code-background);
+    background: var(--bg);
     font: 0.72rem var(--mono);
   }
-  .flow > span {
+  .swap i,
+  .effect > i {
     color: var(--text-tertiary);
+    font-style: normal;
   }
-  .broadcast {
+  .effect {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 0.55rem;
-    margin-top: 0.75rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--border);
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
     text-align: center;
   }
-  @media (max-width: 700px) {
-    .flow {
+  .effect div {
+    display: grid;
+    gap: 0.35rem;
+  }
+  .effect strong {
+    font: 600 1.55rem var(--mono);
+  }
+  .boundary {
+    margin: 0.85rem 0 0;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--border);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    button:hover {
+      opacity: 0.72;
+    }
+  }
+  @container (max-width: 430px) {
+    .viz-header {
+      display: grid;
+    }
+    button {
+      justify-self: start;
+    }
+    .layer-labels span {
+      font-size: 0.54rem;
+    }
+    .trace {
       grid-template-columns: 1fr;
     }
-    .flow > span {
-      justify-self: center;
-      transform: rotate(90deg);
-    }
-    .broadcast {
-      grid-template-columns: 1fr 1fr;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button {
+      display: none;
     }
   }
 </style>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-jspace-viz]').forEach((figure) => {
+    if (figure.dataset.motionBound) return
+    figure.dataset.motionBound = 'true'
+
+    let animations: Animation[] = []
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
+    const steps = Array.from(figure.querySelectorAll<HTMLElement>('[data-step]'))
+    const marker = figure.querySelector<HTMLElement>('[data-marker]')
+
+    const play = () => {
+      animations.forEach((animation) => animation.cancel())
+      animations = []
+
+      if (marker && !reduceMotion) {
+        animations.push(
+          marker.animate(
+            [
+              { opacity: 0.35, transform: 'translateX(-145%)' },
+              { opacity: 1, transform: 'translateX(0)' }
+            ],
+            {
+              duration: 520,
+              fill: 'both',
+              easing: 'cubic-bezier(0.77, 0, 0.175, 1)'
+            }
+          )
+        )
+      }
+
+      steps.forEach((step, index) => {
+        animations.push(
+          step.animate(
+            reduceMotion
+              ? [{ opacity: 0.55 }, { opacity: 1 }]
+              : [
+                  { opacity: 0.28, transform: 'translateY(7px)' },
+                  { opacity: 1, transform: 'translateY(0)' }
+                ],
+            {
+              duration: reduceMotion ? 160 : 280,
+              delay: index * (reduceMotion ? 55 : 230),
+              fill: 'both',
+              easing: 'cubic-bezier(0.23, 1, 0.32, 1)'
+            }
+          )
+        )
+      })
+    }
+
+    figure.querySelector('[data-replay]')?.addEventListener('click', play)
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return
+        play()
+        observer.disconnect()
+      },
+      { threshold: 0.3 }
+    )
+    observer.observe(figure)
+  })
+</script>
