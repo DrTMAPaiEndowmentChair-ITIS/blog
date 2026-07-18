@@ -8,7 +8,7 @@ const { category, topics = [] } = Astro.props
 ---
 
 <nav class="taxonomy" aria-label="Post taxonomy">
-  <a class="category" href={`/?category=${encodeURIComponent(category)}`}>{category}</a>
+  <a class="category" href={`/?q=${encodeURIComponent(category)}`}>{category}</a>
   {
     topics.length > 0 && (
       <>
@@ -17,7 +17,7 @@ const { category, topics = [] } = Astro.props
         </span>
         <span class="topics">
           {topics.map((topic) => (
-            <a href={`/?topic=${encodeURIComponent(topic)}`}>{topic}</a>
+            <a href={`/?q=${encodeURIComponent(topic)}`}>{topic}</a>
           ))}
         </span>
       </>
