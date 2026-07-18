@@ -13,18 +13,27 @@ const architectures = [
 ]
 ---
 
-<figure class="compare" aria-labelledby="compare-title">
-  <figcaption id="compare-title">Two approaches to keeping data close to compute</figcaption>
+<figure class="compare" aria-labelledby="compare-title" data-accelerator-motion>
+  <div class="viz-header">
+    <figcaption id="compare-title">Two approaches to keeping data close to compute</figcaption>
+    <button type="button" data-replay aria-label="Replay accelerator architecture sequence"
+      >Replay</button
+    >
+  </div>
   <div class="columns">
     {
-      architectures.map((architecture) => (
-        <section>
+      architectures.map((architecture, architectureIndex) => (
+        <section style={`--delay:${architectureIndex * 70}ms`}>
           <h3>{architecture.name}</h3>
           <div class="flow">
             {architecture.flow.map((item, index) => (
               <>
-                <span>{item}</span>
-                {index < architecture.flow.length - 1 && <b aria-hidden="true">↓</b>}
+                <span style={`--delay:${220 + index * 150}ms`}>{item}</span>
+                {index < architecture.flow.length - 1 && (
+                  <b aria-hidden="true" style={`--delay:${330 + index * 150}ms`}>
+                    ↓
+                  </b>
+                )}
               </>
             ))}
           </div>
@@ -47,10 +56,36 @@ const architectures = [
     background: var(--code-bg);
   }
   figcaption {
-    margin-bottom: 1rem;
     font: 600 0.82rem/1.4 var(--mono);
     letter-spacing: 0.04em;
     text-transform: uppercase;
+  }
+  .viz-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  button {
+    min-width: 4.5rem;
+    min-height: 2.75rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    font: 0.72rem var(--mono);
+    cursor: pointer;
+    transition:
+      transform 140ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  button:active {
+    transform: scale(0.97);
+  }
+  button:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
   }
   .columns {
     display: grid;
@@ -96,9 +131,85 @@ const architectures = [
     color: var(--text-tertiary);
     font-size: 0.78rem;
   }
+  .motion-ready:not(.is-running) .columns section,
+  .motion-ready:not(.is-running) .flow span,
+  .motion-ready:not(.is-running) .flow b,
+  .motion-ready:not(.is-running) section p,
+  .motion-ready:not(.is-running) aside {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  .motion-ready.is-running .columns section {
+    animation: accelerator-enter 340ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .flow span {
+    animation: accelerator-enter 300ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .flow b {
+    animation: accelerator-enter 240ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running section p {
+    animation: accelerator-enter 320ms 850ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running aside {
+    animation: accelerator-enter 340ms 1040ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  @keyframes accelerator-enter {
+    from {
+      opacity: 0;
+      transform: translateY(7px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @media (hover: hover) and (pointer: fine) {
+    button:hover {
+      opacity: 0.72;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button {
+      display: none;
+    }
+    .motion-ready * {
+      animation: none !important;
+      opacity: 1 !important;
+    }
+  }
   @media (max-width: 560px) {
+    .viz-header {
+      align-items: flex-start;
+    }
     .columns {
       grid-template-columns: 1fr;
     }
   }
 </style>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-accelerator-motion]').forEach((figure) => {
+    if (figure.dataset.motionBound || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    figure.dataset.motionBound = 'true'
+    figure.classList.add('motion-ready')
+
+    const play = () => {
+      figure.classList.remove('is-running')
+      void figure.offsetWidth
+      figure.classList.add('is-running')
+    }
+
+    figure.querySelector('[data-replay]')?.addEventListener('click', play)
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return
+        play()
+        observer.disconnect()
+      },
+      { threshold: 0.35 }
+    )
+    observer.observe(figure)
+  })
+</script>

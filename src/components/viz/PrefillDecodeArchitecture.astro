@@ -6,29 +6,37 @@ const stages = [
 ]
 ---
 
-<figure class="viz" aria-labelledby="pd-title">
-  <figcaption id="pd-title">Prefill and decode as separate scheduling domains</figcaption>
+<figure class="viz" aria-labelledby="pd-title" data-pd-motion>
+  <div class="viz-header">
+    <figcaption id="pd-title">Prefill and decode as separate scheduling domains</figcaption>
+    <button type="button" data-replay aria-label="Replay prefill and decode sequence">Replay</button
+    >
+  </div>
   <div class="request"><span>request</span><b>router</b></div>
   <div class="pipeline">
     {
       stages.map((stage, index) => (
         <>
-          <section>
+          <section style={`--delay:${210 + index * 280}ms`}>
             <>
               <small>{stage.metric}</small>
               <strong>{stage.name}</strong>
               <span>{stage.detail}</span>
             </>
           </section>
-          {index < stages.length - 1 && <div class="link">→</div>}
+          {index < stages.length - 1 && (
+            <div class="link" style={`--delay:${420 + index * 280}ms`}>
+              →
+            </div>
+          )}
         </>
       ))
     }
   </div>
   <div class="controls">
-    <span>Compute parallelism tuned for prompt length</span><span
-      >Bandwidth budgeted for KV size</span
-    ><span>Memory parallelism tuned for concurrency</span>
+    <span style="--delay:930ms">Compute parallelism tuned for prompt length</span><span
+      style="--delay:995ms">Bandwidth budgeted for KV size</span
+    ><span style="--delay:1060ms">Memory parallelism tuned for concurrency</span>
   </div>
 </figure>
 <style>
@@ -43,7 +51,33 @@ const stages = [
     font: 600 var(--font-size-s) var(--mono);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+  .viz-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
     margin-bottom: 1.2rem;
+  }
+  button {
+    min-width: 4.5rem;
+    min-height: 2.75rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    font: 0.72rem var(--mono);
+    cursor: pointer;
+    transition:
+      transform 140ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  button:active {
+    transform: scale(0.97);
+  }
+  button:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
   }
   .request {
     display: flex;
@@ -99,7 +133,63 @@ const stages = [
     font: 0.72rem/1.45 var(--mono);
     color: var(--text-tertiary);
   }
+  .motion-ready:not(.is-running) .request,
+  .motion-ready:not(.is-running) .pipeline section,
+  .motion-ready:not(.is-running) .controls span {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  .motion-ready:not(.is-running) .pipeline .link {
+    opacity: 0;
+  }
+  .motion-ready.is-running .request {
+    animation: pd-enter 320ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .pipeline section {
+    animation: pd-enter 340ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .pipeline .link {
+    animation: pd-fade 240ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .controls span {
+    animation: pd-enter 300ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  @keyframes pd-enter {
+    from {
+      opacity: 0;
+      transform: translateY(7px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes pd-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @media (hover: hover) and (pointer: fine) {
+    button:hover {
+      opacity: 0.72;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button {
+      display: none;
+    }
+    .motion-ready * {
+      animation: none !important;
+      opacity: 1 !important;
+    }
+  }
   @media (max-width: 650px) {
+    .viz-header {
+      align-items: flex-start;
+    }
     .pipeline {
       grid-template-columns: 1fr;
     }
@@ -112,3 +202,29 @@ const stages = [
     }
   }
 </style>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-pd-motion]').forEach((figure) => {
+    if (figure.dataset.motionBound || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    figure.dataset.motionBound = 'true'
+    figure.classList.add('motion-ready')
+
+    const play = () => {
+      figure.classList.remove('is-running')
+      void figure.offsetWidth
+      figure.classList.add('is-running')
+    }
+
+    figure.querySelector('[data-replay]')?.addEventListener('click', play)
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return
+        play()
+        observer.disconnect()
+      },
+      { threshold: 0.35 }
+    )
+    observer.observe(figure)
+  })
+</script>

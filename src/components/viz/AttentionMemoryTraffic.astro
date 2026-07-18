@@ -8,20 +8,25 @@ const paths = [
 ]
 ---
 
-<figure class="viz" aria-labelledby="am-title">
-  <figcaption id="am-title">
-    Attention data movement with and without score materialization
-  </figcaption>
+<figure class="viz" aria-labelledby="am-title" data-am-motion>
+  <div class="viz-header">
+    <figcaption id="am-title">
+      Attention data movement with and without score materialization
+    </figcaption>
+    <button type="button" data-replay aria-label="Replay attention memory traffic sequence"
+      >Replay</button
+    >
+  </div>
   <div class="memory"><b>HBM</b><span>large capacity, off-chip</span></div>
   <div class="paths">
     {
-      paths.map((path) => (
-        <section>
+      paths.map((path, pathIndex) => (
+        <section style={`--delay:${170 + pathIndex * 410}ms`}>
           <>
             <strong>{path.name}</strong>
             <div>
-              {path.trips.map((trip) => (
-                <span>{trip}</span>
+              {path.trips.map((trip, tripIndex) => (
+                <span style={`--delay:${300 + pathIndex * 410 + tripIndex * 55}ms`}>{trip}</span>
               ))}
             </div>
           </>
@@ -43,7 +48,33 @@ const paths = [
     font: 600 var(--font-size-s) var(--mono);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+  .viz-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
     margin-bottom: 1.2rem;
+  }
+  button {
+    min-width: 4.5rem;
+    min-height: 2.75rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    font: 0.72rem var(--mono);
+    cursor: pointer;
+    transition:
+      transform 140ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  button:active {
+    transform: scale(0.97);
+  }
+  button:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
   }
   .memory {
     display: flex;
@@ -84,7 +115,52 @@ const paths = [
   .sram {
     border-style: dashed;
   }
+  .motion-ready:not(.is-running) .memory,
+  .motion-ready:not(.is-running) .paths section,
+  .motion-ready:not(.is-running) .paths section span {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  .motion-ready.is-running .memory:not(.sram) {
+    animation: am-enter 320ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .paths section {
+    animation: am-enter 320ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .paths section span {
+    animation: am-enter 300ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .sram {
+    animation: am-enter 320ms 980ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  @keyframes am-enter {
+    from {
+      opacity: 0;
+      transform: translateY(7px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @media (hover: hover) and (pointer: fine) {
+    button:hover {
+      opacity: 0.72;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button {
+      display: none;
+    }
+    .motion-ready * {
+      animation: none !important;
+      opacity: 1 !important;
+    }
+  }
   @media (max-width: 600px) {
+    .viz-header {
+      align-items: flex-start;
+    }
     .paths {
       grid-template-columns: 1fr;
     }
@@ -94,3 +170,29 @@ const paths = [
     }
   }
 </style>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-am-motion]').forEach((figure) => {
+    if (figure.dataset.motionBound || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    figure.dataset.motionBound = 'true'
+    figure.classList.add('motion-ready')
+
+    const play = () => {
+      figure.classList.remove('is-running')
+      void figure.offsetWidth
+      figure.classList.add('is-running')
+    }
+
+    figure.querySelector('[data-replay]')?.addEventListener('click', play)
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return
+        play()
+        observer.disconnect()
+      },
+      { threshold: 0.35 }
+    )
+    observer.observe(figure)
+  })
+</script>

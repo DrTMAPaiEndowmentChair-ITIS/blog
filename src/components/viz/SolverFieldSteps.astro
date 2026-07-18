@@ -1,0 +1,217 @@
+<figure class="solver-viz" aria-labelledby="solver-title">
+  <figcaption id="solver-title">
+    A solver follows a learned field through discrete evaluations
+  </figcaption>
+  <svg
+    viewBox="0 0 520 210"
+    role="img"
+    aria-label="A curved vector field with five solver states from noise to sample"
+  >
+    <defs>
+      <marker id="solver-arrow" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
+        <path d="M0,0 L6,3.5 L0,7"></path>
+      </marker>
+    </defs>
+    <path class="field" d="M48 160 C136 35 278 190 472 48"></path>
+    <g class="vectors" aria-hidden="true">
+      <path d="M91 112 l34 -25"></path>
+      <path d="M199 105 l38 14"></path>
+      <path d="M307 119 l37 -24"></path>
+      <path d="M407 78 l34 -24"></path>
+    </g>
+    <g class="states">
+      <g class="state state-1"
+        ><circle cx="48" cy="160" r="8"></circle><text x="48" y="187">noise</text></g
+      >
+      <g class="state state-2"
+        ><circle cx="136" cy="81" r="6"></circle><text x="136" y="65">query field</text></g
+      >
+      <g class="state state-3"
+        ><circle cx="255" cy="126" r="6"></circle><text x="255" y="151">advance</text></g
+      >
+      <g class="state state-4"
+        ><circle cx="365" cy="105" r="6"></circle><text x="365" y="130">correct</text></g
+      >
+      <g class="state state-5"
+        ><circle cx="472" cy="48" r="8"></circle><text x="472" y="28">sample</text></g
+      >
+    </g>
+  </svg>
+  <div class="contract">
+    <span>state <b>x<sub>t</sub></b></span><i aria-hidden="true">→</i><span
+      >model <b>v<sub>θ</sub>(x<sub>t</sub>, t)</b></span
+    ><i aria-hidden="true">→</i><span>solver <b>x<sub>t+Δt</sub></b></span>
+  </div>
+  <p>
+    Each state requires a model evaluation. Step placement and solver order determine how closely
+    the discrete path follows the field.
+  </p>
+</figure>
+
+<script>
+  function initializeSolverField() {
+    if (!('IntersectionObserver' in window)) return
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    document.querySelectorAll<HTMLElement>('.solver-viz').forEach((figure) => {
+      if (figure.dataset.motionReady) return
+      figure.dataset.motionReady = 'true'
+      figure.classList.add('can-animate')
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          if (!entry?.isIntersecting) return
+          figure.classList.add('is-visible')
+          observer.disconnect()
+        },
+        { threshold: 0.2 }
+      )
+      observer.observe(figure)
+    })
+  }
+
+  initializeSolverField()
+  document.addEventListener('astro:page-load', initializeSolverField)
+</script>
+
+<style>
+  .solver-viz {
+    margin: 2rem 0;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    background: var(--code-bg);
+  }
+
+  figcaption {
+    margin-bottom: 0.5rem;
+    font: 600 0.8125rem/1.45 var(--mono);
+  }
+
+  svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+
+  .field,
+  .vectors path {
+    fill: none;
+    stroke: var(--text-secondary);
+    stroke-width: 1.5;
+  }
+
+  .field {
+    stroke-dasharray: 4 5;
+  }
+
+  .vectors path {
+    marker-end: url(#solver-arrow);
+  }
+
+  marker path {
+    fill: var(--text-secondary);
+  }
+
+  .state {
+    opacity: 1;
+    transform: none;
+  }
+
+  .can-animate:not(.is-visible) .state {
+    opacity: 0;
+    transform: translateY(0.45rem);
+  }
+
+  .can-animate.is-visible .state {
+    animation: solver-state 280ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+
+  .state-1 {
+    animation-delay: 120ms;
+  }
+
+  .state-2 {
+    animation-delay: 360ms;
+  }
+
+  .state-3 {
+    animation-delay: 600ms;
+  }
+
+  .state-4 {
+    animation-delay: 840ms;
+  }
+
+  .state-5 {
+    animation-delay: 1080ms;
+  }
+
+  circle {
+    fill: var(--bg);
+    stroke: var(--text-primary);
+    stroke-width: 2;
+  }
+
+  text {
+    fill: var(--text-secondary);
+    text-anchor: middle;
+    font: 0.6875rem var(--mono);
+  }
+
+  .contract {
+    display: flex;
+    align-items: stretch;
+    gap: 0.35rem;
+  }
+
+  .contract span {
+    flex: 1;
+    min-width: 0;
+    padding: 0.55rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    text-align: center;
+    font: 0.6875rem/1.45 var(--mono);
+  }
+
+  .contract i {
+    align-self: center;
+    color: var(--text-tertiary);
+    font-style: normal;
+  }
+
+  p {
+    margin: 0.75rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+
+  @keyframes solver-state {
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (max-width: 500px) {
+    .contract {
+      display: grid;
+    }
+
+    .contract i {
+      rotate: 90deg;
+      justify-self: center;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .state,
+    .can-animate:not(.is-visible) .state,
+    .can-animate.is-visible .state {
+      opacity: 1;
+      transform: none;
+      animation: none;
+    }
+  }
+</style>

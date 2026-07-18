@@ -8,6 +8,7 @@ topics: ['Diffusion', 'Flow matching', 'Generative media']
 ---
 
 import DiffusionFlowComparison from '../../components/viz/DiffusionFlowComparison.astro'
+import SolverFieldSteps from '../../components/viz/SolverFieldSteps.astro'
 
 **Author**: Aadit Agrawal
 
@@ -129,6 +130,8 @@ $$
 Higher-order methods evaluate the network at additional points to reduce integration error. Fewer steps reduce latency but can miss curved regions of the learned field. A solver qualified on one parameterization or schedule may be unstable on another.
 
 Benchmark quality against network evaluation count, not loop iteration alone. Some iterations call the model more than once. Also report text-encoder and decoder time so denoiser optimizations are not overstated.
+
+<SolverFieldSteps />
 
 ## Training and serving failure modes
 

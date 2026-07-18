@@ -8,6 +8,7 @@ topics: ['Evaluation', 'Benchmarks', 'LLM judges']
 ---
 
 import EvaluationPipeline from '../../components/viz/EvaluationPipeline.astro'
+import JudgeOrderSwap from '../../components/viz/JudgeOrderSwap.astro'
 
 An evaluation is a measurement procedure, not a prompt file. Its result depends on the dataset, harness, model configuration, scorer, aggregation, and statistical analysis. Changing any one of them changes the object being measured.
 
@@ -146,6 +147,8 @@ score(A, B) + score(B, A) → stable preference or disagreement
 Do not ask a judge for hidden chain-of-thought. Request a short evidence field tied to rubric criteria, then audit whether that evidence matches the outputs.
 
 Judge agreement with humans should be reported on the target task, not borrowed from another benchmark. A judge calibrated for concise customer support answers may fail on mathematical proofs or code patches.
+
+<JudgeOrderSwap />
 
 ## Contamination invalidates the question
 

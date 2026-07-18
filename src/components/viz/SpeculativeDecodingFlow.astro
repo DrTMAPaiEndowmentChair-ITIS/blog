@@ -7,16 +7,29 @@ const candidates = [
 ]
 ---
 
-<figure class="viz" aria-labelledby="sd-title">
-  <figcaption id="sd-title">Draft tokens are verified in one target-model pass</figcaption>
-  <div class="lane draft">
-    <strong>Draft model</strong>{candidates.map((c) => <code>{c.token}</code>)}
+<figure class="viz" aria-labelledby="sd-title" data-sd-motion>
+  <div class="viz-header">
+    <figcaption id="sd-title">Draft tokens are verified in one target-model pass</figcaption>
+    <button type="button" data-replay aria-label="Replay speculative decoding sequence"
+      >Replay</button
+    >
   </div>
-  <div class="verify"><span>parallel target probabilities</span><i></i><i></i><i></i><i></i></div>
+  <div class="lane draft">
+    <strong>Draft model</strong>{
+      candidates.map((c, index) => <code style={`--delay:${140 + index * 70}ms`}>{c.token}</code>)
+    }
+  </div>
+  <div class="verify">
+    <span>parallel target probabilities</span>{
+      candidates.map((_, index) => <i style={`--delay:${540 + index * 50}ms`} />)
+    }
+  </div>
   <div class="lane target">
     <strong>Accepted output</strong>{
-      candidates.map((c) => (
-        <code class={c.state}>{c.state === 'reject' ? 'linearly' : c.token}</code>
+      candidates.map((c, index) => (
+        <code class={c.state} style={`--delay:${790 + index * 70}ms`}>
+          {c.state === 'reject' ? 'linearly' : c.token}
+        </code>
       ))
     }
   </div>
@@ -37,7 +50,33 @@ const candidates = [
     font: 600 var(--font-size-s) var(--mono);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+  .viz-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
     margin-bottom: 1.2rem;
+  }
+  button {
+    min-width: 4.5rem;
+    min-height: 2.75rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    font: 0.72rem var(--mono);
+    cursor: pointer;
+    transition:
+      transform 140ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  button:active {
+    transform: scale(0.97);
+  }
+  button:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
   }
   .lane {
     display: grid;
@@ -79,7 +118,61 @@ const candidates = [
     color: var(--text-secondary);
     margin: 1rem 0 0;
   }
+  .motion-ready:not(.is-running) .lane > *,
+  .motion-ready:not(.is-running) .verify > *,
+  .motion-ready:not(.is-running) p {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  .motion-ready.is-running .draft strong {
+    animation: sd-enter 300ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .draft code {
+    animation: sd-enter 320ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .verify span {
+    animation: sd-enter 300ms 480ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .verify i {
+    animation: sd-enter 260ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .target strong {
+    animation: sd-enter 300ms 720ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .target code {
+    animation: sd-enter 320ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running p {
+    animation: sd-enter 320ms 1120ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  @keyframes sd-enter {
+    from {
+      opacity: 0;
+      transform: translateY(7px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @media (hover: hover) and (pointer: fine) {
+    button:hover {
+      opacity: 0.72;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button {
+      display: none;
+    }
+    .motion-ready * {
+      animation: none !important;
+      opacity: 1 !important;
+    }
+  }
   @media (max-width: 600px) {
+    .viz-header {
+      align-items: flex-start;
+    }
     .lane,
     .verify {
       grid-template-columns: 1fr repeat(2, 1fr);
@@ -90,3 +183,29 @@ const candidates = [
     }
   }
 </style>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-sd-motion]').forEach((figure) => {
+    if (figure.dataset.motionBound || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    figure.dataset.motionBound = 'true'
+    figure.classList.add('motion-ready')
+
+    const play = () => {
+      figure.classList.remove('is-running')
+      void figure.offsetWidth
+      figure.classList.add('is-running')
+    }
+
+    figure.querySelector('[data-replay]')?.addEventListener('click', play)
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return
+        play()
+        observer.disconnect()
+      },
+      { threshold: 0.35 }
+    )
+    observer.observe(figure)
+  })
+</script>

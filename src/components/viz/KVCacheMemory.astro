@@ -7,14 +7,17 @@ const rows = [
 ]
 ---
 
-<figure class="viz" aria-labelledby="kv-title">
-  <figcaption id="kv-title">Logical sequences map to reusable physical KV blocks</figcaption>
+<figure class="viz" aria-labelledby="kv-title" data-kv-motion>
+  <div class="viz-header">
+    <figcaption id="kv-title">Logical sequences map to reusable physical KV blocks</figcaption>
+    <button type="button" data-replay aria-label="Replay KV cache mapping sequence">Replay</button>
+  </div>
   <div class="layout">
     <div class="logical">
       <strong>Logical token blocks</strong>
       {
-        rows.map((row) => (
-          <div class:list={['row', { shared: row.shared }]}>
+        rows.map((row, index) => (
+          <div class:list={['row', { shared: row.shared }]} style={`--delay:${140 + index * 65}ms`}>
             <>
               <span>{row.token}</span>
               <code>{row.blocks.join(' · ')}</code>
@@ -28,8 +31,10 @@ const rows = [
       <strong>Physical GPU pages</strong>
       <div class="pages">
         {
-          ['K0/V0', 'K2/V2', 'K1/V1', 'free', 'K3/V3', 'free'].map((page) => (
-            <code class:list={{ free: page === 'free' }}>{page}</code>
+          ['K0/V0', 'K2/V2', 'K1/V1', 'free', 'K3/V3', 'free'].map((page, index) => (
+            <code class:list={{ free: page === 'free' }} style={`--delay:${660 + index * 55}ms`}>
+              {page}
+            </code>
           ))
         }
       </div>
@@ -51,7 +56,33 @@ const rows = [
     font: 600 var(--font-size-s) var(--mono);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+  .viz-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
     margin-bottom: 1.25rem;
+  }
+  button {
+    min-width: 4.5rem;
+    min-height: 2.75rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    font: 0.72rem var(--mono);
+    cursor: pointer;
+    transition:
+      transform 140ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  button:active {
+    transform: scale(0.97);
+  }
+  button:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
   }
   .layout {
     display: grid;
@@ -118,7 +149,75 @@ const rows = [
     border-top: 3px solid var(--text-secondary);
     margin-right: 0.5rem;
   }
+  .motion-ready:not(.is-running) .logical > strong,
+  .motion-ready:not(.is-running) .row,
+  .motion-ready:not(.is-running) .physical > strong,
+  .motion-ready:not(.is-running) .pages code,
+  .motion-ready:not(.is-running) .physical small,
+  .motion-ready:not(.is-running) .legend {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  .motion-ready:not(.is-running) .arrow {
+    opacity: 0;
+  }
+  .motion-ready.is-running .logical > strong {
+    animation: kv-enter 300ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .row {
+    animation: kv-enter 320ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .arrow {
+    animation: kv-fade 260ms 470ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .physical > strong {
+    animation: kv-enter 300ms 560ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .pages code {
+    animation: kv-enter 300ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .physical small {
+    animation: kv-enter 300ms 1020ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .legend {
+    animation: kv-enter 300ms 1140ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  @keyframes kv-enter {
+    from {
+      opacity: 0;
+      transform: translateY(7px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes kv-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @media (hover: hover) and (pointer: fine) {
+    button:hover {
+      opacity: 0.72;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button {
+      display: none;
+    }
+    .motion-ready * {
+      animation: none !important;
+      opacity: 1 !important;
+    }
+  }
   @media (max-width: 620px) {
+    .viz-header {
+      align-items: flex-start;
+    }
     .layout {
       grid-template-columns: 1fr;
     }
@@ -131,3 +230,29 @@ const rows = [
     }
   }
 </style>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-kv-motion]').forEach((figure) => {
+    if (figure.dataset.motionBound || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    figure.dataset.motionBound = 'true'
+    figure.classList.add('motion-ready')
+
+    const play = () => {
+      figure.classList.remove('is-running')
+      void figure.offsetWidth
+      figure.classList.add('is-running')
+    }
+
+    figure.querySelector('[data-replay]')?.addEventListener('click', play)
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return
+        play()
+        observer.disconnect()
+      },
+      { threshold: 0.35 }
+    )
+    observer.observe(figure)
+  })
+</script>

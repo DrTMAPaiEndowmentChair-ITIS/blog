@@ -1,0 +1,195 @@
+---
+const stages = [
+  ['Stage A', 'F1', 'F2', 'F3', 'B1', 'B2', 'B3'],
+  ['Stage B', 'idle', 'F1', 'F2', 'F3', 'B1', 'B2'],
+  ['Stage C', 'idle', 'idle', 'F1', 'B1', 'F2', 'B2']
+]
+---
+
+<figure class="schedule-viz" aria-labelledby="schedule-title">
+  <figcaption id="schedule-title">
+    Pipeline work moves through stages in dependency order
+  </figcaption>
+  <div class="legend" aria-hidden="true">
+    <span><i class="forward"></i>forward</span>
+    <span><i class="backward"></i>backward</span>
+    <span><i class="idle"></i>idle</span>
+  </div>
+  <div class="timeline" role="img" aria-label="Illustrative pipeline schedule for three stages">
+    <div class="axis">
+      <span>stage</span>
+      {Array.from({ length: 6 }, (_, index) => <span>t{index + 1}</span>)}
+    </div>
+    {
+      stages.map(([stage, ...slots], rowIndex) => (
+        <div class="row">
+          <strong>{stage}</strong>
+          {slots.map((slot, columnIndex) => (
+            <span
+              class:list={[
+                'slot',
+                slot === 'idle' ? 'idle' : slot.startsWith('F') ? 'forward' : 'backward'
+              ]}
+              style={`--delay: ${(rowIndex * 6 + columnIndex) * 70}ms`}
+            >
+              {slot === 'idle' ? '·' : slot}
+            </span>
+          ))}
+        </div>
+      ))
+    }
+  </div>
+  <p>
+    The schedule is illustrative. Idle cells expose the fill and drain bubbles that microbatching
+    attempts to reduce.
+  </p>
+</figure>
+
+<script>
+  function initializePipelineSchedule() {
+    if (!('IntersectionObserver' in window)) return
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    document.querySelectorAll<HTMLElement>('.schedule-viz').forEach((figure) => {
+      if (figure.dataset.motionReady) return
+      figure.dataset.motionReady = 'true'
+      figure.classList.add('can-animate')
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          if (!entry?.isIntersecting) return
+          figure.classList.add('is-visible')
+          observer.disconnect()
+        },
+        { threshold: 0.2 }
+      )
+      observer.observe(figure)
+    })
+  }
+
+  initializePipelineSchedule()
+  document.addEventListener('astro:page-load', initializePipelineSchedule)
+</script>
+
+<style>
+  .schedule-viz {
+    margin: 2rem 0;
+    padding: 1rem;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--code-bg);
+  }
+
+  figcaption {
+    margin-bottom: 0.75rem;
+    font: 600 0.8125rem/1.45 var(--mono);
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.9rem;
+    margin-bottom: 0.75rem;
+    color: var(--text-secondary);
+    font: 0.6875rem/1.4 var(--mono);
+  }
+
+  .legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .legend i {
+    width: 0.75rem;
+    height: 0.5rem;
+    border: 1px solid var(--border);
+  }
+
+  .timeline {
+    display: grid;
+    gap: 0.35rem;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    padding-bottom: 0.25rem;
+  }
+
+  .axis,
+  .row {
+    display: grid;
+    grid-template-columns: 4.75rem repeat(6, minmax(2.35rem, 1fr));
+    gap: 0.3rem;
+    min-width: 28rem;
+    align-items: center;
+  }
+
+  .axis span {
+    color: var(--text-tertiary);
+    text-align: center;
+    font: 0.6875rem/1.4 var(--mono);
+  }
+
+  .axis span:first-child {
+    text-align: left;
+  }
+
+  .row strong {
+    font: 600 0.75rem/1.4 var(--mono);
+  }
+
+  .slot {
+    display: grid;
+    min-height: 2rem;
+    place-items: center;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    font: 600 0.6875rem/1 var(--mono);
+    opacity: 1;
+    transform: none;
+  }
+
+  .can-animate:not(.is-visible) .slot {
+    opacity: 0;
+    transform: translateX(-0.35rem);
+  }
+
+  .can-animate.is-visible .slot {
+    animation: schedule-slot 220ms cubic-bezier(0.23, 1, 0.32, 1) var(--delay) both;
+  }
+
+  .slot.forward {
+    background: var(--selection);
+  }
+
+  .slot.backward {
+    border-style: dashed;
+  }
+
+  .slot.idle {
+    color: var(--text-tertiary);
+    background: transparent;
+  }
+
+  p {
+    margin: 0.75rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+
+  @keyframes schedule-slot {
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .slot,
+    .can-animate:not(.is-visible) .slot,
+    .can-animate.is-visible .slot {
+      opacity: 1;
+      transform: none;
+      animation: none;
+    }
+  }
+</style>

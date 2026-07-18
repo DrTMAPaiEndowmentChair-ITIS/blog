@@ -8,6 +8,7 @@ topics: ['Distributed training', 'Parallelism', 'GPU clusters']
 ---
 
 import ParallelismStrategies from '../../components/viz/ParallelismStrategies.astro'
+import PipelineScheduleTimeline from '../../components/viz/PipelineScheduleTimeline.astro'
 
 **Author**: Aadit Agrawal
 
@@ -81,6 +82,8 @@ Pipeline efficiency depends on balance. Equal layer counts do not imply equal st
 The pipeline boundary transmits activations in the forward direction and their gradients in the reverse direction. A boundary at a wide hidden representation consumes more bandwidth than one after a compact projection.
 
 Operational failures include a last stage slowed by vocabulary projection, microbatch count too small to fill the pipeline, activation checkpointing that recomputes across a communication boundary, and batches with different sequence lengths producing stage imbalance.
+
+<PipelineScheduleTimeline />
 
 ## Expert parallelism partitions sparse feed-forward capacity
 

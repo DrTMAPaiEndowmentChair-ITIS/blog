@@ -8,6 +8,7 @@ topics: ['RAG', 'Retrieval', 'Reranking']
 ---
 
 import RetrievalRankingStages from '../../components/viz/RetrievalRankingStages.astro'
+import ContextBudgetPacking from '../../components/viz/ContextBudgetPacking.astro'
 
 A retrieval system has a narrower job than a language model: given a query, return evidence that satisfies an information need. That boundary makes retrieval measurable. Documents can be judged for relevance before generation is introduced, and failures can be assigned to indexing, candidate generation, ranking, context construction, or answer synthesis.
 
@@ -199,6 +200,8 @@ A context builder should:
 5. Stop at a measured token budget.
 
 Long context does not remove this requirement. The Lost in the Middle study found that model performance can change with the position of relevant information and often declines when evidence appears in the middle of a long input.[^middle]
+
+<ContextBudgetPacking />
 
 ## Operational measurements
 

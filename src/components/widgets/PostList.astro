@@ -2,41 +2,233 @@
 import FormattedDate from '@/components/widgets/FormattedDate.astro'
 import type { PostListProps } from '@/types'
 import { themeConfig } from '@/config'
+import { POST_CATEGORIES } from '@/data/taxonomy'
 
 const { posts } = Astro.props as PostListProps
+
+const usedCategories = new Set(posts.map((post) => post.data.category))
+const categories = POST_CATEGORIES.filter((category) => usedCategories.has(category))
+const topics = [...new Set(posts.flatMap((post) => post.data.topics))].sort((a, b) =>
+  a.localeCompare(b)
+)
 ---
 
-<ul>
-  {
-    posts.map((post) => (
-      <li>
-        <a href={`/${post.id}/`}>
-          <div class={`post-item ${!themeConfig.date.dateOnRight ? 'date-left' : ''}`}>
-            {!themeConfig.date.dateOnRight && (
-              <p class="date font-features">
-                <FormattedDate date={post.data.pubDate} context="list" />
-              </p>
-            )}
-            <p class="title">{post.data.title}</p>
-            {themeConfig.date.dateOnRight && (
-              <div
-                class={themeConfig.general.postListDottedDivider ? 'dotted-divider' : 'divider'}
-              />
-            )}
-            {themeConfig.date.dateOnRight && (
-              <p class="date font-features">
-                <FormattedDate date={post.data.pubDate} context="list" />
-              </p>
-            )}
-          </div>
-        </a>
-      </li>
-    ))
-  }
-</ul>
+<section class="post-directory" data-post-filter>
+  <form class="filters" aria-label="Filter posts">
+    <label>
+      <span>Category</span>
+      <select name="category">
+        <option value="">All</option>
+        {categories.map((category) => <option value={category}>{category}</option>)}
+      </select>
+    </label>
+
+    <label>
+      <span>Topic</span>
+      <select name="topic">
+        <option value="">All</option>
+        {topics.map((topic) => <option value={topic}>{topic}</option>)}
+      </select>
+    </label>
+
+    <button type="reset" disabled>Reset</button>
+  </form>
+
+  <div class="filter-summary">
+    <span class="result-count" role="status" aria-live="polite">{posts.length} posts</span>
+  </div>
+
+  <ul>
+    {
+      posts.map((post) => (
+        <li
+          data-category={post.data.category}
+          data-topics={post.data.topics.map(encodeURIComponent).join(',')}
+        >
+          <a href={`/${post.id}/`}>
+            <div class={`post-item ${!themeConfig.date.dateOnRight ? 'date-left' : ''}`}>
+              {!themeConfig.date.dateOnRight && (
+                <p class="date font-features">
+                  <FormattedDate date={post.data.pubDate} context="list" />
+                </p>
+              )}
+              <p class="title">{post.data.title}</p>
+              {themeConfig.date.dateOnRight && (
+                <div
+                  class={themeConfig.general.postListDottedDivider ? 'dotted-divider' : 'divider'}
+                />
+              )}
+              {themeConfig.date.dateOnRight && (
+                <p class="date font-features">
+                  <FormattedDate date={post.data.pubDate} context="list" />
+                </p>
+              )}
+            </div>
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+
+  <div class="empty-state" hidden>No posts match both filters.</div>
+</section>
 <div class="placeholder"></div>
 
+<script>
+  let readActiveUrl: (() => void) | undefined
+
+  const initializePostFilters = () => {
+    readActiveUrl = undefined
+    const filterDirectories = document.querySelectorAll<HTMLElement>('[data-post-filter]')
+
+    for (const directory of filterDirectories) {
+      const form = directory.querySelector<HTMLFormElement>('.filters')
+      const categorySelect = form?.elements.namedItem('category')
+      const topicSelect = form?.elements.namedItem('topic')
+      const resetButton = form?.querySelector<HTMLButtonElement>('button[type="reset"]')
+      const resultCount = directory.querySelector<HTMLElement>('.result-count')
+      const emptyState = directory.querySelector<HTMLElement>('.empty-state')
+      const postItems = [...directory.querySelectorAll<HTMLElement>('li[data-category]')]
+
+      if (
+        !form ||
+        !(categorySelect instanceof HTMLSelectElement) ||
+        !(topicSelect instanceof HTMLSelectElement) ||
+        !resetButton ||
+        !resultCount ||
+        !emptyState
+      ) {
+        continue
+      }
+
+      const hasOption = (select: HTMLSelectElement, value: string) =>
+        [...select.options].some((option) => option.value === value)
+
+      const applyFilters = (updateUrl: boolean) => {
+        const category = categorySelect.value
+        const topic = topicSelect.value
+        let visibleCount = 0
+
+        for (const item of postItems) {
+          const itemTopics = (item.dataset.topics ?? '')
+            .split(',')
+            .filter(Boolean)
+            .map(decodeURIComponent)
+          const isVisible =
+            (!category || item.dataset.category === category) &&
+            (!topic || itemTopics.includes(topic))
+
+          item.hidden = !isVisible
+          if (isVisible) visibleCount += 1
+        }
+
+        resultCount.textContent = `${visibleCount} ${visibleCount === 1 ? 'post' : 'posts'}`
+        emptyState.hidden = visibleCount !== 0
+        resetButton.disabled = !category && !topic
+
+        if (updateUrl) {
+          const url = new URL(window.location.href)
+          if (category) url.searchParams.set('category', category)
+          else url.searchParams.delete('category')
+
+          if (topic) url.searchParams.set('topic', topic)
+          else url.searchParams.delete('topic')
+
+          window.history.pushState(null, '', url)
+        }
+      }
+
+      const readUrl = () => {
+        const params = new URLSearchParams(window.location.search)
+        const category = params.get('category') ?? ''
+        const topic = params.get('topic') ?? ''
+
+        categorySelect.value = hasOption(categorySelect, category) ? category : ''
+        topicSelect.value = hasOption(topicSelect, topic) ? topic : ''
+        applyFilters(false)
+      }
+
+      form.addEventListener('change', () => applyFilters(true))
+      form.addEventListener('reset', () => {
+        window.setTimeout(() => applyFilters(true))
+      })
+
+      readActiveUrl = readUrl
+      readUrl()
+    }
+  }
+
+  window.addEventListener('popstate', () => readActiveUrl?.())
+  document.addEventListener('astro:page-load', initializePostFilters)
+</script>
+
 <style>
+  .filters {
+    display: flex;
+    align-items: end;
+    gap: 0.625rem;
+    margin: 1.75rem 0 0;
+  }
+
+  .filters label {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 0;
+  }
+
+  .filters label:first-child {
+    flex: 1.15;
+  }
+
+  .filters label:nth-child(2) {
+    flex: 0.85;
+  }
+
+  .filters span {
+    color: var(--text-secondary);
+    font-size: var(--font-size-s);
+  }
+
+  .filters select,
+  .filters button {
+    height: 2rem;
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    background: var(--bg);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: var(--font-size-s);
+  }
+
+  .filters select {
+    width: 100%;
+    min-width: 0;
+    padding: 0 1.75rem 0 0.5rem;
+  }
+
+  .filters button {
+    padding: 0 0.625rem;
+    cursor: pointer;
+  }
+
+  .filters button:disabled {
+    color: var(--text-tertiary);
+    cursor: default;
+  }
+
+  .filters select:focus-visible,
+  .filters button:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
+  }
+
+  .filter-summary {
+    min-height: 1.25rem;
+    margin: 0.5rem 0 0.25rem;
+    color: var(--text-secondary);
+    font-size: var(--font-size-s);
+  }
+
   ul {
     padding: 0;
     margin: 0;
@@ -139,7 +331,25 @@ const { posts } = Astro.props as PostListProps
     pointer-events: none;
   }
 
+  .empty-state {
+    padding: 1.25rem 0;
+    color: var(--text-secondary);
+  }
+
   .placeholder {
     height: 3rem;
+  }
+
+  @media (max-width: 32rem) {
+    .filters {
+      align-items: stretch;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .filters button {
+      grid-column: 1 / -1;
+      justify-self: start;
+    }
   }
 </style>

@@ -7,12 +7,17 @@ const steps = [
 ]
 ---
 
-<figure class="viz" aria-labelledby="cd-title">
-  <figcaption id="cd-title">Grammar state restricts the token mask after each prefix</figcaption>
+<figure class="viz" aria-labelledby="cd-title" data-cd-motion>
+  <div class="viz-header">
+    <figcaption id="cd-title">Grammar state restricts the token mask after each prefix</figcaption>
+    <button type="button" data-replay aria-label="Replay constrained decoding sequence"
+      >Replay</button
+    >
+  </div>
   <div class="steps">
     {
       steps.map((step, i) => (
-        <section>
+        <section style={`--delay:${i * 150}ms`}>
           <>
             <small>state {i}</small>
             <code>{step.prefix}</code>
@@ -27,9 +32,9 @@ const steps = [
     }
   </div>
   <div class="flow">
-    <span>schema</span><b>compile</b><span>grammar state</span><b>mask logits</b><span
-      >sample legal token</span
-    >
+    <span style="--delay:700ms">schema</span><b style="--delay:780ms">compile</b><span
+      style="--delay:860ms">grammar state</span
+    ><b style="--delay:940ms">mask logits</b><span style="--delay:1020ms">sample legal token</span>
   </div>
 </figure>
 <style>
@@ -44,7 +49,33 @@ const steps = [
     font: 600 var(--font-size-s) var(--mono);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+  .viz-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
     margin-bottom: 1.2rem;
+  }
+  button {
+    min-width: 4.5rem;
+    min-height: 2.75rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    font: 0.72rem var(--mono);
+    cursor: pointer;
+    transition:
+      transform 140ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  button:active {
+    transform: scale(0.97);
+  }
+  button:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
   }
   .steps {
     display: grid;
@@ -94,9 +125,73 @@ const steps = [
   .flow b {
     color: var(--text-tertiary);
   }
+  .motion-ready:not(.is-running) .steps section,
+  .motion-ready:not(.is-running) .flow > * {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  .motion-ready.is-running .steps section {
+    animation: cd-enter 340ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .flow > * {
+    animation: cd-enter 300ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  @keyframes cd-enter {
+    from {
+      opacity: 0;
+      transform: translateY(7px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @media (hover: hover) and (pointer: fine) {
+    button:hover {
+      opacity: 0.72;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button {
+      display: none;
+    }
+    .motion-ready * {
+      animation: none !important;
+      opacity: 1 !important;
+    }
+  }
   @media (max-width: 650px) {
+    .viz-header {
+      align-items: flex-start;
+    }
     .steps {
       grid-template-columns: 1fr 1fr;
     }
   }
 </style>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-cd-motion]').forEach((figure) => {
+    if (figure.dataset.motionBound || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    figure.dataset.motionBound = 'true'
+    figure.classList.add('motion-ready')
+
+    const play = () => {
+      figure.classList.remove('is-running')
+      void figure.offsetWidth
+      figure.classList.add('is-running')
+    }
+
+    figure.querySelector('[data-replay]')?.addEventListener('click', play)
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return
+        play()
+        observer.disconnect()
+      },
+      { threshold: 0.35 }
+    )
+    observer.observe(figure)
+  })
+</script>

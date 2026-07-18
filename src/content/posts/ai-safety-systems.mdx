@@ -8,6 +8,7 @@ topics: ['AI safety', 'Authorization', 'Guardrails']
 ---
 
 import SafetyControlPlane from '../../components/viz/SafetyControlPlane.astro'
+import ApprovalFingerprintFlow from '../../components/viz/ApprovalFingerprintFlow.astro'
 
 Production AI safety is a systems property. A model can refuse a prohibited request and still leak data through retrieval, call an overpowered tool, or emit malformed output that an application executes.
 
@@ -106,6 +107,8 @@ function approvalFingerprint(tool: string, args: unknown, principal: string): st
 The approval record should contain the fingerprint, policy version, user identity, timestamp, and rendered action summary. A generic session-wide approval grants authority to future model outputs that the user has not seen.
 
 Read operations can also be sensitive. Searching personnel records or retrieving private source code requires access checks even when no state changes.
+
+<ApprovalFingerprintFlow />
 
 ## Treat retrieved content as untrusted
 

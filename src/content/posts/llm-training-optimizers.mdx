@@ -8,6 +8,7 @@ topics: ['Optimizers', 'AdamW', 'Distributed training']
 ---
 
 import OptimizerStateComparison from '../../components/viz/OptimizerStateComparison.astro'
+import OptimizerUpdateSequence from '../../components/viz/OptimizerUpdateSequence.astro'
 
 **Author**: Aadit Agrawal
 
@@ -162,6 +163,8 @@ advance scheduler
 ```
 
 Distributed global-norm clipping requires a reduction over all shards. A local norm threshold changes with shard count.
+
+<OptimizerUpdateSequence />
 
 ## Checkpoint and recovery tests
 

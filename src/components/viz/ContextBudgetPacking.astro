@@ -1,0 +1,216 @@
+<figure class="context-viz" aria-labelledby="context-title">
+  <figcaption id="context-title">
+    Context assembly spends a finite budget on distinct evidence
+  </figcaption>
+  <div
+    class="packing"
+    role="img"
+    aria-label="Candidate passages selected, deduplicated, and packed"
+  >
+    <section class="candidates">
+      <h3>ranked candidates</h3>
+      <div><b>A1</b><span>billing policy</span></div>
+      <div><b>A2</b><span>near duplicate of A1</span></div>
+      <div><b>B1</b><span>refund exception</span></div>
+      <div><b>C1</b><span>account evidence</span></div>
+    </section>
+    <div class="decision" aria-hidden="true">
+      <span>select</span>
+      <span class="skip">skip duplicate</span>
+      <span>select</span>
+      <span>select</span>
+    </div>
+    <section class="budget">
+      <h3>context budget</h3>
+      <div class="packed packed-a"><b>A1</b><span>policy</span></div>
+      <div class="packed packed-b"><b>B1</b><span>exception</span></div>
+      <div class="packed packed-c"><b>C1</b><span>evidence</span></div>
+      <div class="remaining"><span>reserved for answer</span></div>
+    </section>
+  </div>
+  <p>
+    Labels and proportions are illustrative. Deduplication prevents one source from consuming the
+    budget with repeated evidence.
+  </p>
+</figure>
+
+<script>
+  function initializeContextPacking() {
+    if (!('IntersectionObserver' in window)) return
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    document.querySelectorAll<HTMLElement>('.context-viz').forEach((figure) => {
+      if (figure.dataset.motionReady) return
+      figure.dataset.motionReady = 'true'
+      figure.classList.add('can-animate')
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          if (!entry?.isIntersecting) return
+          figure.classList.add('is-visible')
+          observer.disconnect()
+        },
+        { threshold: 0.2 }
+      )
+      observer.observe(figure)
+    })
+  }
+
+  initializeContextPacking()
+  document.addEventListener('astro:page-load', initializeContextPacking)
+</script>
+
+<style>
+  .context-viz {
+    margin: 2rem 0;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    background: var(--code-bg);
+  }
+
+  figcaption {
+    margin-bottom: 0.75rem;
+    font: 600 0.8125rem/1.45 var(--mono);
+  }
+
+  .packing {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 5.5rem minmax(0, 1fr);
+    gap: 0.5rem;
+  }
+
+  h3 {
+    margin: 0 0 0.45rem;
+    color: var(--text-secondary);
+    font: 600 0.6875rem/1.4 var(--mono);
+    text-transform: uppercase;
+  }
+
+  .candidates,
+  .budget {
+    min-width: 0;
+  }
+
+  .candidates div,
+  .budget > div {
+    display: flex;
+    gap: 0.45rem;
+    align-items: center;
+    min-height: 2.25rem;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    font-size: 0.6875rem;
+  }
+
+  .candidates div + div,
+  .budget > div + div {
+    border-top: 0;
+  }
+
+  b {
+    flex: 0 0 auto;
+    font: 600 0.6875rem/1 var(--mono);
+  }
+
+  .candidates span,
+  .budget span {
+    min-width: 0;
+    color: var(--text-secondary);
+    line-height: 1.35;
+  }
+
+  .decision {
+    display: grid;
+    grid-template-rows: 1.75rem repeat(4, 2.25rem);
+    align-items: center;
+    color: var(--text-tertiary);
+    font: 0.625rem/1.25 var(--mono);
+    text-align: center;
+  }
+
+  .decision:before {
+    content: '';
+  }
+
+  .decision span:after {
+    content: ' →';
+  }
+
+  .decision .skip {
+    text-decoration: line-through;
+  }
+
+  .packed {
+    opacity: 1;
+    transform: none;
+  }
+
+  .can-animate:not(.is-visible) .packed {
+    opacity: 0;
+    transform: translateX(-0.6rem);
+  }
+
+  .can-animate.is-visible .packed {
+    animation: pack-context 260ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+
+  .packed-a {
+    animation-delay: 220ms;
+  }
+
+  .packed-b {
+    animation-delay: 520ms;
+  }
+
+  .packed-c {
+    animation-delay: 820ms;
+  }
+
+  .remaining {
+    border-style: dashed !important;
+  }
+
+  p {
+    margin: 0.75rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+
+  @keyframes pack-context {
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @media (max-width: 500px) {
+    .packing {
+      grid-template-columns: 1fr;
+    }
+
+    .decision {
+      display: flex;
+      justify-content: space-around;
+      padding: 0.25rem 0;
+    }
+
+    .decision:before {
+      display: none;
+    }
+
+    .decision span:after {
+      content: ' ↓';
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .packed,
+    .can-animate:not(.is-visible) .packed,
+    .can-animate.is-visible .packed {
+      opacity: 1;
+      transform: none;
+      animation: none;
+    }
+  }
+</style>
