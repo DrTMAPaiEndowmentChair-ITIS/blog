@@ -11,7 +11,7 @@ const pages = Object.fromEntries(
   collectionEntries.map(({ id, data }) => [id.replace(/\.(md|mdx)$/, ''), data])
 )
 
-export const { getStaticPaths, GET } = OGImageRoute({
+export const { getStaticPaths, GET } = await OGImageRoute({
   param: 'route',
   pages,
   getImageOptions: (_path, page) => ({
@@ -43,7 +43,7 @@ export const { getStaticPaths, GET } = OGImageRoute({
     },
     fonts: [
       'https://cdn.jsdelivr.net/npm/font-pingfang-sc-font-weight-improved@latest/PingFangSC-Medium.woff2',
-      'https://cdn.jsdelivr.net/npm/font-pingfang-sc-font-weight-improved@latest/PingFangSC-Semibold.woff2',
+      'https://cdn.jsdelivr.net/npm/font-pingfang-sc-font-weight-improved@latest/PingFangSC-Semibold.woff2'
     ]
   })
 })
