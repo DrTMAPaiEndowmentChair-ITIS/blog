@@ -1,0 +1,144 @@
+---
+title: 'Scaling Laws: What the Curves Predict and What They Hide'
+pubDate: 2026-07-10
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Read language-model scaling laws as conditional empirical models across abundant-data, compute-optimal, and data-constrained regimes.'
+topics: ['Scaling laws', 'Pretraining', 'Compute optimality', 'Data']
+---
+
+import ScalingLawRegimes from '../../components/viz/ScalingLawRegimes.astro'
+
+Scaling laws compress many training runs into a small equation. They are useful because a fitted curve can predict loss at an untested scale and guide the allocation of a fixed training budget. They are easy to misuse because every curve is conditional on a model family, data distribution, optimizer, tokenization scheme, and measurement range.
+
+The right reading is not “bigger models follow a universal law.” It is:
+
+> Within a measured regime, a chosen metric often changes smoothly enough with scale to support extrapolation.
+
+<ScalingLawRegimes />
+
+## The basic power-law model
+
+Kaplan and collaborators measured cross-entropy loss while varying parameter count, dataset size, and training compute. They found smooth power-law relationships across their experimental range.[^1]
+
+A simplified model-size fit is:
+
+$$
+L(N)=L_\infty+\frac{A}{N^\alpha}
+$$
+
+$N$ is parameter count, $L_\infty$ is an irreducible-loss term for the data distribution, and $A$ and $\alpha$ are fitted constants. Similar forms can be written for data size $D$ or training compute $C$.
+
+The equation describes diminishing returns. Each multiplicative increase in the resource reduces the reducible part of the loss by a fixed factor. The exponent controls the slope on a log-log plot.
+
+Three details matter:
+
+- The fitted constants belong to the experimental setup. They are not architectural constants.
+- Cross-entropy loss can improve smoothly while a downstream capability changes unevenly.
+- Extrapolation uncertainty grows outside the observed scale and data distribution.
+
+A curve is useful only with its fitting range, residuals, and held-out prediction error.
+
+## Compute allocation changed after Chinchilla
+
+Training compute can be spent on more parameters, more tokens, or both. A model with many parameters and too few training tokens may sit above the best achievable loss for its compute budget.
+
+The Chinchilla study trained a large sweep of models and found a different compute-optimal allocation from the earlier Kaplan prescription. Its fitted result called for scaling model size and training tokens together under the studied setup.[^2] The practical shift was from “make the model larger and stop early” toward “train a smaller model on more data” for a fixed budget.
+
+A common joint form is:
+
+$$
+L(N,D)=L_\infty+\frac{A}{N^\alpha}+\frac{B}{D^\beta}
+$$
+
+The parameter-limited term falls with $N$. The data-limited term falls with $D$. Compute optimality chooses a point on the budget constraint where spending more on either side would create a larger penalty on the other.
+
+This is an allocation result, not a law that every deployed model should use the compute-optimal point. A serving-heavy product may prefer fewer parameters because inference cost is paid repeatedly. A research model may accept a larger serving cost to reduce pretraining time. A model intended for continued training may deliberately stop before the static optimum.
+
+## Data quality moves the curve
+
+Token count treats every token as interchangeable. Training does not.
+
+Deduplication, domain mixture, code proportion, language coverage, and filtering change the mapping from raw tokens to validation loss. DeepSeek's scaling experiments reported that fitted laws differed across datasets, warning against transferring a curve without checking the data distribution.[^3]
+
+Data quality creates two distinct questions:
+
+1. How does loss scale when the sampling distribution is fixed?
+2. How should the sampling distribution change as the budget grows?
+
+The first supports a clean fit. The second is the real dataset-design problem. If a larger run consumes lower-quality tail data, the original curve may overpredict improvement. If curation improves with scale, it may underpredict it.
+
+A scaling experiment should therefore record:
+
+- unique and repeated token counts
+- mixture weights by source and domain
+- deduplication policy
+- tokenizer and context length
+- optimizer and learning-rate schedule
+- training loss and several held-out distributions
+
+Without those fields, reproducing the curve is harder than reproducing the equation.
+
+## Repeated data defines another regime
+
+Abundant-data scaling assumes the next training token can be drawn from a large supply of useful, mostly unique text. That assumption becomes weaker when compute grows faster than the stock of high-quality data.
+
+Muennighoff and collaborators studied repeated-data training and found that a limited amount of repetition could retain much of the value of unique data in their experiments, while additional repetition eventually produced declining returns.[^4] Their scaling law adds a term for the reduced value of repeated tokens.
+
+A 2026 preprint proposes SoftQ, a coupled model of parameter count and data size for repeated-data training, arguing that the additive Chinchilla form can be misspecified in this regime.[^5] This is a recent research proposal, not a settled replacement for compute-optimal scaling.
+
+The conceptual point is durable: once examples repeat, model size and data size can interact. A larger model may memorize repeated data differently from a smaller model, so independent parameter and data terms can miss structure in the observations.
+
+## Downstream performance is not one curve
+
+Pretraining loss averages prediction error across tokens. A benchmark measures a narrower behavior after prompting, post-training, tool use, or sampling.
+
+Suppose two checkpoints have nearly equal validation loss. They can still differ on:
+
+- rare facts
+- long-horizon reasoning
+- code execution
+- calibration
+- multilingual performance
+- robustness to prompt format
+
+The relationship between loss and a downstream metric can also change when the benchmark saturates or when post-training contributes most of the measured capability.
+
+Use a hierarchy of forecasts:
+
+| Forecast         | Strongest evidence                                       |
+| ---------------- | -------------------------------------------------------- |
+| Pretraining loss | Dense checkpoint curves on held-out text                 |
+| Domain loss      | Curves on a stable domain-specific corpus                |
+| Benchmark score  | Repeated evaluations across checkpoints and scales       |
+| Product quality  | Task-specific traffic, tools, latency, and post-training |
+
+Each step adds variables not captured by the pretraining curve.
+
+## Scaling laws are decision tools
+
+A good scaling study runs before the largest training job, not after it. The workflow is:
+
+1. Train a matrix of smaller models across parameter and token budgets.
+2. Hold architecture, data policy, and optimization choices stable enough to isolate scale.
+3. Fit competing functional forms.
+4. Reserve some runs as out-of-sample tests.
+5. inspect residuals by model size, token budget, and domain.
+6. propagate fit uncertainty into the large-run forecast.
+7. rerun the fit when the architecture or data regime changes.
+
+The fitted optimum should be treated as a region, not a single sacred coordinate. Measurement noise, hardware constraints, checkpoint reuse, and serving economics can make nearby allocations operationally better.
+
+The strongest scaling-law claim is modest: a family of systems exhibited a predictable relationship over a measured range. That is enough to save large amounts of experimental compute. It is not enough to infer that one curve governs new architectures, repeated data, post-training, test-time reasoning, and user value.
+
+## References
+
+[^1]: Jared Kaplan et al., "Scaling Laws for Neural Language Models," arXiv, 2020. [https://arxiv.org/abs/2001.08361](https://arxiv.org/abs/2001.08361)
+
+[^2]: Jordan Hoffmann et al., "Training Compute-Optimal Large Language Models," NeurIPS, 2022. [https://arxiv.org/abs/2203.15556](https://arxiv.org/abs/2203.15556)
+
+[^3]: DeepSeek-AI et al., "DeepSeek LLM: Scaling Open-Source Language Models with Longtermism," arXiv, 2024. [https://arxiv.org/abs/2401.02954](https://arxiv.org/abs/2401.02954)
+
+[^4]: Niklas Muennighoff et al., "Scaling Data-Constrained Language Models," NeurIPS, 2023. [https://arxiv.org/abs/2305.16264](https://arxiv.org/abs/2305.16264)
+
+[^5]: Zhiwei Xu et al., "Data-Constrained Language Model Pretraining: Improved Regularization and Scaling Laws," arXiv, 2026. [https://arxiv.org/abs/2606.06888](https://arxiv.org/abs/2606.06888)

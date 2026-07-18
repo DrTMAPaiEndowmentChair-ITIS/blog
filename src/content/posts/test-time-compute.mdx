@@ -1,0 +1,162 @@
+---
+title: 'Test-Time Compute: Search, Verification, and Stopping'
+pubDate: 2026-07-15
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: 'Understand inference-time scaling as a budget allocation problem across candidate generation, verification, and adaptive stopping.'
+topics: ['Test-time compute', 'Reasoning', 'Verifiers', 'Inference']
+---
+
+import TestTimeComputeSearch from '../../components/viz/TestTimeComputeSearch.astro'
+
+Pretraining spends compute once to change model weights. Test-time compute spends compute per problem to search for a better answer without changing the base checkpoint.
+
+That extra compute can take several forms: a longer internal trace, parallel samples, iterative revisions, tree search, tool calls, or verifier passes. Counting generated tokens alone combines mechanisms with different costs and failure modes.
+
+The central design question is:
+
+> Given a fixed inference budget, which candidate should receive the next unit of compute?
+
+<TestTimeComputeSearch />
+
+## Parallel sampling estimates answer mass
+
+Self-consistency samples several reasoning paths and selects the answer supported by the largest share of paths.[^1] It replaces a single greedy trajectory with an empirical estimate:
+
+$$
+\hat p(a\mid x)=\frac{1}{K}\sum_{k=1}^{K}
+\mathbf 1[f(y_k)=a]
+$$
+
+$y_k$ is a sampled reasoning path and $f(y_k)$ extracts its final answer. The method works when diverse valid paths converge on the same answer more often than invalid paths do.
+
+It can fail when:
+
+- the model repeats the same misconception across samples
+- equivalent answers are normalized inconsistently
+- an open-ended task has no canonical answer to vote on
+- sampling temperature creates superficial variety without different reasoning
+- the correct path is rare but recognizable by a stronger verifier
+
+Majority vote is a verifier built from agreement. It does not inspect whether any path is logically valid.
+
+## Verifiers turn samples into search
+
+A verifier assigns a score to a complete answer or an intermediate state. Outcome reward models score the result. Process reward models score steps along the path.
+
+The PRM800K work compared outcome and process supervision on mathematical problem solving and found stronger solution selection from process supervision in its evaluated setting.[^2] A dense process score allows search to stop extending a branch after an early error instead of paying to finish it.
+
+For a partial trajectory $s_t$, a search policy can rank expansions with:
+
+$$
+\operatorname{priority}(s_t)
+=
+\hat V(s_t)
+-\lambda\,\operatorname{cost}(s_t)
++\eta\,\operatorname{uncertainty}(s_t)
+$$
+
+$\hat V$ is the verifier's predicted value. The cost term penalizes expensive branches. The uncertainty term can preserve exploration when the verifier is unsure. The coefficients are deployment choices, not universal constants.
+
+Verifier quality sets the ceiling. If the verifier rewards polished invalid reasoning, more search directs compute toward the wrong region. The generator and verifier can also share correlated errors when they come from similar training data.
+
+## Difficulty should control the budget
+
+Snell and collaborators compared test-time strategies under fixed compute and found that the best allocation depended on problem difficulty and base-model capability.[^3] Their compute-optimal policy used prompt difficulty to choose how much inference compute to spend, improving efficiency over a fixed best-of-$N$ baseline in the reported experiments.
+
+The result rules out a common deployment policy: give every request the same long reasoning budget.
+
+A practical router can use:
+
+- confidence or entropy from an initial pass
+- disagreement among a small pilot sample
+- verifier margin between leading candidates
+- task class and known evaluation history
+- elapsed latency and remaining service budget
+- whether an external tool can check the result
+
+Easy requests should exit early. Difficult but tractable requests may benefit from branching. Requests outside the verifier's domain should not receive more compute merely because confidence is low.
+
+## Sequential reasoning and parallel search are different
+
+A long chain of thought performs serial computation. Best-of-$N$ performs parallel exploration. Tree search mixes both.
+
+| Strategy         | Main benefit                           | Main bottleneck                        |
+| ---------------- | -------------------------------------- | -------------------------------------- |
+| Longer trace     | More serial intermediate computation   | Drift and overthinking                 |
+| Parallel samples | Diverse candidate paths                | Repeated shared errors                 |
+| Revision         | Error correction after critique        | Self-critique may preserve the premise |
+| Tree search      | Reallocate compute among partial paths | Verifier calibration                   |
+| Tool use         | External state or exact checks         | Tool latency and integration errors    |
+
+The strategies are not interchangeable at equal token counts. Parallel sampling can batch well on accelerators. A serial trace adds latency token by token. Tool calls may dominate both.
+
+Measure wall-clock latency, accelerator occupancy, and verifier cost alongside generated tokens.
+
+## More reasoning can reverse a correct answer
+
+Inference scaling has diminishing returns. A model can find a correct answer, continue exploring, and replace it with a wrong one.
+
+Recent work on overthinking separates extra length from useful computation. A Google DeepMind study of open reasoning models identified over-verification and over-exploration as recurring structures in long traces on simple problems.[^4] Another 2026 preprint reports that optimal reasoning length varies with problem difficulty and that added reasoning can abandon an earlier correct answer.[^5]
+
+This makes stopping a first-class component:
+
+```text
+generate a small candidate set
+score candidates and estimate uncertainty
+if one candidate is verified with adequate margin:
+    stop
+if promising branches remain:
+    allocate another search round
+otherwise:
+    abstain, escalate, or use an external checker
+```
+
+The stop condition should use calibrated evidence. A high self-reported confidence is weak if the model is miscalibrated on that task class.
+
+## Test-time scaling can expose reward hacking
+
+Search optimizes the verifier more aggressively than one-shot decoding. That makes test-time compute an online form of proxy optimization.
+
+Typical failures include:
+
+**Verifier exploitation:** candidates learn patterns that score well without solving the task.
+
+**Loss of diversity:** early verifier preferences collapse the search around one flawed approach.
+
+**Answer leakage:** a benchmark-specific checker exposes information unavailable in deployment.
+
+**Cost blindness:** marginal accuracy gains consume a service budget that would help more on another request.
+
+**Unfaithful traces:** the visible rationale satisfies a process rubric while the answer is driven by another internal computation.
+
+Evaluate the complete generator-search-verifier system on adversarial cases. Evaluating the base model alone misses the mechanism used at inference.
+
+## A deployment metric stack
+
+Accuracy is necessary but incomplete. A test-time compute service should report:
+
+- quality as a function of total inference cost
+- latency distributions by task class
+- quality at matched wall-clock latency
+- verifier calibration and selection regret
+- pass rate of external checks
+- candidate diversity before and after pruning
+- fraction of requests stopped at each budget tier
+- cases where more compute changed a correct answer to an incorrect one
+
+The useful object is a compute-quality frontier. A policy dominates another when it reaches equal or better quality for the same deployment cost across the relevant request distribution.
+
+Test-time compute is not a request to “think longer.” It is an inference algorithm that decides what to generate, how to judge it, where to branch, and when to stop. Extra compute becomes useful only when those decisions are more reliable than the candidate errors they are meant to correct.
+
+## References
+
+[^1]: Xuezhi Wang et al., "Self-Consistency Improves Chain of Thought Reasoning in Language Models," ICLR, 2023. [https://arxiv.org/abs/2203.11171](https://arxiv.org/abs/2203.11171)
+
+[^2]: Hunter Lightman et al., "Let's Verify Step by Step," ICLR, 2024. [https://arxiv.org/abs/2305.20050](https://arxiv.org/abs/2305.20050)
+
+[^3]: Charlie Snell et al., "Scaling LLM Test-Time Compute Optimally can be More Effective than Scaling Model Parameters," ICLR, 2025. [https://arxiv.org/abs/2408.03314](https://arxiv.org/abs/2408.03314)
+
+[^4]: Xinliang Frederick Zhang et al., "Towards Structural Understanding of LLM Overthinking," ACL, 2026. [https://deepmind.google/research/publications/203490/](https://deepmind.google/research/publications/203490/)
+
+[^5]: Shu Zhou et al., "When More Thinking Hurts: Overthinking in LLM Test-Time Compute Scaling," arXiv, 2026. [https://arxiv.org/abs/2604.10739](https://arxiv.org/abs/2604.10739)

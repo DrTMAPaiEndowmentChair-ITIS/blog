@@ -1,0 +1,104 @@
+<figure class="viz" aria-labelledby="toolchain-title">
+  <figcaption id="toolchain-title">
+    Frontier interpretability works at four different levels
+  </figcaption>
+
+  <div class="levels">
+    <section>
+      <span>Features</span>
+      <strong>Sparse autoencoders</strong>
+      <p>Decompose activations into reusable directions.</p>
+      <small>Question: what is represented?</small>
+    </section>
+    <section>
+      <span>Circuits</span>
+      <strong>Transcoders and attribution graphs</strong>
+      <p>Trace how features contribute to a chosen output.</p>
+      <small>Question: how is the output computed?</small>
+    </section>
+    <section>
+      <span>Reports</span>
+      <strong>Natural-language autoencoders</strong>
+      <p>Translate an activation through a text bottleneck.</p>
+      <small>Question: what can a reader inspect quickly?</small>
+    </section>
+    <section>
+      <span>Workspace</span>
+      <strong>Jacobian lens</strong>
+      <p>Read and edit concepts poised to affect future outputs.</p>
+      <small>Question: what is available for flexible reasoning?</small>
+    </section>
+  </div>
+
+  <div class="rule">
+    A label becomes stronger evidence when a causal intervention changes the predicted behavior.
+  </div>
+</figure>
+
+<style>
+  .viz {
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    margin-bottom: 1.2rem;
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .levels {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+  section {
+    display: grid;
+    align-content: start;
+    gap: 0.6rem;
+    padding: 0.95rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  section span,
+  small,
+  .rule {
+    font: 0.7rem/1.5 var(--mono);
+  }
+  section span {
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  strong {
+    font: 600 0.82rem/1.35 var(--sans);
+  }
+  p {
+    margin: 0;
+    color: var(--text-secondary);
+    font: 0.76rem/1.5 var(--mono);
+  }
+  small {
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-tertiary);
+  }
+  .rule {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+  @media (max-width: 780px) {
+    .levels {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+  @media (max-width: 480px) {
+    .levels {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

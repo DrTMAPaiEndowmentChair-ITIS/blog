@@ -1,0 +1,147 @@
+<figure class="viz" aria-labelledby="test-time-title">
+  <figcaption id="test-time-title">
+    Test-time compute needs generation, verification, and allocation
+  </figcaption>
+
+  <div class="pipeline">
+    <section class="prompt">
+      <small>problem</small>
+      <strong>One prompt</strong>
+    </section>
+    <span aria-hidden="true">→</span>
+    <section class="search">
+      <small>generator</small>
+      <div class="branches" aria-label="Four candidate reasoning paths">
+        <i></i><i></i><i></i><i></i>
+      </div>
+      <strong>Candidate paths</strong>
+    </section>
+    <span aria-hidden="true">→</span>
+    <section class="verify">
+      <small>verifier</small>
+      <div class="scores" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <strong>Score steps or outcomes</strong>
+    </section>
+    <span aria-hidden="true">→</span>
+    <section class="answer">
+      <small>allocator</small>
+      <strong>Stop, expand, or select</strong>
+    </section>
+  </div>
+
+  <p>
+    More tokens help only when the extra search is directed toward useful paths and the verifier can
+    distinguish them.
+  </p>
+</figure>
+
+<style>
+  .viz {
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    margin-bottom: 1.2rem;
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .pipeline {
+    display: grid;
+    grid-template-columns: 0.8fr auto 1.3fr auto 1.3fr auto 0.9fr;
+    align-items: center;
+    gap: 0.55rem;
+  }
+  section {
+    display: grid;
+    min-height: 7.5rem;
+    align-content: center;
+    gap: 0.75rem;
+    padding: 0.9rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  small {
+    color: var(--text-tertiary);
+    font: 0.7rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  strong {
+    font: 600 0.82rem/1.35 var(--sans);
+  }
+  .branches,
+  .scores {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    align-items: end;
+    gap: 0.3rem;
+    height: 2.8rem;
+  }
+  .branches i {
+    display: block;
+    height: var(--h, 100%);
+    border-left: 1px solid var(--text-secondary);
+    transform: skewX(var(--skew, 0deg));
+    transform-origin: bottom;
+  }
+  .branches i:nth-child(1) {
+    --h: 65%;
+    --skew: -18deg;
+  }
+  .branches i:nth-child(2) {
+    --h: 88%;
+    --skew: -7deg;
+  }
+  .branches i:nth-child(3) {
+    --h: 72%;
+    --skew: 7deg;
+  }
+  .branches i:nth-child(4) {
+    --h: 96%;
+    --skew: 18deg;
+  }
+  .scores i {
+    display: block;
+    height: var(--score);
+    background: var(--border);
+  }
+  .scores i:nth-child(1) {
+    --score: 35%;
+  }
+  .scores i:nth-child(2) {
+    --score: 82%;
+    background: var(--text-secondary);
+  }
+  .scores i:nth-child(3) {
+    --score: 48%;
+  }
+  .scores i:nth-child(4) {
+    --score: 58%;
+  }
+  .pipeline > span {
+    color: var(--text-tertiary);
+  }
+  p {
+    margin: 0.9rem 0 0;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-secondary);
+    font: 0.74rem/1.55 var(--mono);
+  }
+  @media (max-width: 760px) {
+    .pipeline {
+      grid-template-columns: 1fr;
+    }
+    .pipeline > span {
+      justify-self: center;
+      transform: rotate(90deg);
+    }
+    section {
+      min-height: auto;
+    }
+  }
+</style>

@@ -1,0 +1,167 @@
+---
+title: 'Frontier Mechanistic Interpretability: From Features to Causal Audits'
+pubDate: 2026-06-30
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Compare sparse feature dictionaries, cross-layer circuit tracing, natural-language activation reports, and causal interventions.'
+topics: ['Mechanistic interpretability', 'Sparse autoencoders', 'Circuit tracing', 'Model auditing']
+---
+
+import InterpretabilityToolchain from '../../components/viz/InterpretabilityToolchain.astro'
+
+Mechanistic interpretability tries to explain model behavior in terms of internal computation. The frontier has moved beyond finding a neuron that correlates with a concept. Current methods decompose activations into features, trace interactions between those features, translate internal states into text, and intervene to test causal claims.
+
+These tools should not be ranked on one axis. They expose different objects.
+
+<InterpretabilityToolchain />
+
+## Sparse autoencoders build feature dictionaries
+
+Individual neurons are often polysemantic: one neuron responds to several unrelated patterns. The superposition hypothesis proposes that models encode more features than there are activation dimensions by placing sparse features in overlapping directions.
+
+A sparse autoencoder learns a dictionary that reconstructs an activation $x$ from a sparse code $z$:
+
+$$
+z=\operatorname{ReLU}(W_{\mathrm{enc}}x+b_{\mathrm{enc}})
+$$
+
+$$
+\hat x=W_{\mathrm{dec}}z+b_{\mathrm{dec}}
+$$
+
+Training balances reconstruction with sparsity:
+
+$$
+\mathcal L=
+\lVert x-\hat x\rVert_2^2
++\lambda\lVert z\rVert_1
+$$
+
+Anthropic's early dictionary-learning work extracted more monosemantic features than the source neurons from a small transformer.[^1] The later Scaling Monosemanticity project trained sparse autoencoders on Claude 3 Sonnet and demonstrated that the approach could recover interpretable feature directions from a production-scale model.[^2]
+
+A feature label usually comes from examples that activate it, tokens it promotes, or an automated explanation. That label remains a hypothesis. Similar-looking features can differ in their downstream effects, and a single feature can have behavior that its top activating examples do not reveal.
+
+Useful SAE evaluation separates:
+
+- reconstruction error
+- sparsity
+- feature interpretability
+- feature completeness for the target behavior
+- causal effect under steering or ablation
+
+A dictionary can reconstruct activations well while dividing concepts in a way that is awkward for human analysis.
+
+## Cross-layer transcoders approximate computation
+
+An SAE describes an activation at one point. A transcoder predicts the output of a model component from its input using sparse features. A cross-layer transcoder extends the idea across several layers, letting features represent computations whose natural span does not fit one layer.
+
+Anthropic's circuit-tracing work replaces opaque model components with cross-layer transcoders, then constructs attribution graphs for a specific prompt and output.[^3] Nodes are interpretable features. Edges estimate how one feature contributes to another feature or to the selected output logit.
+
+An attribution graph can reveal several paths that converge on one token:
+
+```text
+prompt tokens
+  -> contextual features
+  -> intermediate computation features
+  -> output-promoting features
+  -> selected token
+```
+
+The graph is local to a prompt and output. It is not a complete schematic of the model. The replacement model also introduces approximation error, so an attractive graph can omit computation carried by unexplained variance.
+
+Validation requires interventions. Circuit tracing uses feature ablation, activation patching, and graph-based predictions to test whether a proposed path affects the output as expected.[^3]
+
+## Attention requires feature-level analysis too
+
+Early attribution graphs focused on multilayer perceptron computation. Attention adds conditional information movement between token positions.
+
+Anthropic's 2025 attention work decomposes query-key interactions in terms of feature pairs and integrates them into attribution graphs.[^4] This helps answer not only which source position received attention, but why a feature at the destination selected a feature at the source.
+
+That distinction matters. An attention pattern is a routing map, not an explanation by itself. A head attending to a name token could copy the name, suppress it, compare it, or use another feature stored at the same position.
+
+A stronger analysis identifies:
+
+1. the destination feature forming the query
+2. the source feature forming the key
+3. the information written through the value and output path
+4. the downstream features that consume the result
+
+The explanation becomes mechanistic when it accounts for both routing and content.
+
+## Natural-language autoencoders trade structure for readability
+
+Natural Language Autoencoders place a text bottleneck between an activation and its reconstruction.[^5] An activation verbalizer maps the target model's activation to a natural-language explanation. An activation reconstructor maps that explanation back into activation space. The pair is trained to reconstruct activations.
+
+The training objective does not directly require explanations to be human-readable or faithful. The text is useful because it must preserve information needed for reconstruction, and the paper evaluates whether that information helps with downstream analysis.[^5]
+
+NLAs offer several practical advantages:
+
+- explanations can express relations that a short feature label cannot
+- auditors can search long trajectories without inspecting every feature
+- an edited explanation can be reconstructed into an activation intervention
+- the same interface can support hypothesis generation and causal testing
+
+The method also has a distinct risk: a fluent explanation can look more certain than the evidence supports. Reconstruction proves that the text transmits some activation information. It does not prove that every phrase is a faithful semantic description.
+
+The NLA paper validates case studies with independent evidence such as prompt variations, training-data inspection, other interpretability methods, and interventions.[^5] That triangulation should be treated as part of the method, not optional polish.
+
+## Jacobian lenses expose verbalizable workspace content
+
+The Jacobian lens asks which internal directions are disposed to affect future verbal output. Anthropic's J-space work finds that a sparse set of these directions supports report, directed control, multi-step reasoning, and flexible reuse.[^6]
+
+This tool differs from an SAE:
+
+| Method                       | Dictionary source                    | Primary object                    |
+| ---------------------------- | ------------------------------------ | --------------------------------- |
+| Sparse autoencoder           | Learned reconstruction features      | Sparse activation content         |
+| Cross-layer transcoder       | Learned component approximation      | Feature-to-feature computation    |
+| Natural-language autoencoder | Learned text bottleneck              | Free-form activation report       |
+| Jacobian lens                | Average causal map to future outputs | Verbalizable workspace directions |
+
+The methods can support one another. SAE features with strong J-space alignment may identify workspace content more precisely than single-token J-lens vectors. J-lens readouts can label what a transcoder feature reads and writes. NLA explanations can propose concepts for targeted feature or lens interventions.
+
+## Auditing needs convergence across methods
+
+No single interpretability result should carry a safety decision by itself. A robust audit progresses from broad detection to narrow causal tests:
+
+1. Use behavioral evaluations to find a suspicious trajectory.
+2. Use SAE features or natural-language explanations to generate hypotheses.
+3. Use circuit graphs to locate a candidate mechanism.
+4. Use a J-lens or feature probe to test the mechanism across prompts.
+5. Ablate, patch, or steer the representation.
+6. Measure predicted behavior and unrelated capability changes.
+7. inspect training data or model diffs for an independent explanation.
+
+Agreement across methods is useful only when their errors are not identical. Two tools trained on the same activation data and scored by the same model can share blind spots.
+
+## Open problems at the frontier
+
+The current toolchain still leaves hard gaps.
+
+**Completeness:** A readable circuit can explain part of an output while missing another causal path.
+
+**Scalability:** Long agent trajectories produce many activations and candidate features.
+
+**Relational structure:** Sparse feature lists often omit how concepts bind together.
+
+**Adversarial robustness:** A model trained against a monitor may route cognition through representations the monitor does not capture.
+
+**Faithfulness:** Natural-language explanations and visible reasoning can describe a plausible process without being the cause.
+
+**Automation:** Model-based feature labels and audit agents increase coverage but introduce another learned evaluator.
+
+The field's strongest recent move is methodological. Researchers increasingly pair a human-readable interpretation with an intervention that should change behavior if the interpretation is right. The goal is not a compelling story about an activation. It is a model of computation that survives causal tests and predicts failures on new inputs.
+
+## References
+
+[^1]: Trenton Bricken et al., "Towards Monosemanticity: Decomposing Language Models With Dictionary Learning," Transformer Circuits, 2023. [https://transformer-circuits.pub/2023/monosemantic-features/index.html](https://transformer-circuits.pub/2023/monosemantic-features/index.html)
+
+[^2]: Adly Templeton et al., "Scaling Monosemanticity: Extracting Interpretable Features from Claude 3 Sonnet," Transformer Circuits, 2024. [https://transformer-circuits.pub/2024/scaling-monosemanticity/index.html](https://transformer-circuits.pub/2024/scaling-monosemanticity/index.html)
+
+[^3]: Emmanuel Ameisen et al., "Circuit Tracing: Revealing Computational Graphs in Language Models," Transformer Circuits, 2025. [https://transformer-circuits.pub/2025/attribution-graphs/methods.html](https://transformer-circuits.pub/2025/attribution-graphs/methods.html)
+
+[^4]: Harish Kamath et al., "Tracing Attention Computation Through Feature Interactions," Transformer Circuits, 2025. [https://transformer-circuits.pub/2025/attention-qk/index.html](https://transformer-circuits.pub/2025/attention-qk/index.html)
+
+[^5]: Kit Fraser-Taliente et al., "Natural Language Autoencoders Produce Unsupervised Explanations of LLM Activations," Transformer Circuits, 2026. [https://transformer-circuits.pub/2026/nla/index.html](https://transformer-circuits.pub/2026/nla/index.html)
+
+[^6]: Wes Gurnee et al., "Verbalizable Representations Form a Global Workspace in Language Models," Transformer Circuits, 2026. [https://transformer-circuits.pub/2026/workspace/index.html](https://transformer-circuits.pub/2026/workspace/index.html)

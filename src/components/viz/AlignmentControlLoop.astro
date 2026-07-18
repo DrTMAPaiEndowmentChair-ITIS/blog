@@ -1,0 +1,106 @@
+<figure class="viz" aria-labelledby="alignment-loop-title">
+  <figcaption id="alignment-loop-title">
+    Alignment is a control loop, not a single loss function
+  </figcaption>
+
+  <div class="loop">
+    <section>
+      <span>Specify</span>
+      <strong>Write the intended behavior</strong>
+      <small>principles, examples, policies</small>
+    </section>
+    <i aria-hidden="true">→</i>
+    <section>
+      <span>Supervise</span>
+      <strong>Turn intent into a training signal</strong>
+      <small>preferences, critiques, process labels</small>
+    </section>
+    <i aria-hidden="true">→</i>
+    <section>
+      <span>Optimize</span>
+      <strong>Change the model policy</strong>
+      <small>SFT, RL, direct preference losses</small>
+    </section>
+    <i aria-hidden="true">→</i>
+    <section>
+      <span>Audit</span>
+      <strong>Search for hidden failure modes</strong>
+      <small>red teams, model organisms, interventions</small>
+    </section>
+  </div>
+
+  <div class="return">
+    <span>Observed failures revise the specification and supervision</span>
+    <span aria-hidden="true">↶</span>
+  </div>
+</figure>
+
+<style>
+  .viz {
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    margin-bottom: 1.25rem;
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .loop {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+    align-items: stretch;
+    gap: 0.55rem;
+  }
+  section {
+    display: grid;
+    align-content: start;
+    gap: 0.45rem;
+    min-width: 0;
+    padding: 0.9rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  section span,
+  small,
+  .return {
+    font: 0.72rem/1.45 var(--mono);
+  }
+  section span {
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  strong {
+    font: 600 0.82rem/1.35 var(--sans);
+  }
+  small {
+    color: var(--text-secondary);
+  }
+  i {
+    align-self: center;
+    color: var(--text-tertiary);
+    font-style: normal;
+  }
+  .return {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+  @media (max-width: 760px) {
+    .loop {
+      grid-template-columns: 1fr;
+    }
+    i {
+      justify-self: center;
+      transform: rotate(90deg);
+    }
+  }
+</style>

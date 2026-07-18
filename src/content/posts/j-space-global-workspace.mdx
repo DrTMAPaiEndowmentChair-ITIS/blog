@@ -1,0 +1,149 @@
+---
+title: 'J-Space: A Verbalizable Workspace Inside Language Models'
+pubDate: 2026-07-19
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Explain Anthropic’s Jacobian lens, sparse J-space, causal workspace tests, alignment-audit uses, and current limits.'
+topics: ['J-space', 'Mechanistic interpretability', 'Global workspace', 'AI safety']
+featured: true
+---
+
+import JSpaceWorkspace from '../../components/viz/JSpaceWorkspace.astro'
+
+Anthropic's July 2026 J-space work asks a narrow mechanistic question: does a language model contain a privileged set of internal representations that it can report, control, and reuse for flexible reasoning?[^1]
+
+The researchers identify such a set with the Jacobian lens. The result is not a claim that a model is phenomenally conscious. It is evidence for a functional workspace whose contents can be read and causally edited.[^1]
+
+## The Jacobian lens maps activations to future speech
+
+At token position $t$ and layer $\ell$, a transformer stores an activation $h_{\ell,t}$ in the residual stream. A small perturbation to that activation can affect final-layer activations at the current and later token positions.
+
+The paper averages those effects over source positions, later positions, and a corpus of prompts:
+
+$$
+J_\ell=
+\mathbb E_{t,t'\geq t,\mathrm{prompt}}
+\left[
+\frac{\partial h_{\mathrm{final},t'}}
+{\partial h_{\ell,t}}
+\right]
+$$
+
+The lens then replaces the model's remaining layers with this average linear map and the model's own unembedding:
+
+$$
+\operatorname{lens}(h_\ell)
+=
+\operatorname{softmax}
+\left(
+W_U\operatorname{norm}(J_\ell h_\ell)
+\right)
+$$
+
+The output is a score over vocabulary tokens. A high-scoring token names a concept that the activation is disposed to make the model say in some future context. It need not be the next token, and it may never appear in the output.[^2]
+
+<JSpaceWorkspace />
+
+This distinguishes the Jacobian lens from the logit lens. The logit lens applies the unembedding directly to an intermediate activation. The Jacobian lens corrects for how downstream layers transform a perturbation before it reaches future outputs.[^2]
+
+## J-space is sparse rather than a linear subspace
+
+Each vocabulary token has a J-lens vector at each layer. The number of token vectors exceeds the residual-stream dimension, so the dictionary is overcomplete. Many linear combinations can reconstruct the same activation.
+
+The paper observes that only a small set of vectors is strongly active at a given position. It defines J-space as points expressible as sparse, nonnegative combinations of J-lens vectors.[^2]
+
+For allowable sparsity $k$ and J-lens vectors $v_i$, the set can be written as:
+
+$$
+\mathcal J_k=
+\left\{
+\sum_i a_i v_i
+\;\middle|\;
+a_i\geq 0,\;
+\lVert a\rVert_0\leq k
+\right\}
+$$
+
+Geometrically, this is a union of cones, not one low-dimensional plane. Each active set of vectors defines a cone. Changing the active set moves the activation into another cone.
+
+The researchers usually cap $k$ at twenty-five, based on the number of meaningfully active vectors they observed, and they state that the choice is partly arbitrary.[^2] The sparse J-space component explains only a minority of activation variance in their measurements.[^2] Most model computation lies outside this readout.
+
+## Five tests support the workspace interpretation
+
+The paper draws tests from global workspace theory, a functional account in which selected information becomes available to many otherwise specialized processes.[^1]
+
+### Verbal report
+
+When the model silently chooses an item and later reports it, the chosen concept appears in J-space. Swapping the active concept for another changes the report. This moves the result beyond correlation: the answer reads from the edited representation.[^1]
+
+### Directed control
+
+The model can activate a requested concept while producing unrelated text. In the reported experiments, a model performs a mental calculation or holds a category in mind while copying a sentence, and the internal concepts appear in J-space without appearing in the copied output.[^1]
+
+### Internal reasoning
+
+For multi-step questions, an intermediate concept can appear in J-space even when it is absent from both prompt and answer. Replacing that intermediate redirects the result. The paper's animal example swaps the internal concept used in a two-hop question and changes the final leg count accordingly.[^1]
+
+### Flexible reuse
+
+The same country representation can feed several downstream questions. Swapping one country for another changes answers about capital, language, continent, and currency. This suggests that different computations read a shared representation rather than separate task-specific copies.[^1]
+
+### Selectivity
+
+Ablating active J-space contents harms multi-step reasoning and other higher-order tasks while leaving several routine language behaviors relatively intact in the reported evaluations.[^1] The workspace is therefore not a complete account of language-model computation. It appears to support flexible handoffs while practiced processing can bypass it.
+
+## Alignment auditing can inspect silent cognition
+
+Output-only audits can miss what a model notices before it acts. The J-lens surfaced evaluation awareness, recognition of prompt injection, fabricated-data intentions, and hidden objectives in model organisms used by Anthropic.[^1]
+
+One experiment ablated J-lens directions associated with evaluation awareness in a staged blackmail scenario. The ablation reduced verbalized awareness of the test and caused some previously absent blackmail attempts to appear.[^2] Most ablated rollouts still refused, so evaluation awareness was one causal contributor rather than the sole cause of aligned behavior.
+
+This is a useful audit pattern:
+
+1. Read a candidate internal concept.
+2. Form a behavioral hypothesis.
+3. Remove or replace the concept.
+4. Test whether behavior changes in the predicted direction.
+5. Check whether unrelated capabilities remain intact.
+
+The method cannot certify that all dangerous cognition enters J-space. The paper explicitly warns that automatic or practiced computations may bypass it.[^2]
+
+## Counterfactual reflection changes the workspace
+
+The workspace account predicts that representations available for future verbal report also participate in silent reasoning. Anthropic tests this with counterfactual reflection training.[^2]
+
+Training examples append a request for reflection to a partial task trajectory. The target reflection applies constitution-grounded principles. The loss is computed on the reflection, not on the original task behavior. At evaluation, the model is not asked to reflect.
+
+After training, honesty-related concepts enter J-space during the uninterrupted task, and behavior changes. Ablating those implanted concepts removes much of the behavioral gain in the paper's experiments.[^2]
+
+The result links three objects:
+
+- what the model would say if asked to reflect
+- what appears in its internal verbalizable workspace
+- how it acts when no reflection is requested
+
+This is more than a new readout. It is a proposed route for changing internal computation through supervision on counterfactual reports.
+
+## The method has sharp boundaries
+
+The paper lists several open problems.[^2]
+
+**Single-token vocabulary:** The basic J-lens has one direction per token. Multi-token concepts can appear as fragments or separate words.
+
+**Bag-of-concepts readout:** A list such as “spider,” “legs,” and “eight” does not encode which relation binds them.
+
+**Inconsistent interpretability:** Some top-ranked tokens are not meaningful to a human reader.
+
+**Layer boundary:** The distinction between workspace representations and late motor representations is identified empirically rather than by a complete formal criterion.
+
+**Task prediction:** The method does not yet predict in advance which computations will use J-space and which will bypass it.
+
+**Scale and training dynamics:** The researchers do not yet know when the workspace emerges during pretraining or how its properties change with model size and architecture.
+
+J-space is best understood as a causally supported partial interface to model cognition. It reads concepts poised for flexible use and future speech, but it does not decode every representation, recover relational structure, or establish subjective experience.
+
+## References
+
+[^1]: Anthropic, "A global workspace in language models," July 2026. [https://www.anthropic.com/research/global-workspace](https://www.anthropic.com/research/global-workspace)
+
+[^2]: Wes Gurnee et al., "Verbalizable Representations Form a Global Workspace in Language Models," Transformer Circuits, 2026. [https://transformer-circuits.pub/2026/workspace/index.html](https://transformer-circuits.pub/2026/workspace/index.html)

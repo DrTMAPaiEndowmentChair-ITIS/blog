@@ -1,0 +1,151 @@
+<figure class="viz" aria-labelledby="jspace-title">
+  <figcaption id="jspace-title">
+    The J-lens reads a sparse verbalizable component of the residual stream
+  </figcaption>
+
+  <div class="flow">
+    <section>
+      <small>intermediate layer</small>
+      <div class="residual" aria-hidden="true">
+        <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+      </div>
+      <strong>Residual-stream activation</strong>
+    </section>
+    <span aria-hidden="true">→</span>
+    <section>
+      <small>averaged Jacobian</small>
+      <div class="matrix" aria-hidden="true">J<sub>ℓ</sub></div>
+      <strong>Map toward future output effects</strong>
+    </section>
+    <span aria-hidden="true">→</span>
+    <section>
+      <small>sparse readout</small>
+      <div class="tokens">
+        <b>spider</b><b>web</b><b>legs</b>
+      </div>
+      <strong>Active J-space concepts</strong>
+    </section>
+  </div>
+
+  <div class="broadcast">
+    <span>report</span><span>control</span><span>reason</span><span>reuse</span>
+  </div>
+</figure>
+
+<style>
+  .viz {
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    margin-bottom: 1.2rem;
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .flow {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr auto 1fr;
+    align-items: center;
+    gap: 0.7rem;
+  }
+  section {
+    display: grid;
+    min-height: 8rem;
+    align-content: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  small {
+    color: var(--text-tertiary);
+    font: 0.7rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  strong {
+    font: 600 0.82rem/1.35 var(--sans);
+  }
+  .residual {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 0.2rem;
+    height: 2.7rem;
+    align-items: end;
+  }
+  .residual i {
+    height: var(--h);
+    background: var(--border);
+  }
+  .residual i:nth-child(1) {
+    --h: 35%;
+  }
+  .residual i:nth-child(2) {
+    --h: 80%;
+  }
+  .residual i:nth-child(3) {
+    --h: 55%;
+  }
+  .residual i:nth-child(4) {
+    --h: 95%;
+  }
+  .residual i:nth-child(5) {
+    --h: 42%;
+  }
+  .residual i:nth-child(6) {
+    --h: 70%;
+  }
+  .residual i:nth-child(7) {
+    --h: 28%;
+  }
+  .residual i:nth-child(8) {
+    --h: 62%;
+  }
+  .matrix {
+    display: grid;
+    place-items: center;
+    height: 2.7rem;
+    border: 1px solid var(--text-secondary);
+    font: 0.95rem var(--mono);
+  }
+  .tokens {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .tokens b,
+  .broadcast span {
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    font: 0.72rem var(--mono);
+  }
+  .flow > span {
+    color: var(--text-tertiary);
+  }
+  .broadcast {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.55rem;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+    text-align: center;
+  }
+  @media (max-width: 700px) {
+    .flow {
+      grid-template-columns: 1fr;
+    }
+    .flow > span {
+      justify-self: center;
+      transform: rotate(90deg);
+    }
+    .broadcast {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+</style>

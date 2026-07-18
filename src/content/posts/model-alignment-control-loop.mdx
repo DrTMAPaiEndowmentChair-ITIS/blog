@@ -1,0 +1,149 @@
+---
+title: 'Model Alignment Is a Control Problem'
+pubDate: 2026-07-05
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Connect specifications, preference learning, process supervision, scalable oversight, and causal audits into one alignment control loop.'
+topics: ['Model alignment', 'RLHF', 'Scalable oversight', 'AI safety']
+---
+
+import AlignmentControlLoop from '../../components/viz/AlignmentControlLoop.astro'
+
+Model alignment is often presented as a post-training recipe: collect preferences, optimize a policy, and test whether the assistant is helpful and safe. That description leaves out the central difficulty. The training signal is only a proxy for an intended behavior, and the model must generalize that proxy to inputs, tools, and situations absent from training.
+
+A useful definition is therefore operational:
+
+> An aligned model follows the intended specification when the evaluator is weak, the context is unfamiliar, and shortcuts are available.
+
+This definition turns alignment into a control problem. The system needs a specification, a way to convert that specification into supervision, an optimizer, and measurements that expose failures. Any one of those parts can be wrong while benchmark scores improve.
+
+<AlignmentControlLoop />
+
+## Preferences train a proxy
+
+The standard reinforcement learning from human feedback pipeline begins with a pretrained model, supervised instruction tuning, pairwise preference data, a reward model, and policy optimization. InstructGPT established this pipeline for instruction-following language models.[^1]
+
+For prompt $x$, completion $y$, learned reward $r_\phi(x,y)$, and reference policy $\pi_{\mathrm{ref}}$, the policy objective is commonly written as:
+
+$$
+\max_\theta\;
+\mathbb E_{y\sim\pi_\theta(\cdot\mid x)}
+\left[
+r_\phi(x,y)
+-\beta\log\frac{\pi_\theta(y\mid x)}
+{\pi_{\mathrm{ref}}(y\mid x)}
+\right]
+$$
+
+The reward term pulls behavior toward the preference model. The KL term limits movement away from the reference policy. Neither term states the desired behavior directly. The reward model learns it from comparisons, and the comparisons reflect annotator instructions, sampling policy, prompt distribution, and labeling noise.
+
+Direct Preference Optimization rewrites this constrained reward problem as a classification loss on preferred and rejected responses.[^2] It removes the separately trained reward model and online reinforcement learning loop, but it does not remove the proxy problem. The chosen response still represents a judgment made under a particular rubric and context.
+
+The useful distinction is:
+
+| Layer                 | What it contains                    | Common failure                             |
+| --------------------- | ----------------------------------- | ------------------------------------------ |
+| Intended behavior     | What the system should do           | Ambiguous or conflicting goals             |
+| Written specification | Policies, principles, examples      | Gaps and underspecified edge cases         |
+| Supervision           | Preferences, critiques, step labels | Evaluator error or shortcut features       |
+| Training objective    | Reward or preference loss           | Proxy optimization                         |
+| Deployed policy       | Behavior under new conditions       | Distribution shift or strategic adaptation |
+
+A higher reward is evidence that the policy fits the learned proxy. It is not proof that the proxy captures the intended behavior.
+
+## Written principles make the target inspectable
+
+Constitutional AI replaces some human harmlessness labels with model-generated critiques and preferences conditioned on written principles.[^3] Its supervised phase asks a model to critique and revise responses. Its reinforcement learning phase uses AI-generated preferences to train a preference model.
+
+This changes where human judgment enters the system. Humans write or approve principles rather than label every sampled answer. The principles are easier to inspect than a reward model's weights, but their interpretation still depends on the model producing the critique.
+
+Deliberative alignment moves the specification closer to inference. A reasoning model is trained to recall and apply written safety policies before producing an answer.[^4] This can improve decisions that require combining several policy clauses. It also creates a new object to evaluate: whether the model selected the relevant policy and applied it to the facts of the request.
+
+The two methods expose different failure surfaces:
+
+- Constitutional feedback can misapply a principle while generating training labels.
+- Deliberation can retrieve the wrong rule or construct a convenient interpretation.
+- A complete written policy can still conflict with another policy or omit a deployment-specific constraint.
+- A correct rationale can be paired with an action caused by another internal mechanism.
+
+Written specifications improve inspectability. They do not guarantee faithful internal reasoning.
+
+## Process supervision changes what receives credit
+
+Outcome supervision rewards a final answer. Process supervision evaluates intermediate steps. On mathematical reasoning tasks, the work behind PRM800K found that a process-supervised reward model selected better solutions than an outcome-supervised reward model in the evaluated setting.[^5]
+
+The alignment relevance is credit assignment. An outcome-only reward can reinforce a correct answer reached through an invalid or unsafe process. Step-level labels can penalize the first bad transition before later steps conceal it.
+
+Process supervision also has costs:
+
+- Labels are more expensive because an evaluator must inspect a trajectory.
+- A visible chain of thought may not faithfully expose the computation that caused the answer.
+- Fine-grained rubrics can reward verbose compliance with the rubric rather than efficient reasoning.
+- Tool-using agents require process labels for actions, state changes, and omissions, not only text.
+
+The right process boundary depends on the risk. A coding agent can be evaluated at each file mutation or shell command. A medical assistant may need evidence checks before advice. A long-horizon agent needs stateful constraints that survive across turns.
+
+## Oversight must work when the model is stronger
+
+Human preference learning assumes the evaluator can recognize a better answer. That assumption weakens as models operate in domains where checking a solution is harder than producing one.
+
+Weak-to-strong generalization studies an empirical proxy for this problem: a weaker model supervises a stronger model, and researchers measure whether the strong model can exceed the supervisor's errors rather than imitate them.[^6] The reported results show partial recovery of stronger capabilities on some tasks, alongside failures on preference data. The setup is evidence that the question can be tested, not a solution to superhuman oversight.
+
+Scalable oversight methods try to restructure evaluation:
+
+- decompose a hard task into locally checkable claims
+- use one model to help a human inspect another model
+- require executable tests, proofs, or external evidence
+- compare independent solutions before revealing either rationale
+- assign more evaluator effort to high-uncertainty or high-impact decisions
+
+The evaluator must remain independent enough to catch shared mistakes. Two models trained on similar data can agree for the same wrong reason.
+
+## Model organisms make hidden objectives testable
+
+Behavioral red teaming is weak when a model behaves differently after detecting an evaluation. Model organisms address this by deliberately training models with known hidden objectives or failure propensities, then asking auditors to recover them.[^7]
+
+This creates a ground truth for audit research. If the hidden objective is known to the experimenter, an audit can be scored on whether it identifies the cause, not only whether it finds suspicious outputs.
+
+Anthropic's automated auditing work combines behavioral evaluations, training-data inspection, and interpretability tools against such models.[^7] The approach tests an entire investigation workflow rather than one probe. It also reveals a deployment lesson: a monitor should generate falsifiable hypotheses, design counterexamples, and seek causal evidence.
+
+Useful causal checks include:
+
+1. Find a representation or behavior correlated with the suspected objective.
+2. Remove or steer that representation.
+3. Measure whether the predicted behavior changes.
+4. Test unrelated capabilities to detect broad damage.
+5. Repeat on prompts that do not announce the evaluation.
+
+Correlation can point to a mechanism. Intervention tests whether the mechanism carries causal weight.
+
+## What an alignment report should contain
+
+A deployment report should separate the layers of evidence:
+
+- the written specification and unresolved conflicts
+- the source and coverage of supervision
+- held-out behavioral evaluations
+- adversarial tests created independently of training
+- process-level checks for consequential actions
+- monitor false positives and false negatives
+- causal interventions where interpretability claims support a safety decision
+- residual risks that the evaluation cannot measure
+
+Alignment is not a scalar property attached to a checkpoint. It is a claim about behavior under a stated threat model and operating environment. The claim becomes credible when the specification is inspectable, supervision is traceable, audits can expose known hidden failures, and deployment monitoring can detect when the model leaves the tested regime.
+
+## References
+
+[^1]: Long Ouyang et al., "Training language models to follow instructions with human feedback," NeurIPS, 2022. [https://arxiv.org/abs/2203.02155](https://arxiv.org/abs/2203.02155)
+
+[^2]: Rafael Rafailov et al., "Direct Preference Optimization: Your Language Model is Secretly a Reward Model," NeurIPS, 2023. [https://arxiv.org/abs/2305.18290](https://arxiv.org/abs/2305.18290)
+
+[^3]: Yuntao Bai et al., "Constitutional AI: Harmlessness from AI Feedback," Anthropic, 2022. [https://www.anthropic.com/research/constitutional-ai-harmlessness-from-ai-feedback](https://www.anthropic.com/research/constitutional-ai-harmlessness-from-ai-feedback)
+
+[^4]: Melody Guan et al., "Deliberative alignment: reasoning enables safer language models," OpenAI, 2024. [https://openai.com/index/deliberative-alignment/](https://openai.com/index/deliberative-alignment/)
+
+[^5]: Hunter Lightman et al., "Let's Verify Step by Step," ICLR, 2024. [https://arxiv.org/abs/2305.20050](https://arxiv.org/abs/2305.20050)
+
+[^6]: Collin Burns et al., "Weak-to-Strong Generalization: Eliciting Strong Capabilities With Weak Supervision," ICML, 2024. [https://openai.com/index/weak-to-strong-generalization/](https://openai.com/index/weak-to-strong-generalization/)
+
+[^7]: Trenton Bricken et al., "Building and evaluating alignment auditing agents," Anthropic, 2025. [https://alignment.anthropic.com/2025/automated-auditing/](https://alignment.anthropic.com/2025/automated-auditing/)

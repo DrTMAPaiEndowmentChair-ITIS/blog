@@ -1,0 +1,130 @@
+<figure class="viz" aria-labelledby="scaling-regimes-title">
+  <figcaption id="scaling-regimes-title">
+    Three regimes hidden inside the phrase “scaling laws”
+  </figcaption>
+
+  <div class="regimes">
+    <section>
+      <div class="plot" aria-hidden="true">
+        <svg viewBox="0 0 220 110" role="img">
+          <path class="axis" d="M18 8v84h190"></path>
+          <path class="curve" d="M24 18C55 47 91 68 202 86"></path>
+        </svg>
+      </div>
+      <strong>Single-resource scaling</strong>
+      <p>Loss falls as model size, data, or compute increases while the others are not limiting.</p>
+    </section>
+
+    <section>
+      <div class="balance" aria-hidden="true">
+        <span>parameters</span>
+        <i></i>
+        <span>training tokens</span>
+      </div>
+      <strong>Compute-optimal allocation</strong>
+      <p>A fixed training budget must be split between a larger model and more tokens.</p>
+    </section>
+
+    <section>
+      <div class="plot" aria-hidden="true">
+        <svg viewBox="0 0 220 110" role="img">
+          <path class="axis" d="M18 8v84h190"></path>
+          <path class="curve" d="M24 18C66 52 102 73 142 81S185 85 202 86"></path>
+          <path class="repeat" d="M145 12v78"></path>
+        </svg>
+      </div>
+      <strong>Data-constrained scaling</strong>
+      <p>
+        Repeated data has declining value, so the abundant-data fit stops describing the regime.
+      </p>
+    </section>
+  </div>
+</figure>
+
+<style>
+  .viz {
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    margin-bottom: 1.2rem;
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .regimes {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+  section {
+    display: grid;
+    align-content: start;
+    gap: 0.65rem;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  strong {
+    font: 600 0.84rem var(--sans);
+  }
+  p {
+    margin: 0;
+    color: var(--text-secondary);
+    font: 0.75rem/1.55 var(--mono);
+  }
+  .plot {
+    min-height: 7rem;
+  }
+  svg {
+    display: block;
+    width: 100%;
+    height: 7rem;
+  }
+  path {
+    fill: none;
+    vector-effect: non-scaling-stroke;
+  }
+  .axis {
+    stroke: var(--border);
+  }
+  .curve {
+    stroke: var(--text-primary);
+    stroke-width: 2;
+  }
+  .repeat {
+    stroke: var(--text-tertiary);
+    stroke-dasharray: 3 4;
+  }
+  .balance {
+    display: grid;
+    grid-template-columns: 1fr;
+    place-items: center;
+    min-height: 7rem;
+    color: var(--text-secondary);
+    font: 0.72rem var(--mono);
+  }
+  .balance i {
+    width: 78%;
+    height: 1px;
+    background: var(--text-primary);
+    position: relative;
+  }
+  .balance i::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: -0.45rem;
+    width: 1px;
+    height: 0.9rem;
+    background: var(--text-primary);
+  }
+  @media (max-width: 720px) {
+    .regimes {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
