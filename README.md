@@ -4,7 +4,7 @@
 ![screenshot-dark](public/screenshots/screenshot-dark.png)
 
 Official website for Dr. TMA Pai Endowment Chair - ITIS, built with [Astro](https://astro.build).
-
+.
 ## Features
 
 - [x] Build with Astro
