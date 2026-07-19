@@ -1,0 +1,241 @@
+<figure class="viz geometry-viz" aria-labelledby="jspace-geometry-title">
+  <figcaption id="jspace-geometry-title">
+    <strong>Sparse J-space is a union of nonnegative cones</strong>
+    <span>Each active set selects a different cone inside the residual stream.</span>
+  </figcaption>
+
+  <div class="geometry">
+    <div class="field" role="img" aria-label="Schematic projection of several sparse cones">
+      <span class="origin">origin</span>
+      <div class="cone cone-a"><i></i><b>active set A</b></div>
+      <div class="cone cone-b"><i></i><b>active set B</b></div>
+      <div class="cone cone-c"><i></i><b>active set C</b></div>
+    </div>
+
+    <div class="reading">
+      <section>
+        <span>Inside one cone</span>
+        <strong>Nonnegative coefficients</strong>
+        <small>The activation combines only the vectors in its active set.</small>
+      </section>
+      <section>
+        <span>Across cones</span>
+        <strong>Active vectors can change</strong>
+        <small>The full set is not one low-dimensional linear plane.</small>
+      </section>
+      <section>
+        <span>Outside the set</span>
+        <strong>Residual computation remains</strong>
+        <small>J-space is a partial interface, not a complete activation model.</small>
+      </section>
+    </div>
+  </div>
+
+  <div class="decomposition">
+    <span>activation</span>
+    <i aria-hidden="true">=</i>
+    <strong>sparse J-space component</strong>
+    <i aria-hidden="true">+</i>
+    <strong>residual outside J-space</strong>
+  </div>
+  <p>Schematic projection. Position and area do not encode measured variance.</p>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.1rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span,
+  p {
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  .geometry {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(12rem, 0.75fr);
+    gap: 0.8rem;
+  }
+  .field {
+    position: relative;
+    min-height: 20rem;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px), var(--bg);
+    background-size: 3.2rem 3.2rem;
+  }
+  .origin {
+    position: absolute;
+    left: calc(50% + 0.65rem);
+    top: calc(50% + 0.65rem);
+    color: var(--text-tertiary);
+    font: 0.58rem var(--mono);
+  }
+  .field::after {
+    position: absolute;
+    left: calc(50% - 0.22rem);
+    top: calc(50% - 0.22rem);
+    width: 0.44rem;
+    height: 0.44rem;
+    border: 1px solid var(--text-primary);
+    background: var(--bg);
+    content: '';
+  }
+  .cone {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 42%;
+    height: 30%;
+    transform-origin: left top;
+  }
+  .cone::before,
+  .cone::after {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 1px;
+    background: var(--text-secondary);
+    content: '';
+    transform-origin: left;
+  }
+  .cone::before {
+    transform: rotate(-17deg);
+  }
+  .cone::after {
+    transform: rotate(17deg);
+  }
+  .cone i {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 52%;
+    clip-path: polygon(0 50%, 100% 0, 100% 100%);
+    background: color-mix(in srgb, var(--text-secondary) 12%, transparent);
+  }
+  .cone b {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    color: var(--text-secondary);
+    font: 0.6rem var(--mono);
+    white-space: nowrap;
+  }
+  .cone-a {
+    transform: rotate(-78deg);
+  }
+  .cone-b {
+    transform: rotate(9deg);
+  }
+  .cone-c {
+    transform: rotate(126deg);
+  }
+  .cone b {
+    transform: rotate(var(--label-rotation, 0deg));
+  }
+  .cone-a b {
+    --label-rotation: 78deg;
+  }
+  .cone-b b {
+    --label-rotation: -9deg;
+  }
+  .cone-c b {
+    --label-rotation: -126deg;
+  }
+  .reading {
+    display: grid;
+    align-content: start;
+    gap: 0.7rem;
+  }
+  .reading section {
+    display: grid;
+    gap: 0.38rem;
+    padding: 0.75rem 0.8rem;
+    border-left: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .reading span {
+    color: var(--text-tertiary);
+    font: 0.62rem var(--mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .reading strong {
+    font: 600 0.78rem/1.35 var(--sans);
+  }
+  .reading small {
+    color: var(--text-secondary);
+    font: 0.65rem/1.45 var(--mono);
+  }
+  .decomposition {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto 1fr;
+    align-items: center;
+    gap: 0.65rem;
+    margin-top: 0.85rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--border);
+    font: 0.67rem/1.45 var(--mono);
+  }
+  .decomposition span,
+  .decomposition i {
+    color: var(--text-tertiary);
+  }
+  .decomposition i {
+    font-style: normal;
+  }
+  .decomposition strong {
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+  p {
+    margin: 0.65rem 0 0;
+    color: var(--text-tertiary);
+    font-size: 0.62rem;
+    text-align: right;
+  }
+  @container (max-width: 540px) {
+    .geometry {
+      grid-template-columns: 1fr;
+    }
+    .field {
+      min-height: 17rem;
+    }
+  }
+  @container (max-width: 400px) {
+    .decomposition {
+      grid-template-columns: auto auto 1fr;
+    }
+    .decomposition i:nth-of-type(2),
+    .decomposition strong:last-child {
+      grid-row: 2;
+    }
+    .decomposition i:nth-of-type(2) {
+      grid-column: 2;
+    }
+    .decomposition strong:last-child {
+      grid-column: 3;
+    }
+    .cone b {
+      display: none;
+    }
+  }
+</style>

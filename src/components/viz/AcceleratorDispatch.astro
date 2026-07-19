@@ -1,0 +1,159 @@
+<figure class="viz dispatch" aria-labelledby="dispatch-title">
+  <figcaption id="dispatch-title">
+    A runtime assigns graph regions to backends that support them
+  </figcaption>
+
+  <div class="providers">
+    <section>
+      <span>Priority 1</span>
+      <strong>Accelerator provider</strong>
+      <small>claims supported operators and subgraphs</small>
+    </section>
+    <section>
+      <span>Priority 2</span>
+      <strong>Secondary provider</strong>
+      <small>receives work the first provider cannot execute</small>
+    </section>
+    <section>
+      <span>Fallback</span>
+      <strong>CPU provider</strong>
+      <small>runs remaining supported graph regions</small>
+    </section>
+  </div>
+
+  <div class="graph" aria-label="Example graph partition">
+    <div class="node accelerator">embed</div>
+    <b>→</b>
+    <div class="node accelerator">attention</div>
+    <b>→</b>
+    <div class="node fallback">unsupported op</div>
+    <b>→</b>
+    <div class="node accelerator">projection</div>
+  </div>
+
+  <div class="legend">
+    <span><i class="accelerator"></i> accelerator region</span>
+    <span><i class="fallback"></i> fallback region</span>
+    <p>Every boundary can add synchronization, format conversion, or data movement.</p>
+  </div>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    margin-bottom: 1rem;
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .providers {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border: 1px solid var(--border);
+  }
+  section {
+    display: grid;
+    gap: 0.4rem;
+    padding: 0.75rem;
+    border-right: 1px solid var(--border);
+    background: var(--bg);
+  }
+  section:last-child {
+    border-right: 0;
+  }
+  section span,
+  section small,
+  .legend,
+  .graph {
+    font: 0.65rem/1.45 var(--mono);
+  }
+  section span,
+  section small {
+    color: var(--text-tertiary);
+  }
+  section span {
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  section strong {
+    font: 600 0.78rem/1.35 var(--sans);
+  }
+  .graph {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+    align-items: center;
+    margin-top: 1rem;
+  }
+  .node {
+    min-width: 0;
+    padding: 0.7rem 0.4rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    text-align: center;
+  }
+  .node.accelerator {
+    box-shadow: inset 0 2px 0 var(--text-primary);
+  }
+  .node.fallback {
+    border-style: dashed;
+  }
+  .graph b {
+    padding: 0.25rem;
+    color: var(--text-tertiary);
+    font-weight: 400;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.8rem;
+    color: var(--text-secondary);
+  }
+  .legend span {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .legend i {
+    width: 0.8rem;
+    height: 0.45rem;
+    border: 1px solid var(--border);
+  }
+  .legend i.accelerator {
+    border-top: 2px solid var(--text-primary);
+  }
+  .legend i.fallback {
+    border-style: dashed;
+  }
+  .legend p {
+    flex-basis: 100%;
+    margin: 0;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+  }
+  @container (max-width: 500px) {
+    .providers,
+    .graph {
+      grid-template-columns: 1fr;
+    }
+    section {
+      border-right: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    section:last-child {
+      border-bottom: 0;
+    }
+    .graph b {
+      justify-self: start;
+      transform: rotate(90deg);
+    }
+  }
+</style>

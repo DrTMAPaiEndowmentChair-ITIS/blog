@@ -8,6 +8,7 @@ topics: ['Mechanistic interpretability', 'Sparse autoencoders', 'Circuit tracing
 ---
 
 import InterpretabilityToolchain from '../../components/viz/InterpretabilityToolchain.astro'
+import CausalEvidenceLadder from '../../components/viz/CausalEvidenceLadder.astro'
 
 Mechanistic interpretability tries to explain model behavior in terms of internal computation. The frontier has moved beyond finding a neuron that correlates with a concept. Current methods decompose activations into features, trace interactions between those features, translate internal states into text, and intervene to test causal claims.
 
@@ -131,6 +132,8 @@ No single interpretability result should carry a safety decision by itself. A ro
 5. Ablate, patch, or steer the representation.
 6. Measure predicted behavior and unrelated capability changes.
 7. inspect training data or model diffs for an independent explanation.
+
+<CausalEvidenceLadder />
 
 Agreement across methods is useful only when their errors are not identical. Two tools trained on the same activation data and scored by the same model can share blind spots.
 

@@ -1,0 +1,238 @@
+<figure class="viz fit-calculator" aria-labelledby="fit-calculator-title" data-fit-calculator>
+  <figcaption id="fit-calculator-title">Estimate the tensor memory floor</figcaption>
+
+  <div class="inputs">
+    <label>
+      <span>Parameters</span>
+      <span class="field"
+        ><input data-params type="number" min="0.1" step="0.1" value="8" /> billion</span
+      >
+    </label>
+    <label>
+      <span>Weight precision</span>
+      <span class="field"
+        ><input data-bits type="number" min="1" max="32" step="1" value="4" /> bits</span
+      >
+    </label>
+    <label>
+      <span>Available memory</span>
+      <span class="field"><input data-memory type="number" min="1" step="1" value="16" /> GiB</span>
+    </label>
+  </div>
+
+  <div class="equation" aria-label="Weight memory equation">
+    <span>parameters</span>
+    <b>×</b>
+    <span>bits per weight</span>
+    <b>÷ 8</b>
+    <b>÷ 2<sup>30</sup></b>
+    <strong>= weight GiB</strong>
+  </div>
+
+  <div class="result" aria-live="polite">
+    <div>
+      <span>Theoretical weight floor</span>
+      <strong data-weight-result>3.73 GiB</strong>
+    </div>
+    <div>
+      <span>Memory left before runtime costs</span>
+      <strong data-headroom-result>12.27 GiB</strong>
+    </div>
+  </div>
+
+  <div class="track" aria-hidden="true">
+    <span data-weight-track></span>
+  </div>
+
+  <p data-fit-note>
+    The displayed weights fit inside the entered memory. The runtime still needs room for the KV
+    cache, activations, scratch buffers, quantization metadata, and its own code.
+  </p>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    margin-bottom: 1rem;
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .inputs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  label {
+    display: grid;
+    gap: 0.55rem;
+    min-width: 0;
+    padding: 0.8rem;
+    border-right: 1px solid var(--border);
+  }
+  label:last-child {
+    border-right: 0;
+  }
+  label > span:first-child,
+  .result span,
+  p {
+    color: var(--text-secondary);
+    font: 0.67rem/1.45 var(--mono);
+  }
+  .field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 0.4rem;
+    color: var(--text-tertiary);
+    font: 0.68rem var(--mono);
+  }
+  input {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 2.5rem;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: 0;
+    background: var(--code-bg);
+    color: var(--text-primary);
+    font: 0.84rem var(--mono);
+  }
+  input:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
+  }
+  .equation {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0.85rem 0;
+    color: var(--text-tertiary);
+    font: 0.68rem var(--mono);
+  }
+  .equation span,
+  .equation strong {
+    padding: 0.42rem 0.52rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .equation b {
+    font-weight: 400;
+  }
+  .equation strong {
+    color: var(--text-primary);
+  }
+  .result {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border-top: 2px solid var(--text-primary);
+  }
+  .result div {
+    display: grid;
+    gap: 0.35rem;
+    padding: 0.85rem 0.1rem 0.7rem;
+  }
+  .result div:last-child {
+    padding-left: 0.85rem;
+    border-left: 1px solid var(--border);
+  }
+  .result strong {
+    font: 600 1.1rem var(--mono);
+  }
+  .track {
+    height: 0.42rem;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .track span {
+    display: block;
+    width: 23.3%;
+    height: 100%;
+    background: var(--text-primary);
+    transform-origin: left;
+    transition: width 180ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  p {
+    margin: 0.75rem 0 0;
+  }
+  .is-over {
+    border-top-color: var(--text-secondary);
+  }
+  @container (max-width: 480px) {
+    .inputs,
+    .result {
+      grid-template-columns: 1fr;
+    }
+    label {
+      border-right: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    label:last-child {
+      border-bottom: 0;
+    }
+    .result div:last-child {
+      padding-left: 0.1rem;
+      border-top: 1px solid var(--border);
+      border-left: 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .track span {
+      transition: none;
+    }
+  }
+</style>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-fit-calculator]').forEach((root) => {
+    if (root.dataset.bound) return
+    root.dataset.bound = 'true'
+
+    const params = root.querySelector<HTMLInputElement>('[data-params]')
+    const bits = root.querySelector<HTMLInputElement>('[data-bits]')
+    const memory = root.querySelector<HTMLInputElement>('[data-memory]')
+    const weightResult = root.querySelector<HTMLElement>('[data-weight-result]')
+    const headroomResult = root.querySelector<HTMLElement>('[data-headroom-result]')
+    const weightTrack = root.querySelector<HTMLElement>('[data-weight-track]')
+    const note = root.querySelector<HTMLElement>('[data-fit-note]')
+    const result = root.querySelector<HTMLElement>('.result')
+
+    if (!params || !bits || !memory || !weightResult || !headroomResult || !weightTrack || !note) {
+      return
+    }
+
+    const update = () => {
+      const parameterCount = Math.max(0, Number(params.value)) * 1e9
+      const bitWidth = Math.max(0, Number(bits.value))
+      const availableGiB = Math.max(0, Number(memory.value))
+      const weightGiB = (parameterCount * bitWidth) / 8 / 2 ** 30
+      const headroomGiB = availableGiB - weightGiB
+      const share = availableGiB > 0 ? Math.min(100, (weightGiB / availableGiB) * 100) : 100
+
+      weightResult.textContent = `${weightGiB.toFixed(2)} GiB`
+      headroomResult.textContent =
+        headroomGiB >= 0
+          ? `${headroomGiB.toFixed(2)} GiB`
+          : `${Math.abs(headroomGiB).toFixed(2)} GiB short`
+      weightTrack.style.width = `${share}%`
+      result?.classList.toggle('is-over', headroomGiB < 0)
+      note.textContent =
+        headroomGiB >= 0
+          ? 'The displayed weights fit inside the entered memory. The runtime still needs room for the KV cache, activations, scratch buffers, quantization metadata, and its own code.'
+          : 'The weight tensors alone exceed the entered memory. Choose fewer parameters, fewer stored bits, or a runtime that can place weights across another memory tier.'
+    }
+
+    ;[params, bits, memory].forEach((input) => input.addEventListener('input', update))
+    update()
+  })
+</script>

@@ -1,0 +1,197 @@
+<figure class="viz budget-viz" aria-labelledby="compute-allocation-title">
+  <figcaption id="compute-allocation-title">
+    <strong>Fixed compute turns scaling into an allocation problem</strong>
+    <span>The optimum comes from measured loss across candidate parameter and token budgets.</span>
+  </figcaption>
+
+  <div class="budget" aria-label="Compute allocation diagram">
+    <section class="source">
+      <span>Fixed training compute</span>
+      <strong>Budget constraint</strong>
+      <small>Architecture and implementation determine the exact cost.</small>
+    </section>
+
+    <div class="fork" aria-hidden="true">
+      <i></i>
+      <i></i>
+    </div>
+
+    <div class="resources">
+      <section>
+        <span>Model size</span>
+        <strong>Parameters N</strong>
+        <small>Too little capacity raises the parameter-limited term.</small>
+      </section>
+      <section>
+        <span>Training data</span>
+        <strong>Tokens D</strong>
+        <small>Too few useful tokens raise the data-limited term.</small>
+      </section>
+    </div>
+
+    <div class="join" aria-hidden="true">
+      <i></i>
+      <i></i>
+    </div>
+
+    <section class="measure">
+      <span>Model sweep</span>
+      <strong>Fit loss across candidate allocations</strong>
+      <small>Hold the surrounding setup stable enough to isolate the allocation change.</small>
+    </section>
+
+    <div class="result">
+      <span>Training choice</span>
+      <strong>Lowest supported loss region</strong>
+      <i aria-hidden="true">+</i>
+      <span>Deployment choice</span>
+      <strong>Serving cost and checkpoint reuse</strong>
+    </div>
+  </div>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  .budget {
+    display: grid;
+    justify-items: center;
+  }
+  section {
+    display: grid;
+    gap: 0.4rem;
+    width: 100%;
+    padding: 0.85rem 0.9rem;
+    border-top: 2px solid var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+  section span,
+  .result span {
+    color: var(--text-tertiary);
+    font: 0.62rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  section strong,
+  .result strong {
+    font: 600 0.8rem/1.35 var(--sans);
+  }
+  section small {
+    color: var(--text-secondary);
+    font: 0.66rem/1.45 var(--mono);
+  }
+  .source,
+  .measure {
+    max-width: 23rem;
+  }
+  .resources {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.8rem;
+    width: 100%;
+  }
+  .fork,
+  .join {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 50%;
+    height: 2.2rem;
+  }
+  .fork::before,
+  .join::before {
+    position: absolute;
+    left: 50%;
+    width: 1px;
+    height: 50%;
+    background: var(--border);
+    content: '';
+  }
+  .fork::before {
+    top: 0;
+  }
+  .join::before {
+    bottom: 0;
+  }
+  .fork i,
+  .join i {
+    border-color: var(--border);
+    border-style: solid;
+  }
+  .fork i:first-child {
+    border-top-width: 1px;
+    border-left-width: 1px;
+  }
+  .fork i:last-child {
+    border-top-width: 1px;
+    border-right-width: 1px;
+  }
+  .join i:first-child {
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+  }
+  .join i:last-child {
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+  }
+  .result {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto 1fr;
+    align-items: center;
+    gap: 0.65rem;
+    width: 100%;
+    margin-top: 0.85rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--border);
+  }
+  .result i {
+    color: var(--text-tertiary);
+    font: 0.9rem var(--mono);
+    font-style: normal;
+  }
+  @container (max-width: 470px) {
+    .resources {
+      grid-template-columns: 1fr;
+    }
+    .fork,
+    .join {
+      display: block;
+      width: 1px;
+      height: 1.5rem;
+      background: var(--border);
+    }
+    .fork::before,
+    .join::before,
+    .fork i,
+    .join i {
+      display: none;
+    }
+    .result {
+      grid-template-columns: 1fr;
+    }
+    .result i {
+      justify-self: start;
+    }
+  }
+</style>

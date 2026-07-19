@@ -8,6 +8,7 @@ topics: ['Test-time compute', 'Reasoning', 'Verifiers', 'Inference']
 ---
 
 import TestTimeComputeSearch from '../../components/viz/TestTimeComputeSearch.astro'
+import InferenceBudgetRouter from '../../components/viz/InferenceBudgetRouter.astro'
 
 Pretraining spends compute once to change model weights. Test-time compute spends compute per problem to search for a better answer without changing the base checkpoint.
 
@@ -76,6 +77,8 @@ A practical router can use:
 - whether an external tool can check the result
 
 Easy requests should exit early. Difficult but tractable requests may benefit from branching. Requests outside the verifier's domain should not receive more compute merely because confidence is low.
+
+<InferenceBudgetRouter />
 
 ## Sequential reasoning and parallel search are different
 

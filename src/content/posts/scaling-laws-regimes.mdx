@@ -8,6 +8,7 @@ topics: ['Scaling laws', 'Pretraining', 'Compute optimality', 'Data']
 ---
 
 import ScalingLawRegimes from '../../components/viz/ScalingLawRegimes.astro'
+import ComputeBudgetAllocation from '../../components/viz/ComputeBudgetAllocation.astro'
 
 Scaling laws compress many training runs into a small equation. They are useful because a fitted curve can predict loss at an untested scale and guide the allocation of a fixed training budget. They are easy to misuse because every curve is conditional on a model family, data distribution, optimizer, tokenization scheme, and measurement range.
 
@@ -52,6 +53,8 @@ L(N,D)=L_\infty+\frac{A}{N^\alpha}+\frac{B}{D^\beta}
 $$
 
 The parameter-limited term falls with $N$. The data-limited term falls with $D$. Compute optimality chooses a point on the budget constraint where spending more on either side would create a larger penalty on the other.
+
+<ComputeBudgetAllocation />
 
 This is an allocation result, not a law that every deployed model should use the compute-optimal point. A serving-heavy product may prefer fewer parameters because inference cost is paid repeatedly. A research model may accept a larger serving cost to reduce pretraining time. A model intended for continued training may deliberately stop before the static optimum.
 

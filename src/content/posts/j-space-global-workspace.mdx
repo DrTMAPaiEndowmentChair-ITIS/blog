@@ -9,6 +9,7 @@ featured: true
 ---
 
 import JSpaceWorkspace from '../../components/viz/JSpaceWorkspace.astro'
+import JSpaceGeometry from '../../components/viz/JSpaceGeometry.astro'
 
 Anthropic's July 2026 J-space work asks a narrow mechanistic question: does a language model contain a privileged set of internal representations that it can report, control, and reuse for flexible reasoning?[^1]
 
@@ -65,6 +66,8 @@ a_i\geq 0,\;
 $$
 
 Geometrically, this is a union of cones, not one low-dimensional plane. Each active set of vectors defines a cone. Changing the active set moves the activation into another cone.
+
+<JSpaceGeometry />
 
 The researchers usually cap $k$ at twenty-five, based on the number of meaningfully active vectors they observed, and they state that the choice is partly arbitrary.[^2] The sparse J-space component explains only a minority of activation variance in their measurements.[^2] Most model computation lies outside this readout.
 

@@ -1,0 +1,197 @@
+<figure class="viz router-viz" aria-labelledby="inference-router-title">
+  <figcaption id="inference-router-title">
+    <strong>Inference budgets should follow evidence about the request</strong>
+    <span>Low confidence alone does not show that more generation will help.</span>
+  </figcaption>
+
+  <div class="signals" aria-label="Signals used by an inference budget router">
+    <span>initial confidence</span>
+    <span>sample disagreement</span>
+    <span>verifier margin</span>
+    <span>task history</span>
+    <span>remaining latency</span>
+    <span>external checker</span>
+  </div>
+
+  <div class="route">
+    <section class="router">
+      <span>Router</span>
+      <strong>Choose the next inference action</strong>
+      <small>Use calibrated signals from the task class and current candidates.</small>
+    </section>
+
+    <div class="branch" aria-hidden="true"><i></i><i></i><i></i></div>
+
+    <div class="outcomes">
+      <section>
+        <span>Adequate verifier margin</span>
+        <strong>Stop and return</strong>
+        <small>Do not pay for search after the stop condition is met.</small>
+      </section>
+      <section>
+        <span>Promising disagreement</span>
+        <strong>Branch or revise</strong>
+        <small>Spend the next budget unit on candidates that can separate the answers.</small>
+      </section>
+      <section>
+        <span>Verifier outside its domain</span>
+        <strong>Check or abstain</strong>
+        <small>Use an external tool, escalate, or decline to select a candidate.</small>
+      </section>
+    </div>
+  </div>
+
+  <p>Routing quality depends on verifier calibration, not on generated token count alone.</p>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.1rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span,
+  p {
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  .signals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .signals span {
+    flex: 1 1 9rem;
+    padding: 0.55rem 0.65rem;
+    border-right: 1px solid var(--border);
+    color: var(--text-secondary);
+    font: 0.62rem/1.35 var(--mono);
+    text-align: center;
+  }
+  .signals span:last-child {
+    border-right: 0;
+  }
+  .route {
+    display: grid;
+    justify-items: center;
+    margin-top: 0.8rem;
+  }
+  section {
+    display: grid;
+    align-content: start;
+    gap: 0.42rem;
+    min-width: 0;
+    padding: 0.85rem 0.8rem;
+    border-top: 2px solid var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+  section span {
+    color: var(--text-tertiary);
+    font: 0.62rem/1.35 var(--mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  section strong {
+    font: 600 0.8rem/1.35 var(--sans);
+  }
+  section small {
+    color: var(--text-secondary);
+    font: 0.65rem/1.45 var(--mono);
+  }
+  .router {
+    width: min(100%, 24rem);
+  }
+  .branch {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    width: 68%;
+    height: 2.2rem;
+  }
+  .branch::before {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 1px;
+    height: 50%;
+    background: var(--border);
+    content: '';
+  }
+  .branch i {
+    border-top: 1px solid var(--border);
+  }
+  .branch i:first-child {
+    border-left: 1px solid var(--border);
+  }
+  .branch i:last-child {
+    border-right: 1px solid var(--border);
+  }
+  .outcomes {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.7rem;
+    width: 100%;
+  }
+  p {
+    margin: 0.85rem 0 0;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--border);
+  }
+  @container (max-width: 520px) {
+    .signals {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      width: 100%;
+    }
+    .signals span {
+      border-right: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .signals span:nth-child(odd) {
+      border-right: 1px solid var(--border);
+    }
+    .signals span:nth-last-child(-n + 2) {
+      border-bottom: 0;
+    }
+    .branch {
+      display: block;
+      width: 1px;
+      height: 1.5rem;
+      background: var(--border);
+    }
+    .branch::before,
+    .branch i {
+      display: none;
+    }
+    .outcomes {
+      grid-template-columns: 1fr;
+    }
+  }
+  @container (max-width: 340px) {
+    .signals {
+      grid-template-columns: 1fr;
+    }
+    .signals span:nth-child(odd) {
+      border-right: 0;
+    }
+    .signals span:nth-last-child(2) {
+      border-bottom: 1px solid var(--border);
+    }
+  }
+</style>

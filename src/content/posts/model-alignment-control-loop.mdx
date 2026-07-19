@@ -8,6 +8,7 @@ topics: ['Model alignment', 'RLHF', 'Scalable oversight', 'AI safety']
 ---
 
 import AlignmentControlLoop from '../../components/viz/AlignmentControlLoop.astro'
+import AlignmentProxyStack from '../../components/viz/AlignmentProxyStack.astro'
 
 Model alignment is often presented as a post-training recipe: collect preferences, optimize a policy, and test whether the assistant is helpful and safe. That description leaves out the central difficulty. The training signal is only a proxy for an intended behavior, and the model must generalize that proxy to inputs, tools, and situations absent from training.
 
@@ -50,6 +51,8 @@ The useful distinction is:
 | Deployed policy       | Behavior under new conditions       | Distribution shift or strategic adaptation |
 
 A higher reward is evidence that the policy fits the learned proxy. It is not proof that the proxy captures the intended behavior.
+
+<AlignmentProxyStack />
 
 ## Written principles make the target inspectable
 

@@ -1,0 +1,174 @@
+<figure class="viz evidence-viz" aria-labelledby="causal-evidence-title">
+  <figcaption id="causal-evidence-title">
+    <strong>Interpretability claims strengthen through predicted interventions</strong>
+    <span>A readable label begins an audit. It does not finish one.</span>
+  </figcaption>
+
+  <div class="ladder" aria-label="Causal evidence ladder">
+    <section class="observation">
+      <span>Observe</span>
+      <strong>Behavior and activation correlate</strong>
+      <small>Find a trajectory worth explaining.</small>
+    </section>
+    <section class="hypothesis">
+      <span>Hypothesize</span>
+      <strong>A readable feature or report names a mechanism</strong>
+      <small>State what should change if the interpretation is correct.</small>
+    </section>
+    <section class="trace">
+      <span>Trace</span>
+      <strong>The candidate path recurs across prompts</strong>
+      <small>Locate the features and interactions that carry the effect.</small>
+    </section>
+    <section class="intervention">
+      <span>Intervene</span>
+      <strong>Ablate, patch, or steer the proposed cause</strong>
+      <small>Change the representation while preserving the rest of the test.</small>
+    </section>
+    <section class="prediction">
+      <span>Validate</span>
+      <strong>Behavior changes in the predicted direction</strong>
+      <small>Check unrelated capabilities for broad damage.</small>
+    </section>
+  </div>
+
+  <div class="claim">
+    <span>Readable correlation</span>
+    <i aria-hidden="true">→</i>
+    <span>mechanistic hypothesis</span>
+    <i aria-hidden="true">→</i>
+    <strong>causal support</strong>
+  </div>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  .ladder {
+    display: grid;
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+    align-items: end;
+    gap: 0.55rem;
+  }
+  .ladder section {
+    display: grid;
+    align-content: start;
+    gap: 0.42rem;
+    min-width: 0;
+    padding: 0.8rem 0.75rem;
+    border-top: 2px solid var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .observation {
+    grid-column: span 6;
+    min-height: 8rem;
+  }
+  .hypothesis {
+    grid-column: 7 / span 4;
+    min-height: 9.4rem;
+  }
+  .trace {
+    grid-column: 2 / span 6;
+    min-height: 8.8rem;
+  }
+  .intervention {
+    grid-column: 8 / span 3;
+    min-height: 10.6rem;
+  }
+  .prediction {
+    grid-column: 4 / span 7;
+    min-height: 9.5rem;
+    border-top-color: var(--text-primary);
+  }
+  .ladder span {
+    color: var(--text-tertiary);
+    font: 0.62rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .ladder strong {
+    font: 600 0.78rem/1.35 var(--sans);
+  }
+  .ladder small {
+    color: var(--text-secondary);
+    font: 0.65rem/1.45 var(--mono);
+  }
+  .claim {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto 1fr;
+    align-items: center;
+    gap: 0.65rem;
+    margin-top: 0.9rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-secondary);
+    font: 0.68rem/1.45 var(--mono);
+  }
+  .claim i {
+    color: var(--text-tertiary);
+    font-style: normal;
+  }
+  .claim strong {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  @container (max-width: 500px) {
+    .ladder {
+      grid-template-columns: 1fr;
+    }
+    .ladder section {
+      grid-column: 1;
+      min-height: 0;
+      margin-left: var(--step-offset);
+    }
+    .observation {
+      --step-offset: 0;
+    }
+    .hypothesis {
+      --step-offset: 0.7rem;
+    }
+    .trace {
+      --step-offset: 1.4rem;
+    }
+    .intervention {
+      --step-offset: 2.1rem;
+    }
+    .prediction {
+      --step-offset: 2.8rem;
+    }
+    .claim {
+      grid-template-columns: auto auto 1fr;
+    }
+    .claim i:nth-of-type(2),
+    .claim strong {
+      grid-row: 2;
+    }
+    .claim i:nth-of-type(2) {
+      grid-column: 2;
+    }
+    .claim strong {
+      grid-column: 3;
+    }
+  }
+</style>

@@ -1,0 +1,141 @@
+<figure class="viz precision-path" aria-labelledby="precision-path-title">
+  <figcaption id="precision-path-title">
+    Stored precision does not fix the compute precision
+  </figcaption>
+
+  <div class="path">
+    <section>
+      <span>Checkpoint</span>
+      <strong>Quantized weight blocks</strong>
+      <small>integers plus scales and metadata</small>
+    </section>
+    <b aria-hidden="true">→</b>
+    <section>
+      <span>Kernel input</span>
+      <strong>Unpack or dequantize</strong>
+      <small>method depends on the selected kernel</small>
+    </section>
+    <b aria-hidden="true">→</b>
+    <section>
+      <span>Matrix operation</span>
+      <strong>Multiply and accumulate</strong>
+      <small>supported types depend on the accelerator</small>
+    </section>
+    <b aria-hidden="true">→</b>
+    <section>
+      <span>Activation</span>
+      <strong>Runtime-selected type</strong>
+      <small>not necessarily the checkpoint type</small>
+    </section>
+  </div>
+
+  <dl>
+    <div>
+      <dt>File question</dt>
+      <dd>How are weights encoded?</dd>
+    </div>
+    <div>
+      <dt>Kernel question</dt>
+      <dd>Which operations and data types can this backend execute?</dd>
+    </div>
+    <div>
+      <dt>Fit question</dt>
+      <dd>How much memory do weights, metadata, caches, and buffers occupy together?</dd>
+    </div>
+  </dl>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    margin-bottom: 1rem;
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .path {
+    display: grid;
+    grid-template-columns: repeat(7, auto);
+    align-items: center;
+  }
+  section {
+    display: grid;
+    align-content: start;
+    gap: 0.4rem;
+    min-width: 0;
+    min-height: 7.5rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .path b {
+    padding: 0.3rem;
+    color: var(--text-tertiary);
+    font: 400 0.8rem var(--mono);
+  }
+  span,
+  small,
+  dt,
+  dd {
+    font: 0.65rem/1.45 var(--mono);
+  }
+  span,
+  dt {
+    color: var(--text-tertiary);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  strong {
+    font: 600 0.78rem/1.35 var(--sans);
+  }
+  small,
+  dd {
+    color: var(--text-secondary);
+  }
+  dl {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    margin: 1rem 0 0;
+    border-top: 1px solid var(--border);
+  }
+  dl div {
+    display: grid;
+    gap: 0.3rem;
+    padding: 0.75rem 0.75rem 0 0;
+  }
+  dt,
+  dd {
+    margin: 0;
+  }
+  @container (max-width: 620px) {
+    .path {
+      grid-template-columns: 1fr;
+    }
+    .path b {
+      padding: 0.2rem 0.8rem;
+      transform: rotate(90deg);
+      justify-self: start;
+    }
+    section {
+      min-height: auto;
+    }
+  }
+  @container (max-width: 440px) {
+    dl {
+      grid-template-columns: 1fr;
+    }
+    dl div {
+      border-bottom: 1px solid var(--border);
+    }
+    dl div:last-child {
+      border-bottom: 0;
+    }
+  }
+</style>

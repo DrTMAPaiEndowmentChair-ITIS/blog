@@ -1,0 +1,147 @@
+<figure class="viz offload" aria-labelledby="offload-title">
+  <figcaption id="offload-title">
+    Larger models fit by moving less frequently used data outward
+  </figcaption>
+
+  <div class="modes">
+    <section>
+      <header><span>Path A</span><strong>Accelerator resident</strong></header>
+      <div class="route">
+        <i>storage</i><b>→ load once →</b><i class="active">accelerator memory</i>
+      </div>
+      <p>Weights and working state remain near the compute kernels.</p>
+    </section>
+    <section>
+      <header><span>Path B</span><strong>Layer split</strong></header>
+      <div class="route">
+        <i>system memory</i><b>⇄ selected layers ⇄</b><i class="active">accelerator memory</i>
+      </div>
+      <p>Some layers run on the accelerator while others remain on the host.</p>
+    </section>
+    <section>
+      <header><span>Path C</span><strong>Disk offload</strong></header>
+      <div class="route long">
+        <i>mapped storage</i><b>→ host memory →</b><i>device</i>
+      </div>
+      <p>Capacity increases, but each transfer enters the inference path.</p>
+    </section>
+  </div>
+
+  <div class="tradeoff">
+    <span>Less movement per generated token</span>
+    <div aria-hidden="true"></div>
+    <span>More capacity, more data movement</span>
+  </div>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    margin-bottom: 1rem;
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .modes {
+    display: grid;
+    gap: 0.7rem;
+  }
+  section {
+    display: grid;
+    grid-template-columns: minmax(9rem, 0.7fr) minmax(0, 1.6fr) minmax(10rem, 1fr);
+    align-items: center;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  header {
+    display: grid;
+    gap: 0.3rem;
+    padding: 0.8rem;
+  }
+  header span,
+  .route,
+  p,
+  .tradeoff {
+    font: 0.65rem/1.45 var(--mono);
+  }
+  header span {
+    color: var(--text-tertiary);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  header strong {
+    font: 600 0.8rem var(--sans);
+  }
+  .route {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 3rem;
+    padding: 0.45rem;
+    border-right: 1px solid var(--border);
+    border-left: 1px solid var(--border);
+    color: var(--text-tertiary);
+    text-align: center;
+  }
+  .route i {
+    padding: 0.35rem 0.45rem;
+    border: 1px solid var(--border);
+    font-style: normal;
+  }
+  .route i.active {
+    border-top: 2px solid var(--text-primary);
+    color: var(--text-primary);
+  }
+  .route b {
+    padding: 0.3rem;
+    font-weight: 400;
+  }
+  p {
+    margin: 0;
+    padding: 0.8rem;
+    color: var(--text-secondary);
+  }
+  .tradeoff {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.85rem;
+    color: var(--text-tertiary);
+  }
+  .tradeoff div {
+    height: 1px;
+    background: var(--border);
+  }
+  @container (max-width: 610px) {
+    section {
+      grid-template-columns: 1fr;
+    }
+    .route {
+      justify-content: flex-start;
+      border-top: 1px solid var(--border);
+      border-right: 0;
+      border-bottom: 1px solid var(--border);
+      border-left: 0;
+    }
+  }
+  @container (max-width: 430px) {
+    .route {
+      display: grid;
+      justify-items: start;
+    }
+    .route b {
+      padding-left: 0.6rem;
+    }
+    .tradeoff {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

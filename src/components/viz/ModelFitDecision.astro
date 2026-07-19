@@ -1,0 +1,163 @@
+<figure class="viz decision" aria-labelledby="decision-title">
+  <figcaption id="decision-title">Choose a runnable configuration in dependency order</figcaption>
+
+  <ol>
+    <li>
+      <span>01</span>
+      <div><strong>Confirm the runtime</strong><small>Does it read this model format?</small></div>
+      <b>→</b>
+    </li>
+    <li>
+      <span>02</span>
+      <div>
+        <strong>Confirm the backend</strong><small
+          >Does it support the required operators and types?</small
+        >
+      </div>
+      <b>→</b>
+    </li>
+    <li>
+      <span>03</span>
+      <div>
+        <strong>Calculate the weights</strong><small
+          >Parameters × stored bits, then include metadata.</small
+        >
+      </div>
+      <b>→</b>
+    </li>
+    <li>
+      <span>04</span>
+      <div>
+        <strong>Add working memory</strong><small
+          >KV cache, activations, scratch space, and runtime overhead.</small
+        >
+      </div>
+      <b>→</b>
+    </li>
+    <li>
+      <span>05</span>
+      <div>
+        <strong>Choose placement</strong><small>Accelerator, host, hybrid, or disk-backed.</small>
+      </div>
+      <b>→</b>
+    </li>
+    <li>
+      <span>06</span>
+      <div>
+        <strong>Measure the real workload</strong><small
+          >Prompt length, generation length, latency, and output quality.</small
+        >
+      </div>
+    </li>
+  </ol>
+
+  <p>Changing an earlier decision can invalidate every estimate that follows it.</p>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    margin-bottom: 1rem;
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  ol {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--border);
+    list-style: none;
+  }
+  li {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.7rem;
+    min-width: 0;
+    min-height: 7rem;
+    padding: 0.8rem;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+  li:nth-child(3n) {
+    border-right: 0;
+  }
+  li:nth-last-child(-n + 3) {
+    border-bottom: 0;
+  }
+  li > span,
+  small,
+  p {
+    font: 0.65rem/1.45 var(--mono);
+  }
+  li > span {
+    color: var(--text-tertiary);
+  }
+  li div {
+    display: grid;
+    align-content: start;
+    gap: 0.35rem;
+  }
+  strong {
+    font: 600 0.78rem/1.35 var(--sans);
+  }
+  small,
+  p {
+    color: var(--text-secondary);
+  }
+  li > b {
+    position: absolute;
+    z-index: 1;
+    right: -0.55rem;
+    top: 50%;
+    width: 1.05rem;
+    background: var(--bg);
+    color: var(--text-tertiary);
+    font: 400 0.7rem var(--mono);
+    text-align: center;
+  }
+  li:nth-child(3) > b {
+    right: 50%;
+    top: auto;
+    bottom: -0.55rem;
+    transform: rotate(90deg);
+  }
+  p {
+    margin: 0.8rem 0 0;
+    padding-top: 0.7rem;
+    border-top: 1px solid var(--border);
+  }
+  @container (max-width: 520px) {
+    ol {
+      grid-template-columns: 1fr;
+    }
+    li,
+    li:nth-child(3n),
+    li:nth-last-child(-n + 3) {
+      min-height: auto;
+      border-right: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    li:last-child {
+      border-bottom: 0;
+    }
+    li > b,
+    li:nth-child(3) > b {
+      right: auto;
+      bottom: -0.55rem;
+      left: 0.8rem;
+      top: auto;
+      transform: rotate(90deg);
+    }
+  }
+</style>

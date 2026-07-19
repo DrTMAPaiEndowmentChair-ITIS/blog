@@ -1,0 +1,196 @@
+<figure class="viz proxy-viz" aria-labelledby="proxy-stack-title">
+  <figcaption id="proxy-stack-title">
+    <strong>Alignment supervision is a stack of proxies</strong>
+    <span>Evidence at one layer does not validate every layer above it.</span>
+  </figcaption>
+
+  <div class="stack" aria-label="Alignment proxy stack">
+    <section>
+      <span>Target</span>
+      <strong>Intended behavior</strong>
+      <small>What the deployed system should do</small>
+    </section>
+    <div class="conversion" aria-hidden="true">
+      <i>↓</i>
+      <span>formalize</span>
+    </div>
+    <section>
+      <span>Specification</span>
+      <strong>Policies, principles, examples</strong>
+      <small>Inspectable, but still incomplete or conflicting</small>
+    </section>
+    <div class="conversion" aria-hidden="true">
+      <i>↓</i>
+      <span>label</span>
+    </div>
+    <section>
+      <span>Supervision</span>
+      <strong>Preferences, critiques, step labels</strong>
+      <small>Judgments sampled under a rubric and context</small>
+    </section>
+    <div class="conversion" aria-hidden="true">
+      <i>↓</i>
+      <span>optimize</span>
+    </div>
+    <section>
+      <span>Objective</span>
+      <strong>Reward or preference loss</strong>
+      <small>The quantity the optimizer can directly improve</small>
+    </section>
+    <div class="conversion" aria-hidden="true">
+      <i>↓</i>
+      <span>generalize</span>
+    </div>
+    <section>
+      <span>Deployment</span>
+      <strong>Policy behavior in new conditions</strong>
+      <small>Prompts, tools, and evaluators outside training</small>
+    </section>
+  </div>
+
+  <div class="claim">
+    <span>Higher training score</span>
+    <i aria-hidden="true">→</i>
+    <strong>better fit to the objective</strong>
+    <i aria-hidden="true">≠</i>
+    <strong>proof of intended behavior</strong>
+  </div>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  .stack {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) auto
+      minmax(0, 1fr);
+    align-items: stretch;
+  }
+  .stack section {
+    display: grid;
+    align-content: start;
+    gap: 0.45rem;
+    min-width: 0;
+    padding: 0.85rem 0.7rem 0.95rem;
+    border-top: 2px solid var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .stack section > span {
+    color: var(--text-tertiary);
+    font: 0.62rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .stack strong {
+    font: 600 0.76rem/1.35 var(--sans);
+  }
+  .stack small {
+    color: var(--text-secondary);
+    font: 0.64rem/1.45 var(--mono);
+  }
+  .conversion {
+    display: grid;
+    place-content: center;
+    gap: 0.25rem;
+    padding: 0.35rem;
+    color: var(--text-tertiary);
+    text-align: center;
+  }
+  .conversion i {
+    font: 0.9rem var(--mono);
+    font-style: normal;
+  }
+  .conversion span {
+    font: 0.56rem var(--mono);
+    writing-mode: vertical-rl;
+  }
+  .claim {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto 1fr;
+    align-items: center;
+    gap: 0.65rem;
+    margin-top: 0.9rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--border);
+    font: 0.68rem/1.45 var(--mono);
+  }
+  .claim span {
+    color: var(--text-tertiary);
+  }
+  .claim i {
+    color: var(--text-tertiary);
+    font-style: normal;
+  }
+  .claim strong {
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+  @container (max-width: 620px) {
+    .stack {
+      grid-template-columns: 1fr;
+    }
+    .conversion {
+      min-height: 2.7rem;
+    }
+    .conversion span {
+      writing-mode: initial;
+    }
+    .claim {
+      grid-template-columns: auto auto 1fr;
+    }
+    .claim i:nth-of-type(2),
+    .claim strong:last-child {
+      grid-row: 2;
+    }
+    .claim i:nth-of-type(2) {
+      grid-column: 2;
+    }
+    .claim strong:last-child {
+      grid-column: 3;
+    }
+  }
+  @container (max-width: 380px) {
+    .claim {
+      grid-template-columns: auto 1fr;
+    }
+    .claim span {
+      grid-column: 1 / -1;
+    }
+    .claim i:nth-of-type(1) {
+      grid-column: 1;
+    }
+    .claim strong:nth-of-type(1) {
+      grid-column: 2;
+    }
+    .claim i:nth-of-type(2) {
+      grid-column: 1;
+      grid-row: 3;
+    }
+    .claim strong:last-child {
+      grid-column: 2;
+      grid-row: 3;
+    }
+  }
+</style>

@@ -7,6 +7,8 @@ topics: ['Local AI', 'Quantization', 'Inference']
 ---
 
 import QuantizationScale from '../../components/viz/QuantizationScale.astro';
+import KVCacheEstimator from '../../components/viz/KVCacheEstimator.astro';
+import OffloadHierarchy from '../../components/viz/OffloadHierarchy.astro';
 
 **Author**: Aadit Agrawal
 
@@ -185,6 +187,8 @@ ExLlamaV2 achieves 56.44 tokens/second on a T4 GPU, providing the highest tokens
 
 The key-value cache stores intermediate attention states during autoregressive generation. Without optimization, KV cache wastes 60-80% of allocated memory through fragmentation and over-allocation [19].
 
+<KVCacheEstimator />
+
 ### PagedAttention
 
 PagedAttention, introduced by vLLM, applies virtual memory concepts to KV cache management. Instead of storing each conversation's KV cache as one contiguous block, PagedAttention breaks it into small, fixed-size "blocks" that can be stored anywhere in memory.
@@ -304,6 +308,8 @@ Helix Parallelism, introduced in 2025, applies a hybrid execution strategy: KV p
 ## CPU offloading strategies
 
 When GPU memory is insufficient, offloading parts of the model or KV cache to CPU memory enables inference of larger models.
+
+<OffloadHierarchy />
 
 ### NEO: Online LLM inference with CPU offloading
 

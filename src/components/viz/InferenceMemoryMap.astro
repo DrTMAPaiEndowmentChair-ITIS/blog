@@ -1,0 +1,165 @@
+<figure class="viz memory-map" aria-labelledby="memory-map-title">
+  <figcaption id="memory-map-title">
+    A model crosses several memory budgets before it generates
+  </figcaption>
+
+  <div class="tiers">
+    <section>
+      <span>Persistent tier</span>
+      <strong>Storage</strong>
+      <p>Checkpoint files, tokenizer files, and runtime assets</p>
+      <small>Capacity answers whether the files can be kept locally.</small>
+    </section>
+    <div class="transfer">
+      <b aria-hidden="true">→</b>
+      <span>read</span>
+    </div>
+    <section>
+      <span>Host tier</span>
+      <strong>System memory</strong>
+      <p>Mapped or loaded weights, CPU workspaces, and offloaded state</p>
+      <small>Capacity and bandwidth affect CPU inference and offload.</small>
+    </section>
+    <div class="transfer">
+      <b aria-hidden="true">⇄</b>
+      <span>place</span>
+    </div>
+    <section>
+      <span>Compute tier</span>
+      <strong>Accelerator memory</strong>
+      <p>Resident layers, KV cache, activations, and kernel workspaces</p>
+      <small>A unified-memory device shares a pool, not every cost.</small>
+    </section>
+  </div>
+
+  <aside>
+    <span>During generation</span>
+    <div>
+      <b>Weights</b>
+      <i>mostly fixed</i>
+    </div>
+    <div>
+      <b>KV cache</b>
+      <i>grows with cached tokens</i>
+    </div>
+    <div>
+      <b>Scratch space</b>
+      <i>changes with runtime and kernels</i>
+    </div>
+  </aside>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    margin-bottom: 1rem;
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .tiers {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr auto 1fr;
+    align-items: stretch;
+  }
+  section {
+    display: grid;
+    align-content: start;
+    gap: 0.45rem;
+    min-width: 0;
+    padding: 0.85rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  section > span,
+  section small,
+  .transfer span,
+  aside > span,
+  aside i {
+    font: 0.65rem/1.45 var(--mono);
+  }
+  section > span,
+  aside > span {
+    color: var(--text-tertiary);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  section strong {
+    font: 600 0.86rem var(--sans);
+  }
+  section p {
+    margin: 0;
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  section small {
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-tertiary);
+  }
+  .transfer {
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 0.2rem;
+    padding: 0.35rem;
+    color: var(--text-tertiary);
+  }
+  .transfer b {
+    font: 400 0.85rem var(--mono);
+  }
+  aside {
+    display: grid;
+    grid-template-columns: 1.15fr repeat(3, 1fr);
+    align-items: center;
+    margin-top: 0.9rem;
+    border-top: 2px solid var(--text-secondary);
+  }
+  aside > span,
+  aside div {
+    padding: 0.7rem 0.6rem;
+  }
+  aside div {
+    display: grid;
+    gap: 0.2rem;
+    border-left: 1px solid var(--border);
+  }
+  aside b,
+  aside i {
+    font-style: normal;
+  }
+  aside b {
+    font: 600 0.72rem var(--sans);
+  }
+  aside i {
+    color: var(--text-secondary);
+  }
+  @container (max-width: 620px) {
+    .tiers {
+      grid-template-columns: 1fr;
+    }
+    .transfer {
+      justify-items: start;
+      padding: 0.25rem 0.8rem;
+    }
+    .transfer b {
+      transform: rotate(90deg);
+    }
+  }
+  @container (max-width: 460px) {
+    aside {
+      grid-template-columns: 1fr;
+    }
+    aside div {
+      border-top: 1px solid var(--border);
+      border-left: 0;
+    }
+  }
+</style>

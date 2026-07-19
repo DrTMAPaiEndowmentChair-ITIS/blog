@@ -1,0 +1,287 @@
+---
+title: 'What Determines Which Language Model You Can Run on Your Device'
+pubDate: 2026-07-19
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: 'Estimate local model memory, understand quantization and accelerator support, and choose a runtime and offload plan that match your device.'
+topics: ['Local inference', 'Quantization', 'Memory', 'Hardware acceleration']
+---
+
+import ModelFitCalculator from '../../components/viz/ModelFitCalculator.astro'
+import PrecisionExecutionPath from '../../components/viz/PrecisionExecutionPath.astro'
+import InferenceMemoryMap from '../../components/viz/InferenceMemoryMap.astro'
+import KVCacheEstimator from '../../components/viz/KVCacheEstimator.astro'
+import AcceleratorDispatch from '../../components/viz/AcceleratorDispatch.astro'
+import OffloadHierarchy from '../../components/viz/OffloadHierarchy.astro'
+import ModelFitDecision from '../../components/viz/ModelFitDecision.astro'
+
+The model name does not determine whether it runs on your device. A runnable configuration is a combination of a checkpoint, a numerical representation, a context length, a runtime, a hardware backend, and a memory placement plan.
+
+That distinction explains why two files described as the same model can have different memory requirements, why an accelerator can sit idle while inference uses the CPU, and why a checkpoint larger than available RAM can still produce tokens slowly through disk offload.
+
+This guide separates those variables. The goal is not to produce a universal compatibility list. It is to give you a repeatable way to estimate a configuration before downloading it, then identify the next constraint when the estimate does not fit.
+
+## Weight tensors set the first memory estimate
+
+A language model checkpoint is mostly a collection of tensors. The parameter count tells you how many values those tensors contain. The stored precision tells you how many bits are used for each value.
+
+A parameter is a learned numerical value. A checkpoint is the saved set of those learned values plus the metadata needed to reconstruct the model. Parameter count is useful because it gives the first capacity estimate before runtime-specific details enter the calculation.
+
+The simplest weight-size estimate is:
+
+$$
+\text{weight bytes}
+=
+\frac{\text{parameter count}\times\text{stored bits per parameter}}{8}
+$$
+
+The division by eight converts bits to bytes. This is a lower bound for a uniformly encoded checkpoint, not a prediction of the final file size.
+
+For an illustrative checkpoint containing exactly eight billion parameters:
+
+$$
+\frac{8{,}000{,}000{,}000\times16}{8}
+=
+16{,}000{,}000{,}000\text{ bytes}
+$$
+
+The same arithmetic with four stored bits per parameter gives four billion bytes. These are derived values from the displayed formula. They do not include quantization scales, tensor metadata, mixed-precision layers, tokenizer files, runtime buffers, or the key-value cache.
+
+Real quantized formats make the estimate less exact. A GGUF file stores tensor data and metadata, and its quantization blocks can include scales and other block-level values alongside the low-bit weights.[^1] A label such as four-bit therefore describes the main weight encoding, not a guarantee that the whole file uses exactly four bits for every parameter.
+
+Mixture-of-experts model listings can show both total and active parameter counts. Use the total parameters present in the checkpoint when estimating stored weights. The active count describes the subset selected for one token's computation, not the complete set of expert weights that must be stored. The Mixtral paper makes this distinction explicitly when it reports separate total and active counts.[^16]
+
+<ModelFitCalculator />
+
+The calculator separates the weight estimate from the additional allocations discussed below. Treat its result as a screening test. If the tensors alone exceed every available memory tier, the runtime needs quantization, partial placement, or disk-backed execution before it can load the checkpoint.
+
+## Stored precision and compute precision are separate
+
+Precision answers more than one question:
+
+- How are weights stored in the checkpoint?
+- In which type are weights represented after loading?
+- In which type does the hardware execute matrix operations?
+- In which type are intermediate activations and cache entries stored?
+
+Those answers can differ. A runtime can store a weight matrix in a low-bit format, unpack blocks inside a kernel, and accumulate partial products in a wider type. The checkpoint is smaller, but the accelerator still needs a kernel that understands that encoding.
+
+NVIDIA documents distinct floating-point and integer formats for TensorRT, including FP32, FP16, BF16, FP8, FP4, INT8, and INT4.[^2] The labels describe different bit layouts and numerical ranges. They are not interchangeable labels for reduced storage.
+
+Transformers quantization methods also differ in hardware support. The Hugging Face compatibility table lists separate support across CPU, CUDA, ROCm, Metal, Intel GPU, and other backends.[^3] A checkpoint that loads on one backend can fall back to a slower implementation or fail to load on another backend even when both devices have enough memory.
+
+<PrecisionExecutionPath />
+
+Three practical consequences follow.
+
+First, lower stored precision usually reduces checkpoint storage and weight memory, but does not reduce every allocation by the same ratio. Activations, cache entries, and selected layers can remain in wider types.
+
+Second, a lower-bit format is useful only when the runtime provides kernels for the device. NVIDIA's TensorRT RTX documentation, for example, ties FP8 support to Ada Lovelace and newer GPUs, while BF16 and INT4 support begin with Ampere in that runtime.[^4] Hardware generation and software backend both matter.
+
+Third, quantization changes model outputs. Post-training quantization maps trained values into a smaller numerical representation. Per-channel, per-group, and per-block methods keep separate quantization parameters for smaller regions of a tensor, which increases metadata and implementation complexity in exchange for finer scaling.[^5] Choose the most compressed format only after evaluating it on the tasks you intend to run.
+
+## Storage, RAM, and accelerator memory are different budgets
+
+The word memory is too broad to diagnose a failed load. A local inference system usually crosses several capacity limits:
+
+| Resource                    | What occupies it                                                                             | What happens when it is insufficient                                                            |
+| --------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Storage                     | Checkpoint files, tokenizer files, runtime binaries, compiled kernels, and caches            | The model cannot be downloaded, converted, or retained                                          |
+| System RAM                  | CPU-resident weights, file-backed pages, runtime state, token buffers, and offloaded tensors | Loading fails, the operating system compresses memory, or pages are repeatedly moved to storage |
+| Discrete accelerator memory | GPU-resident weights, activations, key-value cache, and working buffers                      | Fewer layers fit on the accelerator or allocation fails                                         |
+| Unified memory              | CPU and GPU allocations from one physical pool                                               | CPU and GPU compete for the same capacity even though explicit tensor copies can be avoided     |
+
+Apple silicon provides a concrete unified-memory design. Apple’s MLX documentation states that the CPU and GPU access the same memory pool and that MLX arrays do not need to be moved when an operation changes devices.[^6] This removes a separate CPU-to-GPU copy step for those arrays. It does not create additional capacity. Model weights, cache entries, the operating system, and other applications still share the pool.
+
+<InferenceMemoryMap />
+
+The diagram distinguishes capacity from placement. A checkpoint can fit on storage but not in system RAM. It can fit in RAM but not in GPU memory. It can fit across RAM and GPU memory while spending substantial time moving tensors over the interconnect.
+
+Leave headroom for the operating system and runtime instead of matching a checkpoint file to the last available byte. The exact headroom is runtime and workload dependent, so measure it on the target device rather than applying a universal percentage.
+
+## Context length grows the key-value cache
+
+Autoregressive generation reuses attention keys and values from earlier tokens. The key-value cache stores those tensors so the model does not recompute the full prefix for every generated token.
+
+For a standard cache without additional compression, an approximate per-token allocation is:
+
+$$
+\text{KV bytes per token}
+=
+2
+\times
+\text{layers}
+\times
+\text{KV heads}
+\times
+\text{head dimension}
+\times
+\text{bytes per cache element}
+$$
+
+The first factor represents one key tensor and one value tensor. Hugging Face derives the same structure in its cache quantization explanation.[^7]
+
+Grouped-query attention reduces this allocation because several query heads share a smaller set of key-value heads. The relevant field is the number of key-value heads, not the total number of attention heads.
+
+<KVCacheEstimator />
+
+The estimator reports values derived from the inputs shown in the figure. If the context length is multiplied while every architecture and precision field stays fixed, the cache allocation changes by the same factor.
+
+Runtime policy modifies this result:
+
+- A dynamic cache grows as tokens arrive.
+- A static cache allocates its configured maximum capacity before all positions are used.
+- A quantized cache stores keys and values at lower precision.
+- An offloaded cache keeps the active layer on the accelerator and places other layers of cache data in CPU memory.
+
+The Transformers cache documentation describes those strategies and notes that offloading saves accelerator memory at a throughput cost.[^8] A model that fits for a short prompt can therefore run out of memory at a longer context even though its weight tensors never change.
+
+Context settings also affect generation length. The cache contains prompt tokens plus generated tokens that remain inside the active context. Test the longest request you intend to serve, not only an empty prompt.
+
+## Accelerator support is an operation-level property
+
+A GPU or neural processing unit does not accelerate a model merely because it exists in the machine. The runtime must provide a backend for the device, and that backend must implement the operations, data types, tensor shapes, and memory layouts used by the graph.
+
+ONNX Runtime formalizes this through execution providers. Each provider reports the graph nodes or subgraphs it supports. ONNX Runtime partitions the graph, assigns supported regions to prioritized providers, and uses a lower-priority provider such as the CPU for unsupported regions.[^9]
+
+<AcceleratorDispatch />
+
+This graph-level view explains several common outcomes:
+
+- The complete model runs on the accelerator because every required operation has a supported kernel.
+- Most layers run on the accelerator while a small unsupported region runs on the CPU.
+- Frequent boundaries between providers add transfers and synchronization.
+- The runtime rejects the graph because an operation has no valid implementation.
+- A low-precision checkpoint loads, but selected operations execute in a wider type.
+
+Core ML exposes a related policy through compute units. An application can request the CPU alone, the CPU and GPU, the CPU and Neural Engine, or all available units; the system then selects compatible hardware for the model.[^10] The request controls eligible devices, not a guarantee that every operation uses the same accelerator.
+
+Peak throughput figures do not answer this compatibility question. Compare a device only after confirming that your runtime can execute the model’s operations and quantization format on it. Then benchmark the complete prompt-processing and token-generation path.
+
+## File format, runtime, and backend form one stack
+
+A model file is not an executable application. The format determines how tensors and metadata are represented. The runtime parses that representation, constructs operations, chooses kernels, and places allocations.
+
+Consider three common paths:
+
+**GGUF with llama.cpp.** GGUF contains tensors and model metadata for the GGML ecosystem.[^1] llama.cpp supports several CPU and accelerator backends, integer quantization levels, memory mapping, and CPU plus GPU hybrid inference.[^11]
+
+**Safetensors with a framework runtime.** Safetensors records tensor names, dtypes, shapes, and byte offsets in a format designed for safe loading and memory mapping.[^12] The file does not decide whether a transformer runs through PyTorch eager execution, a compiled graph, CUDA kernels, Metal kernels, or another backend.
+
+**ONNX with execution providers.** An ONNX graph describes operations and tensors. ONNX Runtime assigns graph regions to execution providers according to backend support and priority.[^9]
+
+Conversion between formats can change more than the filename. An exporter can rewrite operations, fold constants, select a deployment target, or choose a default tensor precision. Core ML Tools, for example, uses float16 as the default precision for ML Program conversion unless the conversion options specify another behavior.[^13]
+
+Before downloading a checkpoint, answer these questions:
+
+1. Which runtime reads the format?
+2. Which backend in that runtime supports the target device?
+3. Does the backend implement this quantization and architecture?
+4. Which tensors remain in system RAM?
+5. Which operations fall back to the CPU?
+
+If one answer is unknown, the parameter count alone cannot establish compatibility.
+
+## Layer offload combines memory tiers
+
+Transformer blocks are repeated groups of operations. A runtime can place some blocks on an accelerator and keep the rest in system RAM. During inference, each block executes where its weights reside.
+
+llama.cpp calls this CPU plus GPU hybrid inference and exposes controls for the number of layers offloaded to the GPU, target devices, and tensor split behavior.[^11] This placement can run a model whose weights exceed accelerator memory as long as the remaining allocations fit elsewhere.
+
+<OffloadHierarchy />
+
+Offload changes the bottleneck. When every layer and the active cache fit in accelerator memory, generation can remain within that high-bandwidth memory domain. When layers are split, hidden states cross the device boundary at placement transitions. When weights are fetched from storage, each needed tensor must first become available through system memory.
+
+The fastest placement is not always the placement with the most offloaded layers. Accelerator memory also holds the key-value cache and working buffers. Giving every remaining byte to weights can leave too little room for the requested context. Measure prompt processing and token generation with the final context setting.
+
+## Memory mapping avoids an eager file copy
+
+Memory mapping gives a process a virtual address range backed by a file. The operating system loads file pages as they are accessed instead of requiring the application to copy the complete file into a separate heap allocation at startup.
+
+Safetensors supports lazy loading through memory mapping, and llama.cpp enables memory mapping by default unless its command-line option disables it.[^12][^14]
+
+This can reduce startup copies and allow the operating system to reclaim clean file-backed pages. It does not make storage equivalent to RAM. A page that is not resident still has to be read from the storage device. If the working set repeatedly exceeds available RAM, page faults and eviction place storage latency on the generation path.
+
+Memory locking makes the opposite trade. llama.cpp provides an option that asks the operating system not to swap model data after it is loaded.[^14] Locked pages can stabilize residency, but they consume physical memory that other processes cannot reclaim.
+
+Use memory mapping when the format and runtime support it, then watch resident memory and page-fault behavior during a representative request. A successful load does not establish steady-state performance.
+
+## Disk offload exchanges capacity for data movement
+
+Some framework runtimes can place selected weights on disk when neither accelerator memory nor system RAM can hold the full checkpoint. Hugging Face Accelerate device maps support accelerator, CPU, and disk placements.[^15]
+
+For disk-resident layers, Accelerate describes a staged path: weights move from disk into system RAM, then to the execution device before the layer runs. After execution, the memory used for those weights can be released for the next layer.[^15]
+
+That mechanism can make a larger checkpoint executable, but it puts storage reads inside model execution. Accelerate’s documentation warns that hard-drive offload can be slow when the storage and CPU path cannot move data quickly enough.[^15]
+
+Disk offload is therefore a capacity technique, not extra RAM. It is most defensible when completing the task matters more than interactive token latency, or when only a small fraction of tensors need disk placement. Benchmark with a warm and a cold file cache so an operating-system cache does not hide the storage dependency.
+
+## Storage capacity includes more than one checkpoint
+
+The downloaded file is only one storage consumer. A working local setup can also contain:
+
+- the original checkpoint and one or more quantized conversions
+- temporary files created during conversion
+- tokenizer and configuration files
+- compiled engine plans or kernel caches
+- runtime packages and accelerator libraries
+- generated logs and application data
+
+Do not infer required free space from the final quantized file alone if conversion happens on the same device. The conversion process can require the source and destination files to coexist.
+
+Storage speed matters when the runtime memory maps weights, loads model shards on demand, or uses disk offload. Once the active working set remains resident in RAM or accelerator memory, storage bandwidth should leave the steady-state token path. Use system I/O counters to verify which regime you are in.
+
+## A model-fit procedure
+
+Use the same order for each candidate configuration:
+
+1. Identify the exact checkpoint and format.
+2. Calculate the theoretical weight size from parameter count and stored precision.
+3. Use the actual file size when the checkpoint is available.
+4. Add the key-value cache for the target context and cache precision.
+5. Reserve capacity for runtime buffers, the operating system, and other applications.
+6. Map those allocations to accelerator memory, system RAM, unified memory, and storage.
+7. Confirm runtime support for the format, architecture, quantization method, and device backend.
+8. Decide whether full acceleration, layer offload, memory mapping, or disk offload is required.
+9. Benchmark the longest intended prompt and generation on the target device.
+10. Evaluate output quality on the tasks that matter for the application.
+
+<ModelFitDecision />
+
+The sequence deliberately places compatibility before performance claims. A device can have enough aggregate memory while lacking a usable kernel. A runtime can load a checkpoint while paging so heavily that interactive use is impractical. A quantized model can execute quickly while producing unacceptable results for a specific task.
+
+Record the complete configuration with every benchmark: checkpoint revision, quantization, runtime version, backend, layer placement, context length, cache type, prompt length, generated length, and device power mode. Without those fields, two local-inference measurements are not directly comparable.
+
+## References
+
+[^1]: Hugging Face, “GGUF.” [https://huggingface.co/docs/hub/gguf](https://huggingface.co/docs/hub/gguf)
+
+[^2]: NVIDIA, “Data Format Descriptions.” [https://docs.nvidia.com/deeplearning/tensorrt/latest/inference-library/data-format-desc.html](https://docs.nvidia.com/deeplearning/tensorrt/latest/inference-library/data-format-desc.html)
+
+[^3]: Hugging Face, “Quantization Overview.” [https://huggingface.co/docs/transformers/quantization/overview](https://huggingface.co/docs/transformers/quantization/overview)
+
+[^4]: NVIDIA, “TensorRT RTX Best Practices.” [https://docs.nvidia.com/deeplearning/tensorrt-rtx/latest/performance/best-practices.html](https://docs.nvidia.com/deeplearning/tensorrt-rtx/latest/performance/best-practices.html)
+
+[^5]: Hugging Face, “Quantization Concepts.” [https://huggingface.co/docs/transformers/quantization/concept_guide](https://huggingface.co/docs/transformers/quantization/concept_guide)
+
+[^6]: MLX, “Unified Memory.” [https://ml-explore.github.io/mlx/build/html/usage/unified_memory.html](https://ml-explore.github.io/mlx/build/html/usage/unified_memory.html)
+
+[^7]: Hugging Face, “KV Cache Quantization.” [https://huggingface.co/blog/kv-cache-quantization](https://huggingface.co/blog/kv-cache-quantization)
+
+[^8]: Hugging Face, “Cache Strategies.” [https://huggingface.co/docs/transformers/kv_cache](https://huggingface.co/docs/transformers/kv_cache)
+
+[^9]: ONNX Runtime, “Execution Providers.” [https://onnxruntime.ai/docs/execution-providers/](https://onnxruntime.ai/docs/execution-providers/)
+
+[^10]: Apple, “MLComputeUnits.” [https://developer.apple.com/documentation/coreml/mlcomputeunits](https://developer.apple.com/documentation/coreml/mlcomputeunits)
+
+[^11]: ggml-org, “llama.cpp.” [https://github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp)
+
+[^12]: Hugging Face, “Safetensors.” [https://github.com/huggingface/safetensors](https://github.com/huggingface/safetensors)
+
+[^13]: Apple, “ML Program Conversion.” [https://apple.github.io/coremltools/docs-guides/source/new-conversion-options.html](https://apple.github.io/coremltools/docs-guides/source/new-conversion-options.html)
+
+[^14]: ggml-org, “llama.cpp CLI.” [https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/README.md](https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/README.md)
+
+[^15]: Hugging Face, “Big Model Inference.” [https://huggingface.co/docs/accelerate/v0.29.0/en/concept_guides/big_model_inference](https://huggingface.co/docs/accelerate/v0.29.0/en/concept_guides/big_model_inference)
+
+[^16]: Jiang et al., “Mixtral of Experts.” [https://arxiv.org/abs/2401.04088](https://arxiv.org/abs/2401.04088)
