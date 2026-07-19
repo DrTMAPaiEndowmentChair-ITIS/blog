@@ -13,7 +13,7 @@ Groq and Cerebras attack the accelerator memory problem from different physical 
 
 Both designs reduce dependence on a conventional cache hierarchy. Their execution models, scaling boundaries, and software constraints are not interchangeable.
 
-This article separates published architectural facts from analysis. Product throughput and price claims are omitted because they vary with model, batch, precision, software revision, and service configuration.
+Product throughput and price depend on the model, batch, precision, software revision, and service configuration, so this comparison stays at the architecture level.
 
 <GroqCerebrasArchitecture />
 
@@ -83,7 +83,7 @@ Static scheduling extends beyond one processor. The Groq scale-out paper describ
 
 Instead, local SRAM buffers tensor vectors between hops. Explicit send and receive instructions impose a total ordering that the compiler can reason about.
 
-The published system topology groups eight processors in a node with internal direct links. Nodes connect into a larger topology using a mix of electrical and optical paths.[^groq-isca] This is an architectural specification from the paper, not a claim that every deployed Groq service uses the same system generation.
+The published system topology groups eight processors in a node with internal direct links. Nodes connect into a larger topology using a mix of electrical and optical paths.[^groq-isca] The paper specifies this topology for the system it describes; deployed Groq services may use a different generation.
 
 ### Consequences of scheduled networking
 
@@ -264,9 +264,9 @@ Groq's design fits workloads where a compiler can exploit a stable graph and whe
 
 Cerebras fits workloads that benefit from mapping large tensor graphs across a dense core and memory fabric. Wafer-scale integration reduces off-device communication inside the mapped graph, while defect tolerance and compilation make the physical wafer usable as one machine.
 
-Neither architecture abolishes distributed systems. Groq moves coordination into a static program across processors. Cerebras moves more of the graph inside one wafer and uses explicit system-level pipelines or Weight Streaming beyond it.
+Distributed-system concerns remain. Groq moves coordination into a static program across processors. Cerebras moves more of the graph inside one wafer and uses explicit system-level pipelines or Weight Streaming beyond it.
 
-That is the useful comparison: not which accelerator has the largest headline number, but where each design places memory, scheduling, communication, and failure handling.
+Trace a token through each machine. On Groq, the compiled schedule coordinates SRAM, functional units, and links. On Cerebras, placement across the wafer determines local memory use and fabric traffic. Fault recovery belongs in the comparison because a remap, recompile, or restart changes system behavior.
 
 [^groq-isca]: [Abts et al., “A Software-defined Tensor Streaming Multiprocessor for Large-scale Machine Learning,” ISCA, 2022](https://doi.org/10.1145/3470496.3527405).
 

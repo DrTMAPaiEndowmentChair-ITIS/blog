@@ -17,9 +17,9 @@ import ModelFitDecision from '../../components/viz/ModelFitDecision.astro'
 
 The model name does not determine whether it runs on your device. A runnable configuration is a combination of a checkpoint, a numerical representation, a context length, a runtime, a hardware backend, and a memory placement plan.
 
-That distinction explains why two files described as the same model can have different memory requirements, why an accelerator can sit idle while inference uses the CPU, and why a checkpoint larger than available RAM can still produce tokens slowly through disk offload.
+Two files described as the same model can require different amounts of memory. An installed accelerator can sit idle when the runtime lacks a compatible backend. Disk offload can execute a checkpoint larger than available RAM, with storage reads entering the generation path.
 
-This guide separates those variables. The goal is not to produce a universal compatibility list. It is to give you a repeatable way to estimate a configuration before downloading it, then identify the next constraint when the estimate does not fit.
+This guide provides a repeatable way to estimate a configuration before downloading it and identify the next constraint when the estimate does not fit.
 
 ## Weight tensors set the first memory estimate
 
@@ -35,7 +35,7 @@ $$
 \frac{\text{parameter count}\times\text{stored bits per parameter}}{8}
 $$
 
-The division by eight converts bits to bytes. This is a lower bound for a uniformly encoded checkpoint, not a prediction of the final file size.
+The division by eight converts bits to bytes. This lower bound assumes uniform encoding. Quantization metadata and mixed-precision tensors increase the final file size.
 
 For an illustrative checkpoint containing exactly eight billion parameters:
 
@@ -95,7 +95,7 @@ Apple silicon provides a concrete unified-memory design. Apple’s MLX documenta
 
 <InferenceMemoryMap />
 
-The diagram distinguishes capacity from placement. A checkpoint can fit on storage but not in system RAM. It can fit in RAM but not in GPU memory. It can fit across RAM and GPU memory while spending substantial time moving tensors over the interconnect.
+Storage fit is only the first capacity check. The loaded checkpoint may exceed system RAM or GPU memory. A split placement can solve capacity while adding interconnect traffic.
 
 Leave headroom for the operating system and runtime instead of matching a checkpoint file to the last available byte. The exact headroom is runtime and workload dependent, so measure it on the target device rather than applying a universal percentage.
 
@@ -136,7 +136,7 @@ Runtime policy modifies this result:
 
 The Transformers cache documentation describes those strategies and notes that offloading saves accelerator memory at a throughput cost.[^8] A model that fits for a short prompt can therefore run out of memory at a longer context even though its weight tensors never change.
 
-Context settings also affect generation length. The cache contains prompt tokens plus generated tokens that remain inside the active context. Test the longest request you intend to serve, not only an empty prompt.
+Context settings also affect generation length. The cache contains prompt tokens plus generated tokens that remain inside the active context. Test with the longest prompt and generation you intend to serve.
 
 ## Accelerator support is an operation-level property
 
@@ -212,9 +212,9 @@ Some framework runtimes can place selected weights on disk when neither accelera
 
 For disk-resident layers, Accelerate describes a staged path: weights move from disk into system RAM, then to the execution device before the layer runs. After execution, the memory used for those weights can be released for the next layer.[^15]
 
-That mechanism can make a larger checkpoint executable, but it puts storage reads inside model execution. Accelerate’s documentation warns that hard-drive offload can be slow when the storage and CPU path cannot move data quickly enough.[^15]
+Disk-resident execution can load a larger checkpoint, but it puts storage reads inside model execution. Accelerate’s documentation warns that hard-drive offload can be slow when the storage and CPU path cannot move data quickly enough.[^15]
 
-Disk offload is therefore a capacity technique, not extra RAM. It is most defensible when completing the task matters more than interactive token latency, or when only a small fraction of tensors need disk placement. Benchmark with a warm and a cold file cache so an operating-system cache does not hide the storage dependency.
+Disk offload increases usable capacity by fetching weights when needed. It does not remove the RAM required to stage those weights or the device memory required for execution. Use it when completing the task matters more than interactive token latency, or when only a small fraction of tensors need disk placement. Benchmark with a warm and a cold file cache so an operating-system cache does not hide the storage dependency.
 
 ## Storage capacity includes more than one checkpoint
 

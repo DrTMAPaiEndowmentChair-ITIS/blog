@@ -10,9 +10,9 @@ topics: ['Model alignment', 'RLHF', 'Scalable oversight', 'AI safety']
 import AlignmentControlLoop from '../../components/viz/AlignmentControlLoop.astro'
 import AlignmentProxyStack from '../../components/viz/AlignmentProxyStack.astro'
 
-Model alignment is often presented as a post-training recipe: collect preferences, optimize a policy, and test whether the assistant is helpful and safe. That description leaves out the central difficulty. The training signal is only a proxy for an intended behavior, and the model must generalize that proxy to inputs, tools, and situations absent from training.
+Post-training pipelines collect preferences, optimize a policy, and test whether the assistant is helpful and safe. The training signal is a proxy for intended behavior. The model must generalize that proxy to inputs, tools, and situations absent from training.
 
-A useful definition is therefore operational:
+Use the following operational definition:
 
 > An aligned model follows the intended specification when the evaluator is weak, the context is unfamiliar, and shortcuts are available.
 
@@ -40,7 +40,7 @@ The reward term pulls behavior toward the preference model. The KL term limits m
 
 Direct Preference Optimization rewrites this constrained reward problem as a classification loss on preferred and rejected responses.[^2] It removes the separately trained reward model and online reinforcement learning loop, but it does not remove the proxy problem. The chosen response still represents a judgment made under a particular rubric and context.
 
-The useful distinction is:
+These layers can fail independently:
 
 | Layer                 | What it contains                    | Common failure                             |
 | --------------------- | ----------------------------------- | ------------------------------------------ |
@@ -82,9 +82,9 @@ Process supervision also has costs:
 - Labels are more expensive because an evaluator must inspect a trajectory.
 - A visible chain of thought may not faithfully expose the computation that caused the answer.
 - Fine-grained rubrics can reward verbose compliance with the rubric rather than efficient reasoning.
-- Tool-using agents require process labels for actions, state changes, and omissions, not only text.
+- Tool-using agents require process labels for text, actions, state changes, and omissions.
 
-The right process boundary depends on the risk. A coding agent can be evaluated at each file mutation or shell command. A medical assistant may need evidence checks before advice. A long-horizon agent needs stateful constraints that survive across turns.
+Choose process checkpoints according to risk. A coding agent can be evaluated at each file mutation or shell command. A medical assistant may need evidence checks before advice. A long-horizon agent needs stateful constraints that survive across turns.
 
 ## Oversight must work when the model is stronger
 
@@ -106,7 +106,7 @@ The evaluator must remain independent enough to catch shared mistakes. Two model
 
 Behavioral red teaming is weak when a model behaves differently after detecting an evaluation. Model organisms address this by deliberately training models with known hidden objectives or failure propensities, then asking auditors to recover them.[^7]
 
-This creates a ground truth for audit research. If the hidden objective is known to the experimenter, an audit can be scored on whether it identifies the cause, not only whether it finds suspicious outputs.
+This creates a ground truth for audit research. If the experimenter knows the hidden objective, an audit can be scored on whether it identifies the cause and its behavioral traces.
 
 Anthropic's automated auditing work combines behavioral evaluations, training-data inspection, and interpretability tools against such models.[^7] The approach tests an entire investigation workflow rather than one probe. It also reveals a deployment lesson: a monitor should generate falsifiable hypotheses, design counterexamples, and seek causal evidence.
 
@@ -133,7 +133,7 @@ A deployment report should separate the layers of evidence:
 - causal interventions where interpretability claims support a safety decision
 - residual risks that the evaluation cannot measure
 
-Alignment is not a scalar property attached to a checkpoint. It is a claim about behavior under a stated threat model and operating environment. The claim becomes credible when the specification is inspectable, supervision is traceable, audits can expose known hidden failures, and deployment monitoring can detect when the model leaves the tested regime.
+An alignment claim needs a stated threat model and operating environment. Its evidence should connect an inspectable specification to traceable supervision, audits that expose known hidden failures, and deployment monitoring that detects behavior outside the tested regime.
 
 ## References
 

@@ -10,9 +10,9 @@ topics: ['Scaling laws', 'Pretraining', 'Compute optimality', 'Data']
 import ScalingLawRegimes from '../../components/viz/ScalingLawRegimes.astro'
 import ComputeBudgetAllocation from '../../components/viz/ComputeBudgetAllocation.astro'
 
-Scaling laws compress many training runs into a small equation. They are useful because a fitted curve can predict loss at an untested scale and guide the allocation of a fixed training budget. They are easy to misuse because every curve is conditional on a model family, data distribution, optimizer, tokenization scheme, and measurement range.
+Scaling laws fit a small equation to measurements from many training runs. The fitted curve can predict loss at an untested scale and guide the allocation of a fixed training budget. Its domain is limited by the model family, data distribution, optimizer, tokenization scheme, and measurement range used to produce it.
 
-The right reading is not “bigger models follow a universal law.” It is:
+Read the equation with its conditions attached:
 
 > Within a measured regime, a chosen metric often changes smoothly enough with scale to support extrapolation.
 
@@ -56,7 +56,7 @@ The parameter-limited term falls with $N$. The data-limited term falls with $D$.
 
 <ComputeBudgetAllocation />
 
-This is an allocation result, not a law that every deployed model should use the compute-optimal point. A serving-heavy product may prefer fewer parameters because inference cost is paid repeatedly. A research model may accept a larger serving cost to reduce pretraining time. A model intended for continued training may deliberately stop before the static optimum.
+The compute-optimal point answers a training allocation question. It does not automatically minimize deployment cost. A serving-heavy product may prefer fewer parameters because inference cost is paid repeatedly. A research model may accept a larger serving cost to reduce pretraining time. A model intended for continued training may deliberately stop before the static optimum.
 
 ## Data quality moves the curve
 
@@ -88,7 +88,7 @@ Abundant-data scaling assumes the next training token can be drawn from a large 
 
 Muennighoff and collaborators studied repeated-data training and found that a limited amount of repetition could retain much of the value of unique data in their experiments, while additional repetition eventually produced declining returns.[^4] Their scaling law adds a term for the reduced value of repeated tokens.
 
-A 2026 preprint proposes SoftQ, a coupled model of parameter count and data size for repeated-data training, arguing that the additive Chinchilla form can be misspecified in this regime.[^5] This is a recent research proposal, not a settled replacement for compute-optimal scaling.
+A 2026 preprint proposes SoftQ, a coupled model of parameter count and data size for repeated-data training, arguing that the additive Chinchilla form can be misspecified in this regime.[^5] The paper evaluates SoftQ for repeated-data training.
 
 The conceptual point is durable: once examples repeat, model size and data size can interact. A larger model may memorize repeated data differently from a smaller model, so independent parameter and data terms can miss structure in the observations.
 
@@ -132,7 +132,7 @@ A good scaling study runs before the largest training job, not after it. The wor
 
 The fitted optimum should be treated as a region, not a single sacred coordinate. Measurement noise, hardware constraints, checkpoint reuse, and serving economics can make nearby allocations operationally better.
 
-The strongest scaling-law claim is modest: a family of systems exhibited a predictable relationship over a measured range. That is enough to save large amounts of experimental compute. It is not enough to infer that one curve governs new architectures, repeated data, post-training, test-time reasoning, and user value.
+A scaling fit supports the measured relationship for one family of systems over one range. Researchers can use that fit to avoid some experimental runs. Extending it to new architectures, repeated data, post-training, test-time reasoning, or user value requires new measurements.
 
 ## References
 

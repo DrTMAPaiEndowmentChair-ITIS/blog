@@ -76,9 +76,9 @@ Validation requires interventions. Circuit tracing uses feature ablation, activa
 
 Early attribution graphs focused on multilayer perceptron computation. Attention adds conditional information movement between token positions.
 
-Anthropic's 2025 attention work decomposes query-key interactions in terms of feature pairs and integrates them into attribution graphs.[^4] This helps answer not only which source position received attention, but why a feature at the destination selected a feature at the source.
+Anthropic's 2025 attention work decomposes query-key interactions in terms of feature pairs and integrates them into attribution graphs.[^4] The method traces why a destination feature selected a source feature, rather than stopping at the attended position.
 
-That distinction matters. An attention pattern is a routing map, not an explanation by itself. A head attending to a name token could copy the name, suppress it, compare it, or use another feature stored at the same position.
+An attention pattern shows routing. It does not identify the operation performed on the routed information. A head attending to a name token could copy the name, suppress it, compare it, or use another feature stored at the same position.
 
 A stronger analysis identifies:
 
@@ -153,7 +153,7 @@ The current toolchain still leaves hard gaps.
 
 **Automation:** Model-based feature labels and audit agents increase coverage but introduce another learned evaluator.
 
-The field's strongest recent move is methodological. Researchers increasingly pair a human-readable interpretation with an intervention that should change behavior if the interpretation is right. The goal is not a compelling story about an activation. It is a model of computation that survives causal tests and predicts failures on new inputs.
+Recent work pairs human-readable interpretations with interventions that should change behavior when the interpretation is correct. A mechanistic claim should survive causal tests and predict failures on new inputs.
 
 ## References
 

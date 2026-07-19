@@ -14,7 +14,7 @@ Pretraining spends compute once to change model weights. Test-time compute spend
 
 That extra compute can take several forms: a longer internal trace, parallel samples, iterative revisions, tree search, tool calls, or verifier passes. Counting generated tokens alone combines mechanisms with different costs and failure modes.
 
-The central design question is:
+A deployment policy must answer:
 
 > Given a fixed inference budget, which candidate should receive the next unit of compute?
 
@@ -65,7 +65,7 @@ Verifier quality sets the ceiling. If the verifier rewards polished invalid reas
 
 Snell and collaborators compared test-time strategies under fixed compute and found that the best allocation depended on problem difficulty and base-model capability.[^3] Their compute-optimal policy used prompt difficulty to choose how much inference compute to spend, improving efficiency over a fixed best-of-$N$ baseline in the reported experiments.
 
-The result rules out a common deployment policy: give every request the same long reasoning budget.
+The result rejects a uniform long reasoning budget for every request.
 
 A practical router can use:
 
@@ -148,9 +148,9 @@ Accuracy is necessary but incomplete. A test-time compute service should report:
 - fraction of requests stopped at each budget tier
 - cases where more compute changed a correct answer to an incorrect one
 
-The useful object is a compute-quality frontier. A policy dominates another when it reaches equal or better quality for the same deployment cost across the relevant request distribution.
+Plot quality against compute across the relevant request distribution. One policy dominates another when it reaches equal or better quality at the same deployment cost.
 
-Test-time compute is not a request to “think longer.” It is an inference algorithm that decides what to generate, how to judge it, where to branch, and when to stop. Extra compute becomes useful only when those decisions are more reliable than the candidate errors they are meant to correct.
+Test-time compute is an inference algorithm that decides what to generate, how to judge it, where to branch, and when to stop. Extra compute pays off when those decisions are more reliable than the candidate errors they are meant to correct.
 
 ## References
 
