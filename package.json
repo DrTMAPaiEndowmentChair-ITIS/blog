@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "astro dev",
-    "prebuild": "tsx scripts/toggle-proxy.ts && tsx scripts/generate-icons.ts && tsx scripts/generate-og-images.ts",
+    "prebuild": "tsx scripts/generate-icons.ts && tsx scripts/generate-og-images.ts",
     "og-images": "tsx scripts/generate-og-images.ts",
     "icons": "tsx scripts/generate-icons.ts",
     "build": "astro build",
@@ -21,7 +21,6 @@
   },
   "dependencies": {
     "@astrojs/mdx": "7.0.3",
-    "@astrojs/netlify": "8.1.2",
     "@astrojs/rss": "4.0.19",
     "@astrojs/sitemap": "3.7.3",
     "@fontsource/commit-mono": "^5.2.5",

@@ -14,10 +14,10 @@ import remarkTOC from './src/plugins/remark-toc.mjs'
 import { themeConfig } from './src/config'
 import { imageConfig } from './src/utils/image-config'
 import path from 'path'
-import netlify from '@astrojs/netlify'
 
 export default defineConfig({
-  adapter: netlify(), // Set adapter for deployment, or set `linkCard` to `false` in `src/config.ts`
+  // No adapter: every route is prerendered, so the build is a directory of
+  // static files that any host can serve.
   site: themeConfig.site.website,
   image: {
     service: {
@@ -38,12 +38,13 @@ export default defineConfig({
     // the transition starts against a live document instead of a fresh parse.
     clientPrerender: true
   },
-  // Conventional feed paths readers probe for, pointing at the real endpoints.
+  // Extensionless conveniences for anyone typing one into a browser. A static
+  // build renders these as an HTML meta refresh rather than a 301, so the paths
+  // a feed reader actually probes — /feed.xml and /index.xml — are served as
+  // real feeds by their own endpoints instead of listed here.
   redirects: {
     '/feed': '/rss.xml',
-    '/feed.xml': '/rss.xml',
     '/rss': '/rss.xml',
-    '/index.xml': '/rss.xml',
     '/atom': '/atom.xml'
   },
   markdown: {

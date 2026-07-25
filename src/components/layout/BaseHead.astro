@@ -20,8 +20,8 @@ const {
 
 const site = themeConfig.site
 // Everything social resolves against the configured domain rather than the
-// request host, so a Netlify preview or a proxied request can never leak a
-// deploy URL into a shared link.
+// request host, so a preview deploy or a proxied request can never leak its
+// own URL into a shared link.
 const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? site.website)
 // Cards are pre-rendered to `public/open-graph/` by `scripts/generate-og-images.ts`.
 const imageURL = new URL(ogImage ?? '/open-graph/_site.png', canonicalURL)

@@ -33,6 +33,10 @@ export const themeConfig: ThemeConfig = {
     toc: true, // Show table of contents (when there is enough page width)
     imageViewer: true, // Enable image viewer
     copyCode: true, // Enable copy button in code blocks
-    linkCard: true // Enable link card
+    // Link cards read their titles through a server route, which a static
+    // build has nowhere to run. Turning this back on means fetching the
+    // metadata at build time instead — see `scripts/generate-viz-figures.ts`
+    // for the pattern this repo uses for that.
+    linkCard: false
   }
 }
