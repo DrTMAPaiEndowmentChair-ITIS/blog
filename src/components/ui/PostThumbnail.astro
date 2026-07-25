@@ -1,0 +1,33 @@
+---
+import { generateThumbnail, type ThumbnailVariant } from '@/utils/thumbnail'
+
+interface Props {
+  slug: string
+  category: string
+  variant?: ThumbnailVariant
+  class?: string
+}
+
+const { slug, category, variant = 'card', class: className } = Astro.props
+const { markup, viewBox } = generateThumbnail(slug, category, variant)
+---
+
+<svg
+  class:list={['thumb', `thumb-${variant}`, className]}
+  viewBox={viewBox}
+  preserveAspectRatio="xMidYMid slice"
+  role="presentation"
+  aria-hidden="true"
+  set:html={markup}
+/>
+
+<style>
+  /* Both colour and the well behind it are set by the consumer, so hover and
+     focus states live with the surrounding link rather than in here. */
+  .thumb {
+    display: block;
+    width: 100%;
+    height: 100%;
+    color: inherit;
+  }
+</style>

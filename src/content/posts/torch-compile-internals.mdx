@@ -9,8 +9,6 @@ topics: ['torch.compile', 'Compilers', 'PyTorch']
 
 import TorchCompilePipeline from '../../components/viz/TorchCompilePipeline.astro'
 
-**Author**: Aadit Agrawal
-
 `torch.compile` is not a single compiler pass. It is a guarded path from a live Python program to reusable machine code. TorchDynamo captures tensor operations from Python frames, AOTAutograd constructs forward and backward graphs, and TorchInductor lowers those graphs into device code. On supported GPUs, Inductor uses Triton as a code-generation building block.[^compiler-stack]
 
 <TorchCompilePipeline />

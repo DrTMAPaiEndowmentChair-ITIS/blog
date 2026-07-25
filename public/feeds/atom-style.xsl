@@ -18,7 +18,8 @@
           font-size: 0.9375rem;
           line-height: 1.45;
           color: rgba(0, 0, 0, 0.85);
-          max-width: 22.5rem;
+          max-width: 32rem;
+          padding: 0 1.25rem;
           }
           .header {
           display: flex;
@@ -49,6 +50,24 @@
           font-size: 0.8125rem;
           opacity: 0.475;
           }
+          .item {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          gap: 1.5em;
+          padding: 0.4em 0;
+          color: inherit;
+          text-decoration: none;
+          }
+          .item:hover .item-title {
+          text-decoration: underline;
+          }
+          .item-date {
+          font-size: 0.8125rem;
+          opacity: 0.475;
+          font-variant-numeric: tabular-nums;
+          white-space: nowrap;
+          }
           @media (prefers-color-scheme: dark) {
           body {
           background-color: #1c1c1c;
@@ -77,16 +96,39 @@
 
           <div class="footer">
             <span>Last Updated: </span>
-            <xsl:variable name="dateStr" select="/atom:feed/atom:updated" />
-            <xsl:variable name="year" select="substring($dateStr, 1, 4)" />
-            <xsl:variable name="month" select="substring($dateStr, 6, 2)" />
-            <xsl:variable name="day" select="substring($dateStr, 9, 2)" />
-            <xsl:value-of select="concat($year, '.', $month, '.', $day)" />
+            <xsl:call-template name="iso-date">
+              <xsl:with-param name="dateStr" select="/atom:feed/atom:updated" />
+            </xsl:call-template>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="items">
+            <xsl:for-each select="/atom:feed/atom:entry">
+              <a class="item">
+                <xsl:attribute name="href">
+                  <xsl:value-of select="atom:link/@href" />
+                </xsl:attribute>
+                <span class="item-title"><xsl:value-of select="atom:title" /></span>
+                <span class="item-date">
+                  <xsl:call-template name="iso-date">
+                    <xsl:with-param name="dateStr" select="atom:published" />
+                  </xsl:call-template>
+                </span>
+              </a>
+            </xsl:for-each>
           </div>
 
         </div>
 
       </body>
     </html>
+  </xsl:template>
+
+  <!-- "2026-07-19T00:00:00.000Z" -> "2026.07.19" -->
+  <xsl:template name="iso-date">
+    <xsl:param name="dateStr" />
+    <xsl:value-of
+      select="concat(substring($dateStr, 1, 4), '.', substring($dateStr, 6, 2), '.', substring($dateStr, 9, 2))" />
   </xsl:template>
 </xsl:stylesheet>

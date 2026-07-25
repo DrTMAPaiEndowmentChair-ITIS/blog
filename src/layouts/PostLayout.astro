@@ -17,14 +17,16 @@ import NeoDBCard from '@/components/ui/NeoDBCard.astro'
 import XPOST from '@/components/ui/XPOST.astro'
 import CopyCode from '@/components/ui/CopyCode.astro'
 import PostTaxonomy from '@/components/widgets/PostTaxonomy.astro'
+import PostThumbnail from '@/components/ui/PostThumbnail.astro'
 import BaseLayout from '@/layouts/BaseLayout.astro'
 
 import { themeConfig } from '@/config'
 
-const { title, pubDate, description, readingTime, toc, category, topics } =
+const { title, pubDate, description, readingTime, toc, category, topics, author } =
   Astro.props as PostLayoutProps & {
     category?: string
     topics?: string[]
+    author?: string
   }
 
 const postSlug = Astro.url.pathname.split('/').filter(Boolean).pop() || ''
@@ -45,10 +47,25 @@ const ogImage = `/open-graph/${postSlug}.png`
         <BackButton />
         <Header />
         {themeConfig.post.toc && <TableOfContents toc={toc} />}
+        {
+          category && (
+            <div class="post-banner">
+              <PostThumbnail slug={postSlug} category={category} variant="banner" />
+            </div>
+          )
+        }
         <div class="title">
           <h1>{title}</h1>
           <div class="date">
             <FormattedDate date={pubDate} context="post" />
+            {
+              author && (
+                <span class="byline">
+                  <span class="separator">·</span>
+                  {author}
+                </span>
+              )
+            }
             {
               themeConfig.post.readingTime && readingTime && (
                 <span class="reading-time">
@@ -84,5 +101,15 @@ const ogImage = `/open-graph/${postSlug}.png`
 
   .post-container main {
     flex: 1;
+  }
+
+  .post-banner {
+    display: block;
+    overflow: hidden;
+    aspect-ratio: 4 / 1;
+    margin: 1.5rem 0 2rem;
+    border-radius: 0.375rem;
+    background-color: var(--surface-strong);
+    color: var(--text-secondary);
   }
 </style>

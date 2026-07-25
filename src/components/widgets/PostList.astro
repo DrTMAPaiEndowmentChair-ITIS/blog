@@ -1,5 +1,6 @@
 ---
 import FormattedDate from '@/components/widgets/FormattedDate.astro'
+import PostThumbnail from '@/components/ui/PostThumbnail.astro'
 import type { PostListProps } from '@/types'
 import { themeConfig } from '@/config'
 import { POST_CATEGORIES } from '@/data/taxonomy'
@@ -10,83 +11,285 @@ const categoryGroups = POST_CATEGORIES.map((category) => ({
   category,
   posts: posts.filter((post) => post.data.category === category)
 })).filter((group) => group.posts.length > 0)
+
+// --- Ordering ---------------------------------------------------------------
+// Every sort/grouping combination is precomputed into CSS `order` values, so
+// switching views is a class change rather than a DOM reshuffle. Filtering just
+// hides items; the surviving ones keep their relative order for free.
+type Post = (typeof posts)[number]
+
+const byNewest = (a: Post, b: Post) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()
+const byOldest = (a: Post, b: Post) => a.data.pubDate.valueOf() - b.data.pubDate.valueOf()
+const byTitle = (a: Post, b: Post) => a.data.title.localeCompare(b.data.title)
+const SORTS = { newest: byNewest, oldest: byOldest, title: byTitle } as const
+type SortKey = keyof typeof SORTS
+
+const rankOf = (list: Post[]) => new Map(list.map((post, index) => [post.id, index]))
+
+// Flat: one global sequence per sort.
+const flatRanks: Record<SortKey, Map<string, number>> = {
+  newest: rankOf([...posts].sort(byNewest)),
+  oldest: rankOf([...posts].sort(byOldest)),
+  title: rankOf([...posts].sort(byTitle))
+}
+
+// Grouped: categories keep a fixed order, each preceded by its heading. Heading
+// slots are identical across sorts, so only the posts move within their block.
+const groupedRanks: Record<SortKey, Map<string, number>> = {
+  newest: new Map(),
+  oldest: new Map(),
+  title: new Map()
+}
+const headingRanks = new Map<string, number>()
+
+for (const sort of Object.keys(SORTS) as SortKey[]) {
+  let slot = 0
+  for (const group of categoryGroups) {
+    if (sort === 'newest') headingRanks.set(group.category, slot)
+    slot += 1
+    for (const post of [...group.posts].sort(SORTS[sort])) {
+      groupedRanks[sort].set(post.id, slot)
+      slot += 1
+    }
+  }
+}
+
+const orderVars = (post: Post) =>
+  [
+    `--o-fn:${flatRanks.newest.get(post.id) ?? 0}`,
+    `--o-fo:${flatRanks.oldest.get(post.id) ?? 0}`,
+    `--o-ft:${flatRanks.title.get(post.id) ?? 0}`,
+    `--o-gn:${groupedRanks.newest.get(post.id) ?? 0}`,
+    `--o-go:${groupedRanks.oldest.get(post.id) ?? 0}`,
+    `--o-gt:${groupedRanks.title.get(post.id) ?? 0}`
+  ].join(';')
+
+// --- Topics -----------------------------------------------------------------
+// 115 unique topics is far too many to show at once, so the bar leads with the
+// ones that actually recur and tucks the long tail behind a toggle.
+const topicCounts = new Map<string, number>()
+for (const post of posts) {
+  for (const topic of post.data.topics) {
+    topicCounts.set(topic, (topicCounts.get(topic) ?? 0) + 1)
+  }
+}
+const allTopics = [...topicCounts.entries()].sort(
+  (a, b) => b[1] - a[1] || a[0].localeCompare(b[0])
+)
+const PRIMARY_TOPICS = 12
+const primaryTopics = allTopics.slice(0, PRIMARY_TOPICS)
+const overflowTopics = allTopics.slice(PRIMARY_TOPICS)
+
+// The hero mosaic wants exactly three slots: one lead card and two stacked
+// beside it. Rank `featured: true` posts ahead of the rest, then fill slots
+// with the highest-ranked post from a category not already on show — two cards
+// from one category would draw the same motif family and read as duplicates.
+// Only if that runs out do we allow a repeat, so the mosaic is never short.
+const HERO_SLOTS = 3
+const ranked = [
+  ...posts.filter((post) => post.data.featured),
+  ...posts.filter((post) => !post.data.featured)
+]
+
+const heroPosts: typeof posts = []
+const usedCategories = new Set<string>()
+for (const post of ranked) {
+  if (heroPosts.length >= HERO_SLOTS) break
+  if (usedCategories.has(post.data.category)) continue
+  heroPosts.push(post)
+  usedCategories.add(post.data.category)
+}
+for (const post of ranked) {
+  if (heroPosts.length >= HERO_SLOTS) break
+  if (!heroPosts.includes(post)) heroPosts.push(post)
+}
+
+const [leadPost, ...asidePosts] = heroPosts
 ---
 
 <section class="post-directory" data-post-search>
-  <form class="search" role="search" aria-label="Search posts">
-    <label for="post-query">Search</label>
-    <div class="search-control">
-      <input
-        id="post-query"
-        name="q"
-        type="search"
-        placeholder="Title, topic, or category"
-        autocomplete="off"
-        spellcheck="false"
-      />
-      <button type="reset" disabled>Clear</button>
-    </div>
-  </form>
+  {
+    leadPost && (
+      <div class="hero" data-featured-strip>
+        <a class="hero-card hero-lead" href={`/${leadPost.id}/`}>
+          <span class="hero-art">
+            <PostThumbnail slug={leadPost.id} category={leadPost.data.category} variant="feature" />
+          </span>
+          <span class="hero-body">
+            <span class="hero-meta font-features">
+              <FormattedDate date={leadPost.data.pubDate} context="list" />
+              <span class="separator" aria-hidden="true">
+                ·
+              </span>
+              {leadPost.data.category}
+            </span>
+            <span class="hero-title">{leadPost.data.title}</span>
+            <span class="hero-desc">{leadPost.data.description}</span>
+          </span>
+        </a>
 
-  <div class="search-summary">
-    <span class="result-count" role="status" aria-live="polite">
-      {posts.length} posts across {categoryGroups.length} categories
-    </span>
+        <div class="hero-aside">
+          {asidePosts.map((post) => (
+            <a class="hero-card" href={`/${post.id}/`}>
+              <span class="hero-art">
+                <PostThumbnail slug={post.id} category={post.data.category} variant="card" />
+              </span>
+              <span class="hero-body">
+                <span class="hero-meta font-features">
+                  <FormattedDate date={post.data.pubDate} context="list" />
+                  <span class="separator" aria-hidden="true">
+                    ·
+                  </span>
+                  {post.data.category}
+                </span>
+                <span class="hero-title">{post.data.title}</span>
+              </span>
+            </a>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  <div class="controls">
+    <form class="search" role="search" aria-label="Search posts">
+      <label class="sr-only" for="post-query">Search posts</label>
+      <div class="search-control">
+        <input
+          id="post-query"
+          name="q"
+          type="search"
+          placeholder="Search title, topic, or category"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button class="reset" type="reset" disabled>Clear</button>
+      </div>
+    </form>
+
+    <div class="filter-row" role="group" aria-label="Filter by category">
+      <button class="chip chip-all" type="button" data-category-filter="" aria-pressed="true">
+        All
+      </button>
+      {
+        categoryGroups.map(({ category, posts: categoryPosts }) => (
+          <button class="chip" type="button" data-category-filter={category} aria-pressed="false">
+            {category}
+            <span class="chip-count">{categoryPosts.length}</span>
+          </button>
+        ))
+      }
+    </div>
+
+    <div class="filter-row topics" role="group" aria-label="Filter by topic">
+      {
+        primaryTopics.map(([topic, count]) => (
+          <button class="chip chip-topic" type="button" data-topic-filter={topic} aria-pressed="false">
+            {topic}
+            <span class="chip-count">{count}</span>
+          </button>
+        ))
+      }
+      {
+        overflowTopics.map(([topic, count]) => (
+          <button
+            class="chip chip-topic chip-overflow"
+            type="button"
+            data-topic-filter={topic}
+            aria-pressed="false"
+            hidden
+          >
+            {topic}
+            <span class="chip-count">{count}</span>
+          </button>
+        ))
+      }
+      {
+        overflowTopics.length > 0 && (
+          <button class="chip chip-more" type="button" data-topics-toggle aria-expanded="false">
+            {`+${overflowTopics.length} more`}
+          </button>
+        )
+      }
+    </div>
+
+    <div class="view-row">
+      <div class="segmented" role="group" aria-label="Sort order">
+        <button type="button" data-sort="newest" aria-pressed="true">Newest</button>
+        <button type="button" data-sort="oldest" aria-pressed="false">Oldest</button>
+        <button type="button" data-sort="title" aria-pressed="false">A–Z</button>
+      </div>
+      <button class="chip chip-toggle" type="button" data-group-toggle aria-pressed="true">
+        Group by category
+      </button>
+    </div>
+
+    <div class="summary">
+      <span class="result-count" role="status" aria-live="polite">
+        {posts.length} posts across {categoryGroups.length} categories
+      </span>
+      <button class="reset-all" type="button" data-reset-all hidden>Reset filters</button>
+    </div>
   </div>
 
-  <div class="category-groups">
+  <div class="results" data-results data-sort="newest" data-group="on">
     {
       categoryGroups.map(({ category, posts: categoryPosts }) => (
-        <section class="category-group" data-category-group>
-          <h2>
-            <span>{category}</span>
-            <span
-              class="category-count"
-              data-category-count
-              aria-label={`${categoryPosts.length} posts`}
-            >
-              {categoryPosts.length}
-            </span>
-          </h2>
-          <ul>
-            {categoryPosts.map((post) => (
-              <li
-                data-post
-                data-search={[
-                  post.data.title,
-                  post.data.description,
-                  post.data.category,
-                  ...post.data.topics
-                ]
-                  .join(' ')
-                  .toLocaleLowerCase()}
-              >
-                <a href={`/${post.id}/`}>
-                  <div class={`post-item ${!themeConfig.date.dateOnRight ? 'date-left' : ''}`}>
-                    {!themeConfig.date.dateOnRight && (
-                      <p class="date font-features">
-                        <FormattedDate date={post.data.pubDate} context="list" />
-                      </p>
-                    )}
-                    <p class="title">{post.data.title}</p>
-                    {themeConfig.date.dateOnRight && (
-                      <div
-                        class={
-                          themeConfig.general.postListDottedDivider ? 'dotted-divider' : 'divider'
-                        }
-                      />
-                    )}
-                    {themeConfig.date.dateOnRight && (
-                      <p class="date font-features">
-                        <FormattedDate date={post.data.pubDate} context="list" />
-                      </p>
-                    )}
-                  </div>
-                </a>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <h2
+          class="group-heading"
+          data-group-heading={category}
+          style={`--o-h:${headingRanks.get(category) ?? 0}`}
+        >
+          <span>{category}</span>
+          <span class="group-count" data-group-count aria-label={`${categoryPosts.length} posts`}>
+            {categoryPosts.length}
+          </span>
+        </h2>
+      ))
+    }
+    {
+      posts.map((post) => (
+        <article
+          class="row"
+          data-post
+          data-category={post.data.category}
+          data-topics={post.data.topics.join('|')}
+          data-search={[
+            post.data.title,
+            post.data.description,
+            post.data.category,
+            post.data.author ?? '',
+            ...post.data.topics
+          ]
+            .join(' ')
+            .toLocaleLowerCase()}
+          style={orderVars(post)}
+        >
+          <a href={`/${post.id}/`}>
+            <div class={`post-item ${!themeConfig.date.dateOnRight ? 'date-left' : ''}`}>
+              <span class="post-art">
+                <PostThumbnail slug={post.id} category={post.data.category} variant="row" />
+              </span>
+              {!themeConfig.date.dateOnRight && (
+                <p class="date font-features">
+                  <FormattedDate date={post.data.pubDate} context="list" />
+                </p>
+              )}
+              <p class="title">{post.data.title}</p>
+              <span class="row-category">{post.data.category}</span>
+              {themeConfig.date.dateOnRight && (
+                <div
+                  class={themeConfig.general.postListDottedDivider ? 'dotted-divider' : 'divider'}
+                />
+              )}
+              {themeConfig.date.dateOnRight && (
+                <p class="date font-features">
+                  <FormattedDate date={post.data.pubDate} context="list" />
+                </p>
+              )}
+            </div>
+          </a>
+        </article>
       ))
     }
   </div>
@@ -96,123 +299,386 @@ const categoryGroups = POST_CATEGORIES.map((category) => ({
 <div class="placeholder"></div>
 
 <script>
-  let readActiveSearch: (() => void) | undefined
+  type SortKey = 'newest' | 'oldest' | 'title'
+  const SORTS: SortKey[] = ['newest', 'oldest', 'title']
 
-  const normalizeSearch = (value: string) =>
+  let readActiveState: (() => void) | undefined
+
+  const normalize = (value: string) =>
     value
       .normalize('NFKD')
       .replace(/\p{Diacritic}/gu, '')
       .trim()
       .toLocaleLowerCase()
 
-  const initializePostSearch = () => {
-    readActiveSearch = undefined
-    const searchDirectories = document.querySelectorAll<HTMLElement>('[data-post-search]')
+  const initializePostDirectory = () => {
+    readActiveState = undefined
 
-    for (const directory of searchDirectories) {
-      const form = directory.querySelector<HTMLFormElement>('.search')
+    for (const root of document.querySelectorAll<HTMLElement>('[data-post-search]')) {
+      const form = root.querySelector<HTMLFormElement>('.search')
       const queryInput = form?.elements.namedItem('q')
       const clearButton = form?.querySelector<HTMLButtonElement>('button[type="reset"]')
-      const resultCount = directory.querySelector<HTMLElement>('.result-count')
-      const emptyState = directory.querySelector<HTMLElement>('.empty-state')
-      const categoryGroups = [...directory.querySelectorAll<HTMLElement>('[data-category-group]')]
-      const postItems = [...directory.querySelectorAll<HTMLElement>('[data-post]')]
+      const results = root.querySelector<HTMLElement>('[data-results]')
+      const resultCount = root.querySelector<HTMLElement>('.result-count')
+      const emptyState = root.querySelector<HTMLElement>('.empty-state')
+      const resetAll = root.querySelector<HTMLButtonElement>('[data-reset-all]')
+      const heroStrip = root.querySelector<HTMLElement>('[data-featured-strip]')
 
       if (
         !form ||
         !(queryInput instanceof HTMLInputElement) ||
         !clearButton ||
+        !results ||
         !resultCount ||
         !emptyState
       ) {
         continue
       }
 
-      const applySearch = (updateUrl: boolean) => {
-        const query = normalizeSearch(queryInput.value)
-        let visibleCount = 0
-        let visibleCategoryCount = 0
+      const categoryButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-category-filter]')]
+      const topicButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-topic-filter]')]
+      const sortButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-sort]')]
+      const groupToggle = root.querySelector<HTMLButtonElement>('[data-group-toggle]')
+      const topicsToggle = root.querySelector<HTMLButtonElement>('[data-topics-toggle]')
+      const overflowChips = [...root.querySelectorAll<HTMLElement>('.chip-overflow')]
+      const headings = [...root.querySelectorAll<HTMLElement>('[data-group-heading]')]
+      const rows = [...root.querySelectorAll<HTMLElement>('[data-post]')]
 
-        for (const item of postItems) {
-          const isVisible = !query || normalizeSearch(item.dataset.search ?? '').includes(query)
+      const state = {
+        query: '',
+        categories: new Set<string>(),
+        topics: new Set<string>(),
+        sort: 'newest' as SortKey,
+        grouped: true,
+        showAllTopics: false
+      }
 
-          item.hidden = !isVisible
-          if (isVisible) visibleCount += 1
+      const setPressed = (button: HTMLElement, on: boolean) =>
+        button.setAttribute('aria-pressed', on ? 'true' : 'false')
+
+      const apply = (updateUrl: boolean) => {
+        const query = normalize(state.query)
+        let visible = 0
+
+        for (const row of rows) {
+          const matchesQuery = !query || normalize(row.dataset.search ?? '').includes(query)
+          const matchesCategory =
+            state.categories.size === 0 || state.categories.has(row.dataset.category ?? '')
+          // Topics are OR'd: picking two shows posts carrying either, which is
+          // what people expect from a chip row.
+          const rowTopics = (row.dataset.topics ?? '').split('|').filter(Boolean)
+          const matchesTopic =
+            state.topics.size === 0 || rowTopics.some((topic) => state.topics.has(topic))
+
+          const show = matchesQuery && matchesCategory && matchesTopic
+          row.hidden = !show
+          if (show) visible += 1
         }
 
-        for (const group of categoryGroups) {
-          const visiblePosts = [...group.querySelectorAll<HTMLElement>('[data-post]')].filter(
-            (post) => !post.hidden
-          )
-          const count = group.querySelector<HTMLElement>('[data-category-count]')
-
-          group.hidden = visiblePosts.length === 0
-          if (visiblePosts.length > 0) visibleCategoryCount += 1
-          if (count) {
-            count.textContent = `${visiblePosts.length}`
-            count.setAttribute(
-              'aria-label',
-              `${visiblePosts.length} ${visiblePosts.length === 1 ? 'post' : 'posts'}`
-            )
+        // Headings only make sense while grouped, and only for non-empty groups.
+        let visibleCategories = 0
+        for (const heading of headings) {
+          const category = heading.dataset.groupHeading ?? ''
+          const count = rows.filter(
+            (row) => !row.hidden && row.dataset.category === category
+          ).length
+          if (count > 0) visibleCategories += 1
+          heading.hidden = !state.grouped || count === 0
+          const badge = heading.querySelector<HTMLElement>('[data-group-count]')
+          if (badge) {
+            badge.textContent = `${count}`
+            badge.setAttribute('aria-label', `${count} ${count === 1 ? 'post' : 'posts'}`)
           }
         }
 
-        resultCount.textContent = `${visibleCount} ${
-          visibleCount === 1 ? 'post' : 'posts'
-        } across ${visibleCategoryCount} ${visibleCategoryCount === 1 ? 'category' : 'categories'}`
-        emptyState.hidden = visibleCount !== 0
-        clearButton.disabled = queryInput.value.length === 0
+        results.dataset.sort = state.sort
+        results.dataset.group = state.grouped ? 'on' : 'off'
+
+        for (const button of categoryButtons) {
+          const value = button.dataset.categoryFilter ?? ''
+          setPressed(button, value === '' ? state.categories.size === 0 : state.categories.has(value))
+        }
+        for (const button of topicButtons) {
+          setPressed(button, state.topics.has(button.dataset.topicFilter ?? ''))
+        }
+        for (const button of sortButtons) {
+          setPressed(button, button.dataset.sort === state.sort)
+        }
+        if (groupToggle) setPressed(groupToggle, state.grouped)
+        for (const chip of overflowChips) {
+          // Keep an active overflow topic visible even when the tail is collapsed.
+          chip.hidden = !state.showAllTopics && !state.topics.has(chip.dataset.topicFilter ?? '')
+        }
+        if (topicsToggle) {
+          topicsToggle.setAttribute('aria-expanded', state.showAllTopics ? 'true' : 'false')
+          topicsToggle.textContent = state.showAllTopics
+            ? 'Show fewer'
+            : `+${overflowChips.length} more`
+        }
+
+        const filtering =
+          query.length > 0 || state.categories.size > 0 || state.topics.size > 0
+        resultCount.textContent = state.grouped
+          ? `${visible} ${visible === 1 ? 'post' : 'posts'} across ${visibleCategories} ${
+              visibleCategories === 1 ? 'category' : 'categories'
+            }`
+          : `${visible} ${visible === 1 ? 'post' : 'posts'}`
+        emptyState.hidden = visible !== 0
+        clearButton.disabled = state.query.length === 0
+        if (resetAll) resetAll.hidden = !filtering
+        // The hero is editorial, not a search result — hiding it stops it
+        // advertising posts the active filter has just excluded.
+        if (heroStrip) heroStrip.hidden = filtering
 
         if (updateUrl) {
           const url = new URL(window.location.href)
-          if (queryInput.value.trim()) url.searchParams.set('q', queryInput.value.trim())
-          else url.searchParams.delete('q')
+          const setParam = (key: string, value: string) =>
+            value ? url.searchParams.set(key, value) : url.searchParams.delete(key)
 
-          url.searchParams.delete('category')
-          url.searchParams.delete('topic')
+          setParam('q', state.query.trim())
+          setParam('category', [...state.categories].join(','))
+          setParam('topic', [...state.topics].join(','))
+          setParam('sort', state.sort === 'newest' ? '' : state.sort)
+          setParam('group', state.grouped ? '' : 'off')
           window.history.replaceState(null, '', url)
         }
       }
 
       const readUrl = () => {
         const params = new URLSearchParams(window.location.search)
-        const query = params.get('q') ?? params.get('category') ?? params.get('topic') ?? ''
+        // The "All" chip carries an empty value as its sentinel — it must not
+        // land in the set of real categories, or an empty query would match it
+        // and filter everything out.
+        const known = new Set(
+          categoryButtons.map((b) => b.dataset.categoryFilter ?? '').filter(Boolean)
+        )
+        const knownTopics = new Set(topicButtons.map((b) => b.dataset.topicFilter ?? ''))
+        const sort = params.get('sort') as SortKey | null
 
-        queryInput.value = query
-        applySearch(false)
+        state.query = params.get('q') ?? ''
+        state.categories = new Set(
+          (params.get('category') ?? '').split(',').filter((v) => v && known.has(v))
+        )
+        state.topics = new Set(
+          (params.get('topic') ?? '').split(',').filter((v) => v && knownTopics.has(v))
+        )
+        state.sort = sort && SORTS.includes(sort) ? sort : 'newest'
+        state.grouped = params.get('group') !== 'off'
+
+        // A legacy `?q=<category>` link should still land on that category.
+        if (state.query && state.categories.size === 0 && known.has(state.query)) {
+          state.categories = new Set([state.query])
+          state.query = ''
+        }
+
+        queryInput.value = state.query
+        apply(false)
       }
 
-      form.addEventListener('input', () => applySearch(true))
+      form.addEventListener('input', () => {
+        state.query = queryInput.value
+        apply(true)
+      })
       form.addEventListener('submit', (event) => {
         event.preventDefault()
-        applySearch(true)
+        apply(true)
       })
-      form.addEventListener('reset', () => {
-        window.setTimeout(() => {
-          applySearch(true)
-          queryInput.focus()
-        })
+      form.addEventListener('reset', (event) => {
+        event.preventDefault()
+        state.query = ''
+        queryInput.value = ''
+        apply(true)
+        queryInput.focus()
       })
 
-      readActiveSearch = readUrl
+      for (const button of categoryButtons) {
+        button.addEventListener('click', () => {
+          const value = button.dataset.categoryFilter ?? ''
+          if (value === '') state.categories.clear()
+          else if (state.categories.has(value)) state.categories.delete(value)
+          else state.categories.add(value)
+          apply(true)
+        })
+      }
+
+      for (const button of topicButtons) {
+        button.addEventListener('click', () => {
+          const value = button.dataset.topicFilter ?? ''
+          if (state.topics.has(value)) state.topics.delete(value)
+          else state.topics.add(value)
+          apply(true)
+        })
+      }
+
+      for (const button of sortButtons) {
+        button.addEventListener('click', () => {
+          state.sort = (button.dataset.sort as SortKey) ?? 'newest'
+          apply(true)
+        })
+      }
+
+      groupToggle?.addEventListener('click', () => {
+        state.grouped = !state.grouped
+        apply(true)
+      })
+
+      topicsToggle?.addEventListener('click', () => {
+        state.showAllTopics = !state.showAllTopics
+        apply(false)
+      })
+
+      resetAll?.addEventListener('click', () => {
+        state.query = ''
+        queryInput.value = ''
+        state.categories.clear()
+        state.topics.clear()
+        apply(true)
+      })
+
+      readActiveState = readUrl
       readUrl()
     }
   }
 
-  window.addEventListener('popstate', () => readActiveSearch?.())
-  document.addEventListener('astro:page-load', initializePostSearch)
+  window.addEventListener('popstate', () => readActiveState?.())
+  document.addEventListener('astro:page-load', initializePostDirectory)
 </script>
 
 <style>
-  .search {
+  /* Hero mosaic ----------------------------------------------------------- */
+
+  /* Columns size to their own content — forcing equal heights would either
+     crop the lead artwork or leave a slab of empty panel under its text. */
+  .hero {
     display: grid;
-    gap: 0.25rem;
-    margin: 1.75rem 0 0;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 0.5rem;
+    margin-top: 1.75rem;
   }
 
-  .search label {
+  .hero-aside {
+    display: grid;
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  /* Borderless tinted panels: the card is a surface, not a framed picture. */
+  .hero-card {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+    border-radius: 0.375rem;
+    background-color: var(--surface);
+    color: var(--text-primary);
+    text-decoration: none;
+    transition: background-color 0.2s ease-out;
+  }
+
+  .hero-art {
+    display: block;
+    overflow: hidden;
+    background-color: var(--surface-strong);
+    color: var(--text-secondary);
+    transition: color 0.2s ease-out;
+  }
+
+  .hero-lead .hero-art {
+    aspect-ratio: 4 / 3;
+  }
+
+  .hero-aside .hero-art {
+    aspect-ratio: 16 / 7;
+  }
+
+  .hero-body {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    gap: 0.3125rem;
+    padding: 0.875rem 0.9375rem 1rem;
+  }
+
+  .hero-meta {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    letter-spacing: var(--spacing-s);
+  }
+
+  .hero-meta .separator {
+    margin: 0 0.375rem;
+    color: var(--text-tertiary);
+  }
+
+  .hero-title {
+    font-family: var(--display);
+    font-size: var(--font-size-m);
+    font-weight: 500;
+    letter-spacing: -0.03em;
+    line-height: 1.35;
+    text-wrap: balance;
+  }
+
+  .hero-lead .hero-title {
+    font-size: 1.125rem;
+  }
+
+  .hero-desc {
+    margin-top: 0.125rem;
     color: var(--text-secondary);
     font-size: var(--font-size-s);
+    line-height: 1.55;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .hero-card:hover {
+      background-color: var(--surface-hover);
+    }
+
+    .hero-card:hover .hero-art {
+      color: var(--text-primary);
+    }
+  }
+
+  .hero-card:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
+  }
+
+  @media (max-width: 560px) {
+    .hero {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .hero-aside {
+      grid-template-rows: none;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .hero-lead .hero-art,
+    .hero-aside .hero-art {
+      aspect-ratio: 16 / 9;
+    }
+  }
+
+  /* The `hidden` attribute only sets `display: none` at UA-stylesheet weight,
+     so any author `display` below would silently defeat it. These re-assert it
+     at matching specificity for every element the script toggles. */
+  .hero[hidden],
+  .chip[hidden],
+  .group-heading[hidden],
+  .row[hidden] {
+    display: none;
+  }
+
+  /* Controls -------------------------------------------------------------- */
+
+  .controls {
+    display: grid;
+    gap: 0.75rem;
+    margin: 2rem 0 0;
   }
 
   .search-control {
@@ -222,9 +688,9 @@ const categoryGroups = POST_CATEGORIES.map((category) => ({
 
   .search input,
   .search button {
-    height: 2.75rem;
+    height: 2.5rem;
     border: 1px solid var(--border);
-    border-radius: 0.25rem;
+    border-radius: 0.375rem;
     background: var(--bg);
     color: var(--text-primary);
     font: inherit;
@@ -243,7 +709,7 @@ const categoryGroups = POST_CATEGORIES.map((category) => ({
 
   .search button {
     flex: 0 0 auto;
-    padding: 0 0.75rem;
+    padding: 0 0.875rem;
     cursor: pointer;
   }
 
@@ -252,52 +718,205 @@ const categoryGroups = POST_CATEGORIES.map((category) => ({
     cursor: default;
   }
 
-  .search input:focus-visible,
-  .search button:focus-visible {
-    outline: 2px solid var(--text-primary);
-    outline-offset: 2px;
+  .filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
   }
 
-  .search-summary {
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.3125rem 0.625rem;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background-color: var(--surface);
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.75rem;
+    letter-spacing: var(--spacing-s);
+    line-height: 1.2;
+    cursor: pointer;
+    transition:
+      background-color 0.15s ease-out,
+      color 0.15s ease-out;
+  }
+
+  .chip-count {
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .chip[aria-pressed='true'] {
+    background-color: var(--text-primary);
+    color: var(--bg);
+  }
+
+  .chip[aria-pressed='true'] .chip-count {
+    color: var(--bg);
+    opacity: 0.6;
+  }
+
+  .chip-more,
+  .reset-all {
+    background: none;
+    color: var(--text-secondary);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .chip:hover {
+      background-color: var(--surface-strong);
+      color: var(--text-primary);
+    }
+
+    .chip[aria-pressed='true']:hover {
+      background-color: var(--text-primary);
+      color: var(--bg);
+    }
+  }
+
+  .view-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .segmented {
+    display: inline-flex;
+    padding: 0.125rem;
+    border-radius: 999px;
+    background-color: var(--surface);
+  }
+
+  .segmented button {
+    padding: 0.25rem 0.625rem;
+    border: 0;
+    border-radius: 999px;
+    background: none;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.75rem;
+    letter-spacing: var(--spacing-s);
+    cursor: pointer;
+    transition:
+      background-color 0.15s ease-out,
+      color 0.15s ease-out;
+  }
+
+  .segmented button[aria-pressed='true'] {
+    background-color: var(--bg);
+    color: var(--text-primary);
+  }
+
+  .summary {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
     min-height: 1.25rem;
-    margin-top: 0.5rem;
     color: var(--text-secondary);
     font-size: var(--font-size-s);
   }
 
-  .category-groups {
-    margin-top: 1.75rem;
+  .reset-all {
+    padding: 0;
+    border: 0;
+    font: inherit;
+    font-size: var(--font-size-s);
+    cursor: pointer;
   }
 
-  .category-group + .category-group {
-    margin-top: 2rem;
+  .chip:focus-visible,
+  .segmented button:focus-visible,
+  .search input:focus-visible,
+  .search button:focus-visible,
+  .reset-all:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
   }
 
-  .category-group h2 {
+  /* Results ---------------------------------------------------------------- */
+
+  /* Sorting and grouping are pure `order` swaps on a flex column, so switching
+     views never touches the DOM. */
+  .results {
+    display: flex;
+    flex-direction: column;
+    margin-top: 1.5rem;
+  }
+
+  .results[data-group='on'] .group-heading {
+    order: var(--o-h);
+  }
+
+  .results[data-group='off'] .group-heading {
+    display: none;
+  }
+
+  .results[data-group='on'][data-sort='newest'] .row {
+    order: var(--o-gn);
+  }
+  .results[data-group='on'][data-sort='oldest'] .row {
+    order: var(--o-go);
+  }
+  .results[data-group='on'][data-sort='title'] .row {
+    order: var(--o-gt);
+  }
+  .results[data-group='off'][data-sort='newest'] .row {
+    order: var(--o-fn);
+  }
+  .results[data-group='off'][data-sort='oldest'] .row {
+    order: var(--o-fo);
+  }
+  .results[data-group='off'][data-sort='title'] .row {
+    order: var(--o-ft);
+  }
+
+  .group-heading {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
     gap: 1rem;
     padding-bottom: 0.375rem;
-    margin: 0;
+    margin: 1.75rem 0 0.25rem;
     border-bottom: 1px solid var(--border);
     color: var(--text-primary);
     font-size: var(--font-size-s);
     font-weight: var(--font-weight-bold);
   }
 
-  .category-count {
-    color: var(--text-secondary);
-    font-weight: var(--font-weight-regular);
+  .group-heading:first-of-type {
+    margin-top: 0;
   }
 
-  ul {
-    padding: 0;
-    margin: 0;
-    list-style-type: none;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
+  .group-count {
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-regular);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Flat view has no headings, so rows need their own separators. */
+  .results[data-group='off'] .row + .row {
+    border-top: 1px solid var(--border);
+  }
+
+  /* The category label only earns its place when grouping is off. */
+  .row-category {
+    display: none;
+    flex: 0 0 auto;
+    color: var(--text-tertiary);
+    font-size: 0.75rem;
+    letter-spacing: var(--spacing-s);
+    white-space: nowrap;
+  }
+
+  .results[data-group='off'] .row-category {
+    display: inline;
   }
 
   a {
@@ -308,33 +927,51 @@ const categoryGroups = POST_CATEGORIES.map((category) => ({
   }
 
   @media (hover: hover) and (pointer: fine) {
-    ul:hover a {
+    .results:hover a {
       opacity: 0.4;
     }
 
-    ul:hover a:hover {
+    .results:hover a:hover {
       opacity: 1;
     }
 
-    ul:hover a:hover .divider {
+    .results:hover a:hover .divider {
       background-color: var(--text-tertiary);
       opacity: 0.75;
     }
-    ul:hover a:hover .dotted-divider {
+    .results:hover a:hover .dotted-divider {
       color: var(--text-secondary);
     }
-    ul:hover a:hover .date {
+    .results:hover a:hover .date {
       color: var(--text-secondary);
       opacity: 1;
+    }
+    .results:hover a:hover .post-art {
+      background-color: var(--surface-strong);
+      color: var(--text-primary);
     }
   }
 
   .post-item {
-    height: 2.75rem;
+    height: 3rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 0.75rem;
+  }
+
+  .post-art {
+    flex: 0 0 auto;
+    display: block;
+    width: 2.5rem;
+    height: 1.5rem;
+    overflow: hidden;
+    border-radius: 0.1875rem;
+    background-color: var(--surface);
+    color: var(--text-tertiary);
+    transition:
+      color 0.15s ease-out,
+      background-color 0.15s ease-out;
   }
 
   .post-item.date-left {
@@ -357,6 +994,9 @@ const categoryGroups = POST_CATEGORIES.map((category) => ({
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-family: var(--display);
+    font-weight: 400;
+    letter-spacing: -0.03em;
   }
 
   .date {

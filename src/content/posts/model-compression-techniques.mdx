@@ -9,8 +9,6 @@ topics: ['Compression', 'Distillation', 'Pruning']
 
 import CompressionMethods from '../../components/viz/CompressionMethods.astro'
 
-**Author**: Aadit Agrawal
-
 Compression succeeds only when the deployment runtime benefits from the changed model. Removing isolated weights does not guarantee faster dense matrix multiplication. A low-rank factorization does not help if the two smaller operators launch inefficiently. Distillation can produce a smaller model, but its quality depends on the teacher signal and training distribution.
 
 <CompressionMethods />

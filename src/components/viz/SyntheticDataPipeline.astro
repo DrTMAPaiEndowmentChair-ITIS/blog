@@ -14,6 +14,9 @@
 </figure>
 <style>
   .viz {
+    /* The prose column is a fixed width, so this has to respond to the space
+       it actually has, not to the viewport. */
+    container-type: inline-size;
     margin: 2rem 0;
     padding: 1.25rem;
     border: 1px solid var(--border);
@@ -23,9 +26,10 @@
     font: 600 0.85rem var(--mono);
     margin-bottom: 1rem;
   }
+  /* Stacked by default; five stages plus connectors need real width. */
   .flow {
     display: grid;
-    grid-template-columns: repeat(9, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     align-items: center;
     gap: 0.4rem;
   }
@@ -33,7 +37,7 @@
   aside {
     padding: 0.75rem;
     border: 1px solid var(--border);
-    background: var(--background);
+    background: var(--bg);
   }
   b,
   span {
@@ -47,6 +51,9 @@
   i {
     text-align: center;
     font-style: normal;
+    color: var(--text-tertiary);
+    /* Arrows point down while stacked. */
+    rotate: 90deg;
   }
   aside {
     margin-top: 0.8rem;
@@ -56,12 +63,13 @@
   aside b {
     display: inline;
   }
-  @media (max-width: 760px) {
+  /* Only go horizontal when the container genuinely fits five stages. */
+  @container (min-width: 46rem) {
     .flow {
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(9, minmax(0, 1fr));
     }
     .flow i {
-      transform: rotate(90deg);
+      rotate: none;
     }
   }
 </style>

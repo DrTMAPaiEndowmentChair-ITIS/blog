@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs'
+import path from 'node:path'
 import { getCollection } from 'astro:content'
 import { OGImageRoute } from 'astro-og-canvas'
 import { themeConfig } from '../../config'
@@ -11,10 +13,18 @@ const pages = Object.fromEntries(
   collectionEntries.map(({ id, data }) => [id.replace(/\.(md|mdx)$/, ''), data])
 )
 
+// Per-post generative backgrounds are pre-rendered by `scripts/generate-og-art.ts`
+// during `prebuild`. Fall back to the static background if one is missing.
+const generatedBgDir = path.resolve('public/og/gen')
+const bgImagePath = (slug: string) => {
+  const generated = path.join(generatedBgDir, `${slug}.png`)
+  return existsSync(generated) ? `public/og/gen/${slug}.png` : 'public/og/og-bg.png'
+}
+
 export const { getStaticPaths, GET } = await OGImageRoute({
   param: 'route',
   pages,
-  getImageOptions: (_path, page) => ({
+  getImageOptions: (routePath, page) => ({
     title: page.title,
     description: themeConfig.site.title,
     logo: {
@@ -23,7 +33,7 @@ export const { getStaticPaths, GET } = await OGImageRoute({
     },
     bgGradient: [[255, 255, 255]],
     bgImage: {
-      path: 'public/og/og-bg.png',
+      path: bgImagePath(routePath),
       fit: 'fill'
     },
     padding: 64,

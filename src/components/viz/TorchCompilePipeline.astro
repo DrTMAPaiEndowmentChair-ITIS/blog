@@ -17,19 +17,23 @@
 </figure>
 <style>
   .viz {
+    /* The prose column is a fixed width, so this has to respond to the space
+       it actually has, not to the viewport. */
+    container-type: inline-size;
     margin: 2rem 0;
     padding: 1.25rem;
     border: 1px solid var(--border);
     background: var(--astro-code-background);
-    color: var(--text);
+    color: var(--text-primary);
   }
   figcaption {
     font: 600 0.85rem var(--mono);
     margin-bottom: 1rem;
   }
+  /* Stacked by default; five stages plus connectors need real width. */
   .pipeline {
     display: grid;
-    grid-template-columns: repeat(9, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     align-items: center;
     gap: 0.5rem;
   }
@@ -37,7 +41,7 @@
   .boundary {
     border: 1px solid var(--border);
     padding: 0.8rem;
-    background: var(--background);
+    background: var(--bg);
   }
   b,
   span {
@@ -49,22 +53,29 @@
     font-size: 0.78rem;
     line-height: 1.35;
   }
+  /* Stage transitions are named, so they read as a labelled arrow rather than
+     rotated text that clips against the box edges. */
   i {
     text-align: center;
     color: var(--text-secondary);
     font: normal 0.7rem var(--mono);
+    padding: 0.1rem 0;
+  }
+  i::before {
+    content: '↓\00a0';
+    color: var(--text-tertiary);
   }
   .boundary {
     margin-top: 1rem;
     border-left: 3px solid #d97706;
   }
-  @media (max-width: 720px) {
+  /* Only go horizontal when the container genuinely fits five stages. */
+  @container (min-width: 46rem) {
     .pipeline {
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(9, minmax(0, 1fr));
     }
-    .pipeline i {
-      transform: rotate(90deg);
-      height: 1rem;
+    .pipeline i::before {
+      content: '→\00a0';
     }
   }
 </style>

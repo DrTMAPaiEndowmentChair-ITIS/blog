@@ -10,8 +10,6 @@ topics: ['Distributed training', 'Parallelism', 'GPU clusters']
 import ParallelismStrategies from '../../components/viz/ParallelismStrategies.astro'
 import PipelineScheduleTimeline from '../../components/viz/PipelineScheduleTimeline.astro'
 
-**Author**: Aadit Agrawal
-
 Large-model training is a placement problem before it is an optimizer problem. Parameters, optimizer state, gradients, activations, and temporary buffers must fit across devices. The selected placement also determines which bytes cross links on every step.
 
 <ParallelismStrategies />
