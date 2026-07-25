@@ -25,6 +25,19 @@ export default defineConfig({
       config: imageConfig
     }
   },
+  // Every internal link warms itself on hover/focus (and on touchstart for
+  // pointerless devices), so by the time a click lands the HTML is usually
+  // already in cache and navigation is just a swap.
+  prefetch: {
+    prefetchAll: true,
+    defaultStrategy: 'hover'
+  },
+  experimental: {
+    // Upgrades those prefetches to real speculation-rules prerenders where the
+    // browser supports it: the next page is parsed and painted off-screen, so
+    // the transition starts against a live document instead of a fresh parse.
+    clientPrerender: true
+  },
   // Conventional feed paths readers probe for, pointing at the real endpoints.
   redirects: {
     '/feed': '/rss.xml',

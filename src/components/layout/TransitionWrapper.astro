@@ -7,6 +7,7 @@ const { type, class: className = '' } = Astro.props
 const transitionName = type === 'post' ? 'post-content' : 'page-content'
 ---
 
+<div class="nav-progress" aria-hidden="true"></div>
 <div transition:name={transitionName} class={className} id="transition-wrapper">
   <slot />
 </div>
@@ -28,47 +29,235 @@ const transitionName = type === 'post' ? 'post-content' : 'page-content'
   document.addEventListener('touchstart', cleanupHover, { passive: true })
 </script>
 
+<script is:inline>
+  ;(function () {
+    // Astro keeps this script in place across swaps, but guard anyway so a
+    // re-execution can never double-bind the navigation listeners.
+    if (window.__navMorph) return
+    window.__navMorph = true
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
+
+    // --- Shared-element morph ------------------------------------------------
+    // A post's generative artwork is the one thing that exists on both sides of
+    // a navigation, so it carries the eye across: the card art in the list
+    // grows into the banner on the post, and shrinks back on the way out.
+    //
+    // The name is a single constant rather than one per slug, because a post
+    // can appear more than once on the index (hero mosaic *and* its row) and a
+    // duplicate `view-transition-name` makes the browser drop the whole
+    // transition. Instead exactly one element is tagged, picked at navigation
+    // time from whatever was actually clicked.
+    const ART = 'post-art'
+
+    const slugOf = (url) => {
+      try {
+        const parts = new URL(url, location.href).pathname.split('/').filter(Boolean)
+        return parts.length === 1 ? parts[0] : ''
+      } catch {
+        return ''
+      }
+    }
+
+    let tagged = null
+    let leavingSlug = ''
+
+    function untag() {
+      if (tagged) tagged.style.viewTransitionName = ''
+      tagged = null
+    }
+
+    function tag(element) {
+      untag()
+      if (!element) return
+      element.style.viewTransitionName = ART
+      tagged = element
+    }
+
+    document.addEventListener('astro:before-preparation', (event) => {
+      // A cancelled navigation would otherwise leave the name behind to collide
+      // with the next one.
+      untag()
+      leavingSlug = slugOf(event.from)
+      if (reduced.matches) return
+
+      const link = event.sourceElement && event.sourceElement.closest('a[href]')
+      tag(link && link.querySelector('[data-post-art]'))
+    })
+
+    // Runs inside the view-transition update callback, so anything set here is
+    // captured in the incoming snapshot. Coming back from a post, hand the name
+    // to the card that post was opened from and the banner settles into it.
+    document.addEventListener('astro:after-swap', () => {
+      tagged = null
+      if (reduced.matches || !leavingSlug) return
+      if (document.querySelector('.post-banner[data-post-art]')) return
+
+      const matches = document.querySelectorAll('[data-post-art="' + CSS.escape(leavingSlug) + '"]')
+      for (const candidate of matches) {
+        // Filtering hides the hero strip and non-matching rows, and a
+        // `display: none` element never participates in the transition.
+        if (candidate.getBoundingClientRect().width > 0) {
+          tag(candidate)
+          break
+        }
+      }
+    })
+
+    // Hold the name until the animation is over. Dropping it mid-flight would
+    // let the real element start painting again underneath its own still-
+    // animating snapshot, showing the artwork twice.
+    document.addEventListener('astro:before-swap', (event) => {
+      const transition = event.viewTransition
+      if (transition && transition.finished) transition.finished.then(untag, untag)
+      else setTimeout(untag, 500)
+    })
+
+    // --- Latency indicator ---------------------------------------------------
+    // Prefetching makes almost every navigation instant, so the bar stays out
+    // of the way unless the network is genuinely making the reader wait.
+    const DELAY = 140
+    let timer = 0
+
+    document.addEventListener('astro:before-preparation', () => {
+      clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        document.documentElement.setAttribute('data-navigating', '')
+      }, DELAY)
+    })
+
+    for (const settled of ['astro:after-swap', 'astro:page-load']) {
+      document.addEventListener(settled, () => {
+        clearTimeout(timer)
+        document.documentElement.removeAttribute('data-navigating')
+      })
+    }
+  })()
+</script>
+
 <style is:inline>
   @supports (view-transition-name: none) {
     @media not (prefers-reduced-motion: reduce) {
+      /*
+        The outgoing page is gone almost immediately and the incoming one is
+        readable ~100ms in. Anything slower reads as latency rather than as
+        polish — and a page-sized snapshot is the wrong surface for filter
+        effects, since blurring one costs a full-viewport re-rasterise a frame.
+      */
       ::view-transition-old(post-content),
       ::view-transition-old(page-content) {
-        animation: fade-out 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        animation: nav-out 90ms cubic-bezier(0.4, 0, 1, 1) forwards;
       }
 
       ::view-transition-new(post-content),
       ::view-transition-new(page-content) {
-        opacity: 0;
-        animation: fade-in 0.4s ease 0.2s forwards;
-        will-change: filter, opacity, transform;
+        animation: nav-in 220ms cubic-bezier(0.16, 1, 0.3, 1) 50ms backwards;
+      }
+
+      /* The artwork outlives the crossfade, so the morph stays legible after
+         the page behind it has settled. */
+      ::view-transition-group(post-art) {
+        animation-duration: 340ms;
+        animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+        z-index: 2;
+      }
+
+      /*
+        Card art and banner art have very different aspect ratios. Left at the
+        default `fill`, the two snapshots stretch into each other and the motifs
+        visibly smear; cropping both to the animating box keeps the artwork
+        undistorted through the whole morph.
+      */
+      ::view-transition-old(post-art),
+      ::view-transition-new(post-art) {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        mix-blend-mode: normal;
+      }
+
+      ::view-transition-old(post-art) {
+        animation: art-out 200ms linear forwards;
+      }
+
+      ::view-transition-new(post-art) {
+        animation: art-in 260ms linear 80ms backwards;
+      }
+
+      ::view-transition-image-pair(post-art) {
+        isolation: auto;
       }
     }
   }
 
-  @keyframes fade-out {
-    0% {
-      opacity: 1;
-    }
-    100% {
+  @keyframes nav-out {
+    to {
       opacity: 0;
     }
   }
 
-  @keyframes fade-in {
-    0% {
+  @keyframes nav-in {
+    from {
       opacity: 0;
-      filter: blur(8px);
-      transform: translateZ(0);
+      transform: translate3d(0, 8px, 0);
     }
-    30% {
-      opacity: 0.5;
-      filter: blur(4px);
-      transform: translateZ(0);
-    }
-    100% {
+    to {
       opacity: 1;
-      filter: blur(0);
-      transform: translateZ(0);
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  @keyframes art-out {
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes art-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Owns its own transition name so it survives the swap instead of being
+     frozen into a snapshot: while a slow page is being fetched it is the only
+     thing still moving on screen. */
+  .nav-progress {
+    position: fixed;
+    inset: 0 auto auto 0;
+    z-index: 100;
+    width: 100%;
+    height: 2px;
+    transform: scaleX(0);
+    transform-origin: 0 50%;
+    background-color: var(--text-primary);
+    opacity: 0;
+    pointer-events: none;
+    view-transition-name: nav-progress;
+  }
+
+  html[data-navigating] .nav-progress {
+    opacity: 0.45;
+    /* Eases towards, but never reaches, full width — the bar cannot know how
+       much of the fetch is left, so it only ever promises progress. */
+    animation: nav-progress 4s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+  }
+
+  @keyframes nav-progress {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(0.95);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nav-progress {
+      display: none;
     }
   }
 </style>

@@ -73,9 +73,7 @@ for (const post of posts) {
     topicCounts.set(topic, (topicCounts.get(topic) ?? 0) + 1)
   }
 }
-const allTopics = [...topicCounts.entries()].sort(
-  (a, b) => b[1] - a[1] || a[0].localeCompare(b[0])
-)
+const allTopics = [...topicCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
 const PRIMARY_TOPICS = 12
 const primaryTopics = allTopics.slice(0, PRIMARY_TOPICS)
 const overflowTopics = allTopics.slice(PRIMARY_TOPICS)
@@ -112,7 +110,7 @@ const [leadPost, ...asidePosts] = heroPosts
     leadPost && (
       <div class="hero" data-featured-strip>
         <a class="hero-card hero-lead" href={`/${leadPost.id}/`}>
-          <span class="hero-art">
+          <span class="hero-art" data-post-art={leadPost.id}>
             <PostThumbnail slug={leadPost.id} category={leadPost.data.category} variant="feature" />
           </span>
           <span class="hero-body">
@@ -131,7 +129,7 @@ const [leadPost, ...asidePosts] = heroPosts
         <div class="hero-aside">
           {asidePosts.map((post) => (
             <a class="hero-card" href={`/${post.id}/`}>
-              <span class="hero-art">
+              <span class="hero-art" data-post-art={post.id}>
                 <PostThumbnail slug={post.id} category={post.data.category} variant="card" />
               </span>
               <span class="hero-body">
@@ -184,7 +182,12 @@ const [leadPost, ...asidePosts] = heroPosts
     <div class="filter-row topics" role="group" aria-label="Filter by topic">
       {
         primaryTopics.map(([topic, count]) => (
-          <button class="chip chip-topic" type="button" data-topic-filter={topic} aria-pressed="false">
+          <button
+            class="chip chip-topic"
+            type="button"
+            data-topic-filter={topic}
+            aria-pressed="false"
+          >
             {topic}
             <span class="chip-count">{count}</span>
           </button>
@@ -267,7 +270,7 @@ const [leadPost, ...asidePosts] = heroPosts
         >
           <a href={`/${post.id}/`}>
             <div class={`post-item ${!themeConfig.date.dateOnRight ? 'date-left' : ''}`}>
-              <span class="post-art">
+              <span class="post-art" data-post-art={post.id}>
                 <PostThumbnail slug={post.id} category={post.data.category} variant="row" />
               </span>
               {!themeConfig.date.dateOnRight && (
@@ -335,7 +338,9 @@ const [leadPost, ...asidePosts] = heroPosts
         continue
       }
 
-      const categoryButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-category-filter]')]
+      const categoryButtons = [
+        ...root.querySelectorAll<HTMLButtonElement>('[data-category-filter]')
+      ]
       const topicButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-topic-filter]')]
       const sortButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-sort]')]
       const groupToggle = root.querySelector<HTMLButtonElement>('[data-group-toggle]')
@@ -396,7 +401,10 @@ const [leadPost, ...asidePosts] = heroPosts
 
         for (const button of categoryButtons) {
           const value = button.dataset.categoryFilter ?? ''
-          setPressed(button, value === '' ? state.categories.size === 0 : state.categories.has(value))
+          setPressed(
+            button,
+            value === '' ? state.categories.size === 0 : state.categories.has(value)
+          )
         }
         for (const button of topicButtons) {
           setPressed(button, state.topics.has(button.dataset.topicFilter ?? ''))
@@ -416,8 +424,7 @@ const [leadPost, ...asidePosts] = heroPosts
             : `+${overflowChips.length} more`
         }
 
-        const filtering =
-          query.length > 0 || state.categories.size > 0 || state.topics.size > 0
+        const filtering = query.length > 0 || state.categories.size > 0 || state.topics.size > 0
         resultCount.textContent = state.grouped
           ? `${visible} ${visible === 1 ? 'post' : 'posts'} across ${visibleCategories} ${
               visibleCategories === 1 ? 'category' : 'categories'
