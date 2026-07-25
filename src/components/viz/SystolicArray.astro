@@ -5,12 +5,12 @@
  * Visualizes actual binary values flowing through MAC units
  */
 interface Props {
-  size?: number;
-  title?: string;
-  showLabels?: boolean;
+  size?: number
+  title?: string
+  showLabels?: boolean
 }
 
-const { size = 4, title = 'Weight-Stationary Systolic Array', showLabels = true } = Astro.props;
+const { size = 4, title = 'Weight-Stationary Systolic Array', showLabels = true } = Astro.props
 
 // Sample weight matrix (scaled integers for visualization)
 const weights = [
@@ -18,10 +18,10 @@ const weights = [
   [5, 9, 2, 6],
   [5, 3, 5, 8],
   [9, 7, 9, 3]
-];
+]
 
 // Input activations
-const activations = [2, 7, 1, 8];
+const activations = [2, 7, 1, 8]
 ---
 
 <div class="systolic-viz" data-size={size}>
@@ -32,20 +32,21 @@ const activations = [2, 7, 1, 8];
     <div class="viz-controls">
       <button class="ctrl-btn play-btn" aria-label="Play/Pause">
         <svg class="icon-play" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M4 2l10 6-10 6V2z"/>
+          <path d="M4 2l10 6-10 6V2z"></path>
         </svg>
         <svg class="icon-pause" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M4 2h3v12H4V2zm5 0h3v12H9V2z"/>
+          <path d="M4 2h3v12H4V2zm5 0h3v12H9V2z"></path>
         </svg>
       </button>
       <button class="ctrl-btn reset-btn" aria-label="Reset">
         <svg viewBox="0 0 16 16" fill="currentColor">
-          <path d="M8 1a7 7 0 0 0-7 7h2a5 5 0 0 1 8.5-3.5L9.5 6.5H14V2l-1.5 1.5A7 7 0 0 0 8 1z"/>
+          <path d="M8 1a7 7 0 0 0-7 7h2a5 5 0 0 1 8.5-3.5L9.5 6.5H14V2l-1.5 1.5A7 7 0 0 0 8 1z"
+          ></path>
         </svg>
       </button>
       <button class="ctrl-btn step-btn" aria-label="Step forward">
         <svg viewBox="0 0 16 16" fill="currentColor">
-          <path d="M4 2l6 6-6 6V2zm6 0h2v12h-2V2z"/>
+          <path d="M4 2l6 6-6 6V2zm6 0h2v12h-2V2z"></path>
         </svg>
       </button>
       <div class="step-counter">
@@ -59,21 +60,29 @@ const activations = [2, 7, 1, 8];
       <!-- Activation Inputs (Left) -->
       <div class="input-activations">
         <div class="input-header">Input A</div>
-        {activations.map((a, i) => (
-          <div class="activation-cell" data-row={i} data-value={a}>
-            <div class="cell-value">{a}</div>
-            <div class="cell-binary">
-              {a.toString(2).padStart(4, '0').split('').map((bit, _bi) => (
-                <span class="bit-cell" data-bit={bit}>{bit}</span>
-              ))}
+        {
+          activations.map((a, i) => (
+            <div class="activation-cell" data-row={i} data-value={a}>
+              <div class="cell-value">{a}</div>
+              <div class="cell-binary">
+                {a
+                  .toString(2)
+                  .padStart(4, '0')
+                  .split('')
+                  .map((bit, _bi) => (
+                    <span class="bit-cell" data-bit={bit}>
+                      {bit}
+                    </span>
+                  ))}
+              </div>
+              <div class="flow-arrow right">
+                <svg viewBox="0 0 20 8" fill="none">
+                  <path d="M0 4h16M12 0l4 4-4 4" stroke="currentColor" stroke-width="1.5" />
+                </svg>
+              </div>
             </div>
-            <div class="flow-arrow right">
-              <svg viewBox="0 0 20 8" fill="none">
-                <path d="M0 4h16M12 0l4 4-4 4" stroke="currentColor" stroke-width="1.5"/>
-              </svg>
-            </div>
-          </div>
-        ))}
+          ))
+        }
       </div>
 
       <!-- Main Grid Area -->
@@ -81,126 +90,141 @@ const activations = [2, 7, 1, 8];
         <!-- Partial Sum Inputs (Top) -->
         <div class="psum-inputs">
           <div class="psum-header">Init = 0</div>
-          {Array.from({ length: size }).map((_, i) => (
-            <div class="psum-in-cell" data-col={i}>
-              <span class="psum-val">0</span>
-              <div class="flow-arrow down">
-                <svg viewBox="0 0 8 16" fill="none">
-                  <path d="M4 0v12M0 8l4 4 4-4" stroke="currentColor" stroke-width="1.5"/>
-                </svg>
+          {
+            Array.from({ length: size }).map((_, i) => (
+              <div class="psum-in-cell" data-col={i}>
+                <span class="psum-val">0</span>
+                <div class="flow-arrow down">
+                  <svg viewBox="0 0 8 16" fill="none">
+                    <path d="M4 0v12M0 8l4 4 4-4" stroke="currentColor" stroke-width="1.5" />
+                  </svg>
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          }
         </div>
 
         <!-- MAC Unit Grid -->
         <div class="mac-grid" style={`--cols: ${size}`}>
-          {weights.flatMap((row, r) =>
-            row.map((w, c) => (
-              <div class="mac-unit" data-row={r} data-col={c} data-weight={w}>
-                <div class="mac-inner">
-                  <!-- Weight display -->
-                  <div class="mac-weight">
-                    <span class="weight-label">W</span>
-                    <span class="weight-value">{w}</span>
-                  </div>
-
-                  <!-- Operation indicator -->
-                  <div class="mac-op">
-                    <span class="op-symbol multiply">×</span>
-                    <span class="op-symbol plus">+</span>
-                  </div>
-
-                  <!-- Data slots -->
-                  <div class="mac-data">
-                    <div class="data-slot activation-slot">
-                      <span class="slot-label">a</span>
-                      <span class="slot-value">-</span>
+          {
+            weights.flatMap((row, r) =>
+              row.map((w, c) => (
+                <div class="mac-unit" data-row={r} data-col={c} data-weight={w}>
+                  <div class="mac-inner">
+                    {/* Weight display */}
+                    <div class="mac-weight">
+                      <span class="weight-label">W</span>
+                      <span class="weight-value">{w}</span>
                     </div>
-                    <div class="data-slot psum-slot">
-                      <span class="slot-label">p</span>
-                      <span class="slot-value">-</span>
+
+                    {/* Operation indicator */}
+                    <div class="mac-op">
+                      <span class="op-symbol multiply">×</span>
+                      <span class="op-symbol plus">+</span>
+                    </div>
+
+                    {/* Data slots */}
+                    <div class="mac-data">
+                      <div class="data-slot activation-slot">
+                        <span class="slot-label">a</span>
+                        <span class="slot-value">-</span>
+                      </div>
+                      <div class="data-slot psum-slot">
+                        <span class="slot-label">p</span>
+                        <span class="slot-value">-</span>
+                      </div>
+                    </div>
+
+                    {/* Result display */}
+                    <div class="mac-result">
+                      <span class="result-value">-</span>
                     </div>
                   </div>
 
-                  <!-- Result display -->
-                  <div class="mac-result">
-                    <span class="result-value">-</span>
-                  </div>
+                  {/* Flow lines */}
+                  <div class="flow-line h-flow" />
+                  <div class="flow-line v-flow" />
+
+                  {/* Data pulse indicators */}
+                  <div class="pulse-dot h-pulse" />
+                  <div class="pulse-dot v-pulse" />
                 </div>
-
-                <!-- Flow lines -->
-                <div class="flow-line h-flow"></div>
-                <div class="flow-line v-flow"></div>
-
-                <!-- Data pulse indicators -->
-                <div class="pulse-dot h-pulse"></div>
-                <div class="pulse-dot v-pulse"></div>
-              </div>
-            ))
-          )}
+              ))
+            )
+          }
         </div>
 
         <!-- Partial Sum Outputs (Bottom) -->
         <div class="psum-outputs">
-          {Array.from({ length: size }).map((_, i) => (
-            <div class="psum-out-cell" data-col={i}>
-              <div class="output-label">C{i}</div>
-              <div class="output-value">-</div>
-              <div class="output-binary">
-                <span class="bit-cell">-</span>
-                <span class="bit-cell">-</span>
-                <span class="bit-cell">-</span>
-                <span class="bit-cell">-</span>
+          {
+            Array.from({ length: size }).map((_, i) => (
+              <div class="psum-out-cell" data-col={i}>
+                <div class="output-label">C{i}</div>
+                <div class="output-value">-</div>
+                <div class="output-binary">
+                  <span class="bit-cell">-</span>
+                  <span class="bit-cell">-</span>
+                  <span class="bit-cell">-</span>
+                  <span class="bit-cell">-</span>
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          }
         </div>
       </div>
 
       <!-- Flow Exit (Right) -->
       <div class="flow-exit">
         <div class="exit-header">Out</div>
-        {Array.from({ length: size }).map((_, i) => (
-          <div class="exit-cell" data-row={i}>
-            <div class="exit-arrow">
-              <svg viewBox="0 0 12 8" fill="none">
-                <path d="M0 4h8M4 0l4 4-4 4" stroke="currentColor" stroke-width="1"/>
-              </svg>
+        {
+          Array.from({ length: size }).map((_, i) => (
+            <div class="exit-cell" data-row={i}>
+              <div class="exit-arrow">
+                <svg viewBox="0 0 12 8" fill="none">
+                  <path d="M0 4h8M4 0l4 4-4 4" stroke="currentColor" stroke-width="1" />
+                </svg>
+              </div>
             </div>
-          </div>
-        ))}
+          ))
+        }
       </div>
     </div>
 
     <!-- Legend & Info -->
-    {showLabels && (
-      <div class="viz-legend">
-        <div class="legend-group">
-          <span class="legend-title">Data Flow</span>
-          <div class="legend-items">
-            <div class="legend-item">
-              <span class="legend-arrow h"></span>
-              <span>Activations (A) flow right</span>
+    {
+      showLabels && (
+        <div class="viz-legend">
+          <div class="legend-group">
+            <span class="legend-title">Data Flow</span>
+            <div class="legend-items">
+              <div class="legend-item">
+                <span class="legend-arrow h" />
+                <span>Activations (A) flow right</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-arrow v" />
+                <span>Partial sums (P) flow down</span>
+              </div>
             </div>
-            <div class="legend-item">
-              <span class="legend-arrow v"></span>
-              <span>Partial sums (P) flow down</span>
+          </div>
+          <div class="legend-group">
+            <span class="legend-title">MAC Operation</span>
+            <div class="legend-formula">
+              <code>
+                P<sub>out</sub> = W × A + P<sub>in</sub>
+              </code>
             </div>
           </div>
         </div>
-        <div class="legend-group">
-          <span class="legend-title">MAC Operation</span>
-          <div class="legend-formula">
-            <code>P<sub>out</sub> = W × A + P<sub>in</sub></code>
-          </div>
-        </div>
-      </div>
-    )}
+      )
+    }
 
     <!-- Description -->
     <div class="viz-description">
-      <p>Each processing element (PE) holds a stationary weight. Activations propagate horizontally while partial sums accumulate vertically. After <code>2n-1</code> cycles, all outputs are computed.</p>
+      <p>
+        Each processing element (PE) holds a stationary weight. Activations propagate horizontally
+        while partial sums accumulate vertically. After <code>2n-1</code> cycles, all outputs are computed.
+      </p>
     </div>
   </div>
 </div>
@@ -208,239 +232,243 @@ const activations = [2, 7, 1, 8];
 <script>
   function initSystolicViz() {
     document.querySelectorAll('.systolic-viz').forEach((viz) => {
-      const playBtn = viz.querySelector('.play-btn');
-      const resetBtn = viz.querySelector('.reset-btn');
-      const stepBtn = viz.querySelector('.step-btn');
-      const stepDisplay = viz.querySelector('.step-value');
-      const macUnits = viz.querySelectorAll('.mac-unit');
-      const activationCells = viz.querySelectorAll('.activation-cell');
-      const psumOutputs = viz.querySelectorAll('.psum-out-cell');
+      const playBtn = viz.querySelector('.play-btn')
+      const resetBtn = viz.querySelector('.reset-btn')
+      const stepBtn = viz.querySelector('.step-btn')
+      const stepDisplay = viz.querySelector('.step-value')
+      const macUnits = viz.querySelectorAll('.mac-unit')
+      const activationCells = viz.querySelectorAll('.activation-cell')
+      const psumOutputs = viz.querySelectorAll('.psum-out-cell')
 
-      const size = parseInt(viz.dataset.size || '4', 10);
+      const size = parseInt(viz.dataset.size || '4', 10)
       const weights = [
         [3, 1, 4, 1],
         [5, 9, 2, 6],
         [5, 3, 5, 8],
         [9, 7, 9, 3]
-      ];
-      const activations = [2, 7, 1, 8];
+      ]
+      const activations = [2, 7, 1, 8]
 
-      let isPlaying = false;
-      let cycle = 0;
-      let animationTimer: number | null = null;
-      const maxCycles = size * 2 + 2;
+      let isPlaying = false
+      let cycle = 0
+      let animationTimer: number | null = null
+      const maxCycles = size * 2 + 2
 
       // Track partial sums for each column
       const partialSums: number[][] = Array.from({ length: size }, () =>
         Array.from({ length: size }, () => 0)
-      );
+      )
 
       // Track current data at each MAC unit
       const currentActivations: (number | null)[][] = Array.from({ length: size }, () =>
         Array.from({ length: size }, () => null)
-      );
+      )
 
       const reset = () => {
-        cycle = 0;
-        if (stepDisplay) stepDisplay.textContent = '0';
+        cycle = 0
+        if (stepDisplay) stepDisplay.textContent = '0'
 
         // Reset MAC units
         macUnits.forEach((unit) => {
-          unit.classList.remove('active', 'computing', 'has-data');
-          const aSlot = unit.querySelector('.activation-slot .slot-value');
-          const pSlot = unit.querySelector('.psum-slot .slot-value');
-          const result = unit.querySelector('.result-value');
-          if (aSlot) aSlot.textContent = '-';
-          if (pSlot) pSlot.textContent = '-';
-          if (result) result.textContent = '-';
+          unit.classList.remove('active', 'computing', 'has-data')
+          const aSlot = unit.querySelector('.activation-slot .slot-value')
+          const pSlot = unit.querySelector('.psum-slot .slot-value')
+          const result = unit.querySelector('.result-value')
+          if (aSlot) aSlot.textContent = '-'
+          if (pSlot) pSlot.textContent = '-'
+          if (result) result.textContent = '-'
 
-          const hPulse = unit.querySelector('.h-pulse');
-          const vPulse = unit.querySelector('.v-pulse');
-          hPulse?.classList.remove('active');
-          vPulse?.classList.remove('active');
-        });
+          const hPulse = unit.querySelector('.h-pulse')
+          const vPulse = unit.querySelector('.v-pulse')
+          hPulse?.classList.remove('active')
+          vPulse?.classList.remove('active')
+        })
 
         // Reset activation inputs
         activationCells.forEach((cell) => {
-          cell.classList.remove('sent', 'sending');
-        });
+          cell.classList.remove('sent', 'sending')
+        })
 
         // Reset outputs
         psumOutputs.forEach((output) => {
-          output.classList.remove('has-value');
-          const val = output.querySelector('.output-value');
-          const bits = output.querySelectorAll('.output-binary .bit-cell');
-          if (val) val.textContent = '-';
-          bits.forEach(b => b.textContent = '-');
-        });
+          output.classList.remove('has-value')
+          const val = output.querySelector('.output-value')
+          const bits = output.querySelectorAll('.output-binary .bit-cell')
+          if (val) val.textContent = '-'
+          bits.forEach((b) => (b.textContent = '-'))
+        })
 
         // Reset tracking arrays
         for (let r = 0; r < size; r++) {
           for (let c = 0; c < size; c++) {
-            partialSums[r][c] = 0;
-            currentActivations[r][c] = null;
+            partialSums[r][c] = 0
+            currentActivations[r][c] = null
           }
         }
-      };
+      }
 
       const step = () => {
-        cycle++;
-        if (stepDisplay) stepDisplay.textContent = cycle.toString();
+        cycle++
+        if (stepDisplay) stepDisplay.textContent = cycle.toString()
 
         // Process each MAC unit
         // Activation at row r enters at cycle (r + 1)
         // It reaches column c at cycle (r + c + 1)
 
         macUnits.forEach((unit) => {
-          const r = parseInt(unit.dataset.row || '0', 10);
-          const c = parseInt(unit.dataset.col || '0', 10);
-          const w = weights[r][c];
-          const arrivalCycle = r + c + 1;
+          const r = parseInt(unit.dataset.row || '0', 10)
+          const c = parseInt(unit.dataset.col || '0', 10)
+          const w = weights[r][c]
+          const arrivalCycle = r + c + 1
 
-          const aSlot = unit.querySelector('.activation-slot .slot-value');
-          const pSlot = unit.querySelector('.psum-slot .slot-value');
-          const resultEl = unit.querySelector('.result-value');
-          const hPulse = unit.querySelector('.h-pulse');
-          const vPulse = unit.querySelector('.v-pulse');
+          const aSlot = unit.querySelector('.activation-slot .slot-value')
+          const pSlot = unit.querySelector('.psum-slot .slot-value')
+          const resultEl = unit.querySelector('.result-value')
+          const hPulse = unit.querySelector('.h-pulse')
+          const vPulse = unit.querySelector('.v-pulse')
 
           if (cycle === arrivalCycle) {
             // Activation arrives
-            const a = activations[r];
-            currentActivations[r][c] = a;
-            unit.classList.add('has-data');
-            if (aSlot) aSlot.textContent = a.toString();
-            hPulse?.classList.add('active');
+            const a = activations[r]
+            currentActivations[r][c] = a
+            unit.classList.add('has-data')
+            if (aSlot) aSlot.textContent = a.toString()
+            hPulse?.classList.add('active')
 
             // Get partial sum from above (or 0 if top row)
-            const pIn = r > 0 ? partialSums[r - 1][c] : 0;
-            if (pSlot) pSlot.textContent = pIn.toString();
+            const pIn = r > 0 ? partialSums[r - 1][c] : 0
+            if (pSlot) pSlot.textContent = pIn.toString()
 
             // Mark input activation as sending
             if (c === 0) {
-              const input = viz.querySelector(`.activation-cell[data-row="${r}"]`);
-              input?.classList.add('sending');
+              const input = viz.querySelector(`.activation-cell[data-row="${r}"]`)
+              input?.classList.add('sending')
             }
           }
 
           if (cycle === arrivalCycle + 1) {
             // Computing - show result
-            unit.classList.add('computing');
-            const a = currentActivations[r][c];
-            const pIn = r > 0 ? partialSums[r - 1][c] : 0;
+            unit.classList.add('computing')
+            const a = currentActivations[r][c]
+            const pIn = r > 0 ? partialSums[r - 1][c] : 0
             if (a !== null) {
-              const result = w * a + pIn;
-              partialSums[r][c] = result;
-              if (resultEl) resultEl.textContent = result.toString();
+              const result = w * a + pIn
+              partialSums[r][c] = result
+              if (resultEl) resultEl.textContent = result.toString()
             }
-            vPulse?.classList.add('active');
+            vPulse?.classList.add('active')
 
             // Mark input as fully sent
             if (c === 0) {
-              const input = viz.querySelector(`.activation-cell[data-row="${r}"]`);
-              input?.classList.remove('sending');
-              input?.classList.add('sent');
+              const input = viz.querySelector(`.activation-cell[data-row="${r}"]`)
+              input?.classList.remove('sending')
+              input?.classList.add('sent')
             }
           }
 
           if (cycle === arrivalCycle + 2) {
             // Data leaves
-            unit.classList.remove('computing');
-            hPulse?.classList.remove('active');
+            unit.classList.remove('computing')
+            hPulse?.classList.remove('active')
 
             // If last row, update output
             if (r === size - 1) {
-              const output = viz.querySelector(`.psum-out-cell[data-col="${c}"]`);
+              const output = viz.querySelector(`.psum-out-cell[data-col="${c}"]`)
               if (output) {
-                output.classList.add('has-value');
-                const valEl = output.querySelector('.output-value');
-                const bits = output.querySelectorAll('.output-binary .bit-cell');
-                const finalVal = partialSums[r][c];
-                if (valEl) valEl.textContent = finalVal.toString();
+                output.classList.add('has-value')
+                const valEl = output.querySelector('.output-value')
+                const bits = output.querySelectorAll('.output-binary .bit-cell')
+                const finalVal = partialSums[r][c]
+                if (valEl) valEl.textContent = finalVal.toString()
 
                 // Show binary representation (8 bits, showing last 4)
-                const binary = finalVal.toString(2).padStart(8, '0').slice(-4);
+                const binary = finalVal.toString(2).padStart(8, '0').slice(-4)
                 bits.forEach((b, i) => {
-                  b.textContent = binary[i] || '0';
-                  b.dataset.bit = binary[i] || '0';
-                });
+                  b.textContent = binary[i] || '0'
+                  b.dataset.bit = binary[i] || '0'
+                })
               }
             }
           }
 
           if (cycle > arrivalCycle + 2) {
             // Clear old data
-            unit.classList.remove('has-data');
-            vPulse?.classList.remove('active');
-            if (aSlot) aSlot.textContent = '-';
-            if (pSlot) pSlot.textContent = '-';
+            unit.classList.remove('has-data')
+            vPulse?.classList.remove('active')
+            if (aSlot) aSlot.textContent = '-'
+            if (pSlot) pSlot.textContent = '-'
           }
-        });
+        })
 
         // Loop if playing
         if (cycle >= maxCycles) {
           if (isPlaying) {
             setTimeout(() => {
-              reset();
-              step();
-            }, 800);
+              reset()
+              step()
+            }, 800)
           }
         }
-      };
+      }
 
       const animate = () => {
-        if (!isPlaying) return;
-        step();
+        if (!isPlaying) return
+        step()
         if (cycle < maxCycles) {
-          animationTimer = window.setTimeout(animate, 700);
+          animationTimer = window.setTimeout(animate, 700)
         } else if (isPlaying) {
           animationTimer = window.setTimeout(() => {
-            reset();
-            animate();
-          }, 1200);
+            reset()
+            animate()
+          }, 1200)
         }
-      };
+      }
 
       const togglePlay = () => {
-        isPlaying = !isPlaying;
-        viz.classList.toggle('playing', isPlaying);
+        isPlaying = !isPlaying
+        viz.classList.toggle('playing', isPlaying)
 
         if (isPlaying) {
-          if (cycle >= maxCycles) reset();
-          animate();
+          if (cycle >= maxCycles) reset()
+          animate()
         } else if (animationTimer) {
-          clearTimeout(animationTimer);
+          clearTimeout(animationTimer)
         }
-      };
+      }
 
-      playBtn?.addEventListener('click', togglePlay);
+      playBtn?.addEventListener('click', togglePlay)
 
       resetBtn?.addEventListener('click', () => {
-        isPlaying = false;
-        viz.classList.remove('playing');
-        if (animationTimer) clearTimeout(animationTimer);
-        reset();
-      });
+        isPlaying = false
+        viz.classList.remove('playing')
+        if (animationTimer) clearTimeout(animationTimer)
+        reset()
+      })
 
       stepBtn?.addEventListener('click', () => {
         if (isPlaying) {
-          isPlaying = false;
-          viz.classList.remove('playing');
-          if (animationTimer) clearTimeout(animationTimer);
+          isPlaying = false
+          viz.classList.remove('playing')
+          if (animationTimer) clearTimeout(animationTimer)
         }
-        if (cycle >= maxCycles) reset();
-        step();
-      });
+        if (cycle >= maxCycles) reset()
+        step()
+      })
 
       // Cleanup
-      document.addEventListener('astro:before-swap', () => {
-        isPlaying = false;
-        if (animationTimer) clearTimeout(animationTimer);
-      }, { once: true });
-    });
+      document.addEventListener(
+        'astro:before-swap',
+        () => {
+          isPlaying = false
+          if (animationTimer) clearTimeout(animationTimer)
+        },
+        { once: true }
+      )
+    })
   }
 
-  initSystolicViz();
-  document.addEventListener('astro:after-swap', initSystolicViz);
+  initSystolicViz()
+  document.addEventListener('astro:after-swap', initSystolicViz)
 </script>
 
 <style>
@@ -502,7 +530,9 @@ const activations = [2, 7, 1, 8];
     background: var(--selection);
   }
 
-  .play-btn .icon-pause { display: none; }
+  .play-btn .icon-pause {
+    display: none;
+  }
 
   .systolic-viz.playing .play-btn {
     background: var(--text-secondary);
@@ -510,8 +540,12 @@ const activations = [2, 7, 1, 8];
     color: var(--bg);
   }
 
-  .systolic-viz.playing .play-btn .icon-play { display: none; }
-  .systolic-viz.playing .play-btn .icon-pause { display: block; }
+  .systolic-viz.playing .play-btn .icon-play {
+    display: none;
+  }
+  .systolic-viz.playing .play-btn .icon-pause {
+    display: block;
+  }
 
   .step-counter {
     margin-left: 0.5rem;
@@ -614,7 +648,7 @@ const activations = [2, 7, 1, 8];
     transition: all 0.2s ease;
   }
 
-  .bit-cell[data-bit="1"] {
+  .bit-cell[data-bit='1'] {
     background: var(--text-secondary);
     color: var(--bg);
   }
@@ -817,10 +851,18 @@ const activations = [2, 7, 1, 8];
     transform: translateX(-50%);
   }
 
-  .mac-unit:first-child .h-flow { left: 50%; }
-  .mac-unit:nth-child(4n) .h-flow { right: 50%; }
-  .mac-unit:nth-child(-n+4) .v-flow { top: 50%; }
-  .mac-unit:nth-last-child(-n+4) .v-flow { bottom: 50%; }
+  .mac-unit:first-child .h-flow {
+    left: 50%;
+  }
+  .mac-unit:nth-child(4n) .h-flow {
+    right: 50%;
+  }
+  .mac-unit:nth-child(-n + 4) .v-flow {
+    top: 50%;
+  }
+  .mac-unit:nth-last-child(-n + 4) .v-flow {
+    bottom: 50%;
+  }
 
   /* Pulse Dots */
   .pulse-dot {
@@ -851,8 +893,14 @@ const activations = [2, 7, 1, 8];
   }
 
   @keyframes pulse-move {
-    0% { transform: translateY(-50%) scale(1.5); opacity: 0.5; }
-    100% { transform: translateY(-50%) scale(1); opacity: 1; }
+    0% {
+      transform: translateY(-50%) scale(1.5);
+      opacity: 0.5;
+    }
+    100% {
+      transform: translateY(-50%) scale(1);
+      opacity: 1;
+    }
   }
 
   /* Outputs */
