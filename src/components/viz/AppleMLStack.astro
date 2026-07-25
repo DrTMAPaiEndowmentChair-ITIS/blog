@@ -5,40 +5,65 @@
  * with framework integrations on the side
  */
 interface Layer {
-  name: string;
-  type: string;
-  description?: string;
-  color?: 'accent' | 'highlight' | 'muted';
+  name: string
+  type: string
+  description?: string
+  color?: 'accent' | 'highlight' | 'muted'
 }
 
 interface Framework {
-  name: string;
-  connectsTo: string[];
-  color?: 'accent' | 'highlight' | 'muted';
+  name: string
+  connectsTo: string[]
+  color?: 'accent' | 'highlight' | 'muted'
 }
 
 interface Props {
-  title?: string;
-  showFrameworks?: boolean;
+  title?: string
+  showFrameworks?: boolean
 }
 
-const { title = "Apple ML Stack Architecture", showFrameworks = true } = Astro.props;
+const { title = 'Apple ML Stack Architecture', showFrameworks = true } = Astro.props
 
 const layers: Layer[] = [
-  { name: "Applications", type: "Apps & Services", description: "iOS, macOS, watchOS, visionOS apps", color: "muted" },
-  { name: "CoreML", type: "Deployment Framework", description: "Hardware-agnostic model deployment", color: "accent" },
-  { name: "MPSGraph", type: "Compute Graphs", description: "Graph-based GPU execution", color: "highlight" },
-  { name: "MPS", type: "GPU Primitives", description: "Metal Performance Shaders", color: "highlight" },
-  { name: "Metal", type: "GPU API", description: "Low-level GPU programming", color: "muted" },
-  { name: "Hardware", type: "GPU / Neural Engine / AMX", description: "Apple Silicon accelerators", color: "accent" }
-];
+  {
+    name: 'Applications',
+    type: 'Apps & Services',
+    description: 'iOS, macOS, watchOS, visionOS apps',
+    color: 'muted'
+  },
+  {
+    name: 'CoreML',
+    type: 'Deployment Framework',
+    description: 'Hardware-agnostic model deployment',
+    color: 'accent'
+  },
+  {
+    name: 'MPSGraph',
+    type: 'Compute Graphs',
+    description: 'Graph-based GPU execution',
+    color: 'highlight'
+  },
+  {
+    name: 'MPS',
+    type: 'GPU Primitives',
+    description: 'Metal Performance Shaders',
+    color: 'highlight'
+  },
+  { name: 'Metal', type: 'GPU API', description: 'Low-level GPU programming', color: 'muted' },
+  {
+    name: 'Hardware',
+    type: 'GPU / Neural Engine / AMX',
+    description: 'Apple Silicon accelerators',
+    color: 'accent'
+  }
+]
 
 const frameworks: Framework[] = [
-  { name: "PyTorch MPS", connectsTo: ["MPSGraph", "MPS"], color: "highlight" },
-  { name: "MLX", connectsTo: ["Metal", "MPS"], color: "accent" },
-  { name: "TensorFlow Metal", connectsTo: ["Metal"], color: "muted" },
-  { name: "BNNS / Accelerate", connectsTo: ["Hardware"], color: "muted" }
-];
+  { name: 'PyTorch MPS', connectsTo: ['MPSGraph', 'MPS'], color: 'highlight' },
+  { name: 'MLX', connectsTo: ['Metal', 'MPS'], color: 'accent' },
+  { name: 'TensorFlow Metal', connectsTo: ['Metal'], color: 'muted' },
+  { name: 'BNNS / Accelerate', connectsTo: ['Hardware'], color: 'muted' }
+]
 ---
 
 <div class="apple-ml-stack">
@@ -46,54 +71,68 @@ const frameworks: Framework[] = [
 
   <div class="stack-layout">
     <div class="main-stack">
-      {layers.map((layer, index) => (
-        <div class={`stack-layer ${layer.color || 'muted'}`} data-layer={layer.name}>
-          <div class="layer-content">
-            <div class="layer-header">
-              <span class="layer-name">{layer.name}</span>
-              <span class="layer-type">{layer.type}</span>
+      {
+        layers.map((layer, index) => (
+          <div class={`stack-layer ${layer.color || 'muted'}`} data-layer={layer.name}>
+            <div class="layer-content">
+              <div class="layer-header">
+                <span class="layer-name">{layer.name}</span>
+                <span class="layer-type">{layer.type}</span>
+              </div>
+              {layer.description && <div class="layer-description">{layer.description}</div>}
             </div>
-            {layer.description && (
-              <div class="layer-description">{layer.description}</div>
-            )}
-          </div>
-          {index < layers.length - 1 && (
-            <div class="layer-connector">
-              <svg width="12" height="24" viewBox="0 0 12 24" fill="none">
-                <path d="M6 0V24M6 24L2 20M6 24L10 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-
-    {showFrameworks && (
-      <div class="frameworks-panel">
-        <div class="panel-title">Framework Integration</div>
-        <div class="frameworks-list">
-          {frameworks.map((fw) => (
-            <div
-              class={`framework-item ${fw.color || 'muted'}`}
-              data-framework={fw.name}
-              data-connects={fw.connectsTo.join(',')}
-            >
-              <span class="framework-name">{fw.name}</span>
-              <div class="connect-indicator">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M2 8H14M14 8L10 4M14 8L10 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            {index < layers.length - 1 && (
+              <div class="layer-connector">
+                <svg width="12" height="24" viewBox="0 0 12 24" fill="none">
+                  <path
+                    d="M6 0V24M6 24L2 20M6 24L10 20"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
                 </svg>
               </div>
-              <div class="connect-targets">
-                {fw.connectsTo.map((target) => (
-                  <span class="connect-target">{target}</span>
-                ))}
+            )}
+          </div>
+        ))
+      }
+    </div>
+
+    {
+      showFrameworks && (
+        <div class="frameworks-panel">
+          <div class="panel-title">Framework Integration</div>
+          <div class="frameworks-list">
+            {frameworks.map((fw) => (
+              <div
+                class={`framework-item ${fw.color || 'muted'}`}
+                data-framework={fw.name}
+                data-connects={fw.connectsTo.join(',')}
+              >
+                <span class="framework-name">{fw.name}</span>
+                <div class="connect-indicator">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path
+                      d="M2 8H14M14 8L10 4M14 8L10 12"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </div>
+                <div class="connect-targets">
+                  {fw.connectsTo.map((target) => (
+                    <span class="connect-target">{target}</span>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
-    )}
+      )
+    }
   </div>
 
   <div class="stack-legend">
@@ -115,53 +154,53 @@ const frameworks: Framework[] = [
 <script>
   function initAppleMLStack() {
     document.querySelectorAll('.apple-ml-stack').forEach((container) => {
-      const layers = container.querySelectorAll('.stack-layer');
-      const frameworks = container.querySelectorAll('.framework-item');
+      const layers = container.querySelectorAll('.stack-layer')
+      const frameworks = container.querySelectorAll('.framework-item')
 
       // Highlight connected layers when hovering frameworks
       frameworks.forEach((fw) => {
-        const connects = (fw as HTMLElement).dataset.connects?.split(',') || [];
+        const connects = (fw as HTMLElement).dataset.connects?.split(',') || []
 
         fw.addEventListener('mouseenter', () => {
-          fw.classList.add('active');
+          fw.classList.add('active')
           layers.forEach((layer) => {
-            const layerName = (layer as HTMLElement).dataset.layer;
+            const layerName = (layer as HTMLElement).dataset.layer
             if (connects.includes(layerName || '')) {
-              layer.classList.add('connected');
+              layer.classList.add('connected')
             }
-          });
-        });
+          })
+        })
 
         fw.addEventListener('mouseleave', () => {
-          fw.classList.remove('active');
-          layers.forEach((layer) => layer.classList.remove('connected'));
-        });
-      });
+          fw.classList.remove('active')
+          layers.forEach((layer) => layer.classList.remove('connected'))
+        })
+      })
 
       // Highlight framework connections when hovering layers
       layers.forEach((layer) => {
-        const layerName = (layer as HTMLElement).dataset.layer;
+        const layerName = (layer as HTMLElement).dataset.layer
 
         layer.addEventListener('mouseenter', () => {
-          layer.classList.add('active');
+          layer.classList.add('active')
           frameworks.forEach((fw) => {
-            const connects = (fw as HTMLElement).dataset.connects?.split(',') || [];
+            const connects = (fw as HTMLElement).dataset.connects?.split(',') || []
             if (connects.includes(layerName || '')) {
-              fw.classList.add('connected');
+              fw.classList.add('connected')
             }
-          });
-        });
+          })
+        })
 
         layer.addEventListener('mouseleave', () => {
-          layer.classList.remove('active');
-          frameworks.forEach((fw) => fw.classList.remove('connected'));
-        });
-      });
-    });
+          layer.classList.remove('active')
+          frameworks.forEach((fw) => fw.classList.remove('connected'))
+        })
+      })
+    })
   }
 
-  initAppleMLStack();
-  document.addEventListener('astro:after-swap', initAppleMLStack);
+  initAppleMLStack()
+  document.addEventListener('astro:after-swap', initAppleMLStack)
 </script>
 
 <style>

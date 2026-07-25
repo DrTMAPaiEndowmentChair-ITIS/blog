@@ -1,5 +1,5 @@
 ---
-title: "AMD ROCm for Machine Learning: The Alternative GPU Ecosystem"
+title: 'AMD ROCm for Machine Learning: The Alternative GPU Ecosystem'
 pubDate: 2026-01-26
 author: 'Aadit Agrawal'
 category: 'Hardware & Systems'
@@ -7,8 +7,8 @@ description: 'A practical tour of AMD’s open GPU stack for training and infere
 topics: ['ROCm', 'AMD', 'GPU compute']
 ---
 
-import ROCmStack from '../../components/viz/ROCmStack.astro';
-import GPUComparisonTable from '../../components/viz/GPUComparisonTable.astro';
+import ROCmStack from '../../components/viz/ROCmStack.astro'
+import GPUComparisonTable from '../../components/viz/GPUComparisonTable.astro'
 
 AMD's ROCm platform has matured into a viable alternative for machine learning workloads. With ROCm 7.2 now shipping production-ready support for PyTorch, vLLM, and distributed training on both Linux and Windows, the AMD GPU ecosystem deserves serious consideration for both inference and training deployments. The October 2025 announcement of AMD's strategic partnership with OpenAI to deploy 6 gigawatts of AMD GPUs signals a significant shift in the AI infrastructure landscape.[^openai]
 
@@ -31,6 +31,7 @@ ROCm (Radeon Open Compute) is AMD's open-source GPU computing platform. Unlike N
 **HIP Runtime**: The primary programming interface for AMD GPUs. HIP provides a CUDA-like API that can target both AMD and NVIDIA hardware from the same source code.
 
 **ROCm Libraries**: Optimized implementations of common operations:
+
 - **rocBLAS/hipBLAS**: Dense linear algebra (GEMM, GEMV)
 - **hipBLASLt**: Lightweight BLAS with fused operations and FP8 support
 - **MIOpen**: Deep learning primitives (convolutions, pooling, normalization)
@@ -138,12 +139,14 @@ When porting the HACC physics code (approximately 15,000 lines), AMD reported th
 ### What Translates Well
 
 Most CUDA runtime API calls have direct HIP equivalents:
+
 - `cudaMalloc` → `hipMalloc`
 - `cudaMemcpy` → `hipMemcpy`
 - `cudaDeviceSynchronize` → `hipDeviceSynchronize`
 - `cudaStream_t` → `hipStream_t`
 
 Device code keywords map directly:
+
 - `__global__`, `__device__`, `__shared__` work unchanged
 - `threadIdx`, `blockIdx`, `blockDim` have `hip` prefixes available but original names also work
 
@@ -160,6 +163,7 @@ hipDeviceGetAttribute(&warpSize, hipDeviceAttributeWarpSize, device);
 **CUDA-Specific Intrinsics**: Some CUDA intrinsics lack direct HIP equivalents. Tensor core operations (wmma) require translation to AMD's matrix core instructions.
 
 **Library Calls**: ROCm provides equivalent libraries for most CUDA libraries:
+
 - cuBLAS → rocBLAS/hipBLAS
 - cuDNN → MIOpen
 - NCCL → RCCL
@@ -429,6 +433,7 @@ cmake --build build --config Release -j $(nproc)
 ```
 
 Replace `gfx942` with your GPU architecture:
+
 - MI350X/MI355X: `gfx950`
 - MI300X/MI325X: `gfx942`
 - MI250X: `gfx90a`
@@ -677,6 +682,7 @@ rocprof-compute analyze my_workload/ --roof
 ```
 
 rocprof-compute provides:
+
 - Roofline analysis showing compute vs memory boundedness
 - Memory throughput analysis
 - Compute utilization breakdown
@@ -731,6 +737,7 @@ JAX on ROCm is supported for inference only. Training workloads may encounter in
 ### Quantization Support
 
 Not all quantization formats work on ROCm:
+
 - GPTQ and AWQ: Supported in vLLM
 - GGUF: Supported in llama.cpp
 - FP8: Supported on MI300 series
@@ -818,6 +825,7 @@ amd-smi monitor -p
 ROCm has evolved from a CUDA alternative requiring substantial effort into a production-ready platform for ML workloads. The MI355X delivers competitive performance against NVIDIA's Blackwell B200 for LLM inference, particularly at high concurrency levels. The MI300X and MI325X remain strong options for memory-bound workloads. Consumer RDNA 4 cards (RX 9070 series) provide a viable path for local development with native Windows support.
 
 Key points to remember:
+
 - ROCm 7.2 supports both Linux and Windows
 - PyTorch 2.9.1 works on both platforms without code changes
 - vLLM passes 93% of test groups on AMD CI (January 2026)

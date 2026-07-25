@@ -4,46 +4,46 @@
  * Shows layers with expandable details
  */
 interface Layer {
-  name: string;
-  type: string;
-  params?: string;
-  details?: string;
-  color?: 'accent' | 'highlight' | 'muted';
+  name: string
+  type: string
+  params?: string
+  details?: string
+  color?: 'accent' | 'highlight' | 'muted'
 }
 
 interface Props {
-  layers: Layer[];
-  title?: string;
-  direction?: 'down' | 'up';
+  layers: Layer[]
+  title?: string
+  direction?: 'down' | 'up'
 }
 
-const { layers, title, direction = 'down' } = Astro.props;
-const orderedLayers = direction === 'up' ? [...layers].reverse() : layers;
+const { layers, title, direction = 'down' } = Astro.props
+const orderedLayers = direction === 'up' ? [...layers].reverse() : layers
 ---
 
 <div class="layer-stack">
   {title && <div class="stack-title">{title}</div>}
   <div class="stack-container">
-    {orderedLayers.map((layer, index) => (
-      <div class={`layer-item ${layer.color || 'muted'}`} data-layer-index={index}>
-        <div class="layer-main">
-          <div class="layer-connector">
-            {index > 0 && <div class="connector-line"></div>}
-            <div class="connector-dot"></div>
-          </div>
-          <div class="layer-content">
-            <div class="layer-header">
-              <span class="layer-name">{layer.name}</span>
-              <span class="layer-type">{layer.type}</span>
+    {
+      orderedLayers.map((layer, index) => (
+        <div class={`layer-item ${layer.color || 'muted'}`} data-layer-index={index}>
+          <div class="layer-main">
+            <div class="layer-connector">
+              {index > 0 && <div class="connector-line" />}
+              <div class="connector-dot" />
             </div>
-            {layer.params && <div class="layer-params">{layer.params}</div>}
+            <div class="layer-content">
+              <div class="layer-header">
+                <span class="layer-name">{layer.name}</span>
+                <span class="layer-type">{layer.type}</span>
+              </div>
+              {layer.params && <div class="layer-params">{layer.params}</div>}
+            </div>
           </div>
+          {layer.details && <div class="layer-details">{layer.details}</div>}
         </div>
-        {layer.details && (
-          <div class="layer-details">{layer.details}</div>
-        )}
-      </div>
-    ))}
+      ))
+    }
   </div>
 </div>
 

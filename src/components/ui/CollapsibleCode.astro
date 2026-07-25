@@ -1,18 +1,23 @@
 ---
 interface Props {
-  title?: string;
-  defaultOpen?: boolean;
-  language?: string;
+  title?: string
+  defaultOpen?: boolean
+  language?: string
 }
 
-const { title = 'Code', defaultOpen = false, language = '' } = Astro.props;
+const { title = 'Code', defaultOpen = false, language = '' } = Astro.props
 ---
 
 <div class="collapsible-code" data-default-open={defaultOpen}>
   <button class="code-toggle" aria-expanded={defaultOpen ? 'true' : 'false'}>
     <span class="toggle-icon">
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-        <path d="M4 2L8 6L4 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path
+          d="M4 2L8 6L4 10"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"></path>
       </svg>
     </span>
     <span class="code-title">{title}</span>
@@ -54,7 +59,7 @@ const { title = 'Code', defaultOpen = false, language = '' } = Astro.props;
     background: var(--code-bg);
   }
 
-  .code-toggle[aria-expanded="true"] {
+  .code-toggle[aria-expanded='true'] {
     border-bottom-color: var(--border);
   }
 
@@ -65,7 +70,7 @@ const { title = 'Code', defaultOpen = false, language = '' } = Astro.props;
     transition: transform 0.2s ease-out;
   }
 
-  .code-toggle[aria-expanded="true"] .toggle-icon {
+  .code-toggle[aria-expanded='true'] .toggle-icon {
     transform: rotate(90deg);
   }
 
@@ -90,7 +95,7 @@ const { title = 'Code', defaultOpen = false, language = '' } = Astro.props;
     transition: grid-template-rows 0.25s ease-out;
   }
 
-  .code-toggle[aria-expanded="true"] + .code-content {
+  .code-toggle[aria-expanded='true'] + .code-content {
     grid-template-rows: 1fr;
   }
 
@@ -109,22 +114,22 @@ const { title = 'Code', defaultOpen = false, language = '' } = Astro.props;
 <script>
   function initCollapsibleCode() {
     document.querySelectorAll('.collapsible-code').forEach((container) => {
-      const toggle = container.querySelector('.code-toggle');
-      const defaultOpen = container.dataset.defaultOpen === 'true';
+      const toggle = container.querySelector('.code-toggle')
+      const defaultOpen = container.dataset.defaultOpen === 'true'
 
-      if (!toggle) return;
+      if (!toggle) return
 
       // Set initial state
-      toggle.setAttribute('aria-expanded', defaultOpen ? 'true' : 'false');
+      toggle.setAttribute('aria-expanded', defaultOpen ? 'true' : 'false')
 
       toggle.addEventListener('click', () => {
-        const isExpanded = toggle.getAttribute('aria-expanded') === 'true';
-        toggle.setAttribute('aria-expanded', isExpanded ? 'false' : 'true');
-      });
-    });
+        const isExpanded = toggle.getAttribute('aria-expanded') === 'true'
+        toggle.setAttribute('aria-expanded', isExpanded ? 'false' : 'true')
+      })
+    })
   }
 
   // Initialize on page load and after navigation
-  initCollapsibleCode();
-  document.addEventListener('astro:after-swap', initCollapsibleCode);
+  initCollapsibleCode()
+  document.addEventListener('astro:after-swap', initCollapsibleCode)
 </script>

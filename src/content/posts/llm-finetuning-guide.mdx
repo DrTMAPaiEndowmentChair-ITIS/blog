@@ -1,5 +1,5 @@
 ---
-title: "Fine-Tuning LLMs: A Practical Guide to Tools, Techniques, and Best Practices"
+title: 'Fine-Tuning LLMs: A Practical Guide to Tools, Techniques, and Best Practices'
 pubDate: 2026-01-09
 author: 'Aadit Agrawal'
 category: 'Models & Training'
@@ -7,7 +7,7 @@ description: 'Decide when fine-tuning is worth it, then choose the right data, m
 topics: ['Fine-tuning', 'LoRA', 'Training']
 ---
 
-import FinetuneDecisionFlow from '../../components/viz/FinetuneDecisionFlow.astro';
+import FinetuneDecisionFlow from '../../components/viz/FinetuneDecisionFlow.astro'
 
 Fine-tuning large language models has become accessible to individual developers and small teams. What once required clusters of expensive GPUs can now run on consumer hardware with the right techniques and tools. This guide covers the practical aspects of fine-tuning: when to do it, how to do it efficiently, and which tools to use.
 
@@ -111,12 +111,12 @@ The library also supports NVIDIA GPUs from Tesla T4 to H100, with portability to
 
 VRAM requirements depend on model size and quantization:
 
-| Model | QLoRA 4-bit | LoRA 16-bit |
-|-------|-------------|-------------|
-| 7-9B parameters | 6.5GB | 24GB |
-| 20B parameters | 14GB | - |
-| 70B parameters | 48GB | - |
-| 120B parameters | 65GB | - |
+| Model           | QLoRA 4-bit | LoRA 16-bit |
+| --------------- | ----------- | ----------- |
+| 7-9B parameters | 6.5GB       | 24GB        |
+| 20B parameters  | 14GB        | -           |
+| 70B parameters  | 48GB        | -           |
+| 120B parameters | 65GB        | -           |
 
 These numbers make consumer GPU fine-tuning realistic. A 24GB RTX 4090 handles most 7-9B parameter models with LoRA.
 
@@ -247,6 +247,7 @@ Tinker supports the full range of post-training methods:
 **Supervised fine-tuning** for instruction following and task adaptation
 
 **Preference learning** with a three-stage RLHF pipeline:
+
 1. Supervised fine-tuning on demonstrations
 2. Training a reward model on preferences
 3. RL optimization against the reward model
@@ -402,10 +403,13 @@ The original Alpaca dataset contains 52,000 instruction-output pairs generated b
 ```json
 {
   "conversations": [
-    {"role": "user", "content": "What is the capital of France?"},
-    {"role": "assistant", "content": "Paris is the capital of France."},
-    {"role": "user", "content": "What is its population?"},
-    {"role": "assistant", "content": "Paris has a population of about 2.1 million in the city proper, and over 12 million in the metropolitan area."}
+    { "role": "user", "content": "What is the capital of France?" },
+    { "role": "assistant", "content": "Paris is the capital of France." },
+    { "role": "user", "content": "What is its population?" },
+    {
+      "role": "assistant",
+      "content": "Paris has a population of about 2.1 million in the city proper, and over 12 million in the metropolitan area."
+    }
   ]
 }
 ```

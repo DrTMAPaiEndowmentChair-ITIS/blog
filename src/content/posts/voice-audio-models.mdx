@@ -7,14 +7,14 @@ description: 'Survey the architectures behind speech recognition, synthesis, voi
 topics: ['Audio AI', 'Speech', 'TTS']
 ---
 
-import AudioPipeline from '../../components/viz/AudioPipeline.astro';
-import ConformerBlock from '../../components/viz/ConformerBlock.astro';
-import TTSPipeline from '../../components/viz/TTSPipeline.astro';
-import BranchingFlow from '../../components/viz/BranchingFlow.astro';
-import DualStream from '../../components/viz/DualStream.astro';
-import HierarchicalFlow from '../../components/viz/HierarchicalFlow.astro';
-import TokenFlow from '../../components/viz/TokenFlow.astro';
-import ChunkedAttention from '../../components/viz/ChunkedAttention.astro';
+import AudioPipeline from '../../components/viz/AudioPipeline.astro'
+import ConformerBlock from '../../components/viz/ConformerBlock.astro'
+import TTSPipeline from '../../components/viz/TTSPipeline.astro'
+import BranchingFlow from '../../components/viz/BranchingFlow.astro'
+import DualStream from '../../components/viz/DualStream.astro'
+import HierarchicalFlow from '../../components/viz/HierarchicalFlow.astro'
+import TokenFlow from '../../components/viz/TokenFlow.astro'
+import ChunkedAttention from '../../components/viz/ChunkedAttention.astro'
 
 Voice and audio AI has advanced rapidly, with models now capable of real-time transcription, natural speech synthesis, voice cloning from seconds of audio, and full-duplex conversational interactions. This article provides a technical survey of the architectures behind speech-to-text, text-to-speech, voice conversion, and audio language models. We cover the mathematical foundations, practical training considerations, and deployment strategies for building production systems.
 
@@ -46,52 +46,65 @@ The encoder processes the Mel spectrogram through:
   subtitle="Audio to encoded representation pipeline"
   stages={[
     {
-      id: "input",
-      label: "Audio Input",
-      sublabel: "16 kHz waveform",
-      icon: "waveform",
-      color: "muted",
-      details: ["Raw audio resampled to 16 kHz", "30 seconds maximum duration"]
+      id: 'input',
+      label: 'Audio Input',
+      sublabel: '16 kHz waveform',
+      icon: 'waveform',
+      color: 'muted',
+      details: ['Raw audio resampled to 16 kHz', '30 seconds maximum duration']
     },
     {
-      id: "mel",
-      label: "Mel Spectrogram",
-      sublabel: "80-128 channels",
-      icon: "spectrogram",
-      color: "accent",
-      details: ["25ms window, 10ms stride", "Log-magnitude normalized to [-1, 1]", "80 channels (128 for large-v3)"]
+      id: 'mel',
+      label: 'Mel Spectrogram',
+      sublabel: '80-128 channels',
+      icon: 'spectrogram',
+      color: 'accent',
+      details: [
+        '25ms window, 10ms stride',
+        'Log-magnitude normalized to [-1, 1]',
+        '80 channels (128 for large-v3)'
+      ]
     },
     {
-      id: "conv",
-      label: "Conv Layers",
-      sublabel: "2x downsample",
-      icon: "conv",
-      color: "accent",
-      details: ["Conv1D (3x3, stride 1) + GELU", "Conv1D (3x3, stride 2) + GELU", "Downsamples sequence by 2x"]
+      id: 'conv',
+      label: 'Conv Layers',
+      sublabel: '2x downsample',
+      icon: 'conv',
+      color: 'accent',
+      details: [
+        'Conv1D (3x3, stride 1) + GELU',
+        'Conv1D (3x3, stride 2) + GELU',
+        'Downsamples sequence by 2x'
+      ]
     },
     {
-      id: "pos",
-      label: "Pos Embed",
-      sublabel: "sinusoidal",
-      icon: "embedding",
-      color: "muted",
-      details: ["Sinusoidal positional embeddings", "Added to conv output"]
+      id: 'pos',
+      label: 'Pos Embed',
+      sublabel: 'sinusoidal',
+      icon: 'embedding',
+      color: 'muted',
+      details: ['Sinusoidal positional embeddings', 'Added to conv output']
     },
     {
-      id: "transformer",
-      label: "Transformer",
-      sublabel: "12-32 layers",
-      icon: "transformer",
-      color: "highlight",
-      details: ["Multi-head self-attention", "Feed-forward layers", "Pre-activation residual connections", "Final layer normalization"]
+      id: 'transformer',
+      label: 'Transformer',
+      sublabel: '12-32 layers',
+      icon: 'transformer',
+      color: 'highlight',
+      details: [
+        'Multi-head self-attention',
+        'Feed-forward layers',
+        'Pre-activation residual connections',
+        'Final layer normalization'
+      ]
     },
     {
-      id: "output",
-      label: "Encoder Output",
-      sublabel: "contextualized",
-      icon: "attention",
-      color: "accent",
-      details: ["Rich audio representations", "Used by decoder for transcription"]
+      id: 'output',
+      label: 'Encoder Output',
+      sublabel: 'contextualized',
+      icon: 'attention',
+      color: 'accent',
+      details: ['Rich audio representations', 'Used by decoder for transcription']
     }
   ]}
 />
@@ -102,13 +115,13 @@ The decoder follows the standard Transformer decoder architecture with learned p
 
 **Model Sizes**
 
-| Model | Parameters | Layers | Width | Heads |
-|-------|------------|--------|-------|-------|
-| tiny | 39M | 4 | 384 | 6 |
-| base | 74M | 6 | 512 | 8 |
-| small | 244M | 12 | 768 | 12 |
-| medium | 769M | 24 | 1024 | 16 |
-| large-v3 | 1.55B | 32 | 1280 | 20 |
+| Model    | Parameters | Layers | Width | Heads |
+| -------- | ---------- | ------ | ----- | ----- |
+| tiny     | 39M        | 4      | 384   | 6     |
+| base     | 74M        | 6      | 512   | 8     |
+| small    | 244M       | 12     | 768   | 12    |
+| medium   | 769M       | 24     | 1024  | 16    |
+| large-v3 | 1.55B      | 32     | 1280  | 20    |
 
 Whisper's encoder-decoder structure makes it naturally suited for batch processing but challenging for streaming applications. The encoder requires the full 30-second audio context before producing useful representations [3].
 
@@ -133,7 +146,7 @@ The convolution module uses depthwise separable convolutions for efficiency:
 1. **Pointwise conv** with expansion factor 2 followed by GLU activation
 2. **Depthwise conv** (1D, kernel size typically 31) captures local context
 3. **BatchNorm** for training stability
-4. **Swish activation** (x * sigmoid(x))
+4. **Swish activation** (x \* sigmoid(x))
 5. **Pointwise conv** to project back to original dimension
 
 The depthwise convolution has kernel size 31 by default, meaning each output position attends to 15 frames on each side (roughly 150ms of audio context at standard 10ms frame rates).
@@ -151,13 +164,14 @@ ASR systems use two main decoding paradigms with different tradeoffs [5].
 CTC, introduced by Graves et al. in 2006, addresses the alignment problem in sequence-to-sequence tasks where input and output sequences have different lengths.
 
 Key properties:
+
 - **Monotonic alignment**: Output tokens appear in the same order as their corresponding input frames
 - **Conditional independence**: CTC assumes each output token is independent given the input, which simplifies computation but ignores output dependencies
 - **Blank token**: A special "blank" token allows the model to output nothing for frames that fall between phonemes
 
 <TokenFlow
   title="CTC Decoding Example"
-  inputTokens={["h", "h", "-", "e", "e", "e", "-", "l", "l", "-", "l", "-", "o", "o"]}
+  inputTokens={['h', 'h', '-', 'e', 'e', 'e', '-', 'l', 'l', '-', 'l', '-', 'o', 'o']}
   outputText="hello"
 />
 
@@ -242,28 +256,28 @@ Traditional TTS pipelines generate mel spectrograms from text, then convert spec
   outputLabel="Waveform Output"
   stages={[
     {
-      id: "encoder",
-      label: "Text Encoder",
-      sublabel: "Transformer",
-      color: "accent"
+      id: 'encoder',
+      label: 'Text Encoder',
+      sublabel: 'Transformer',
+      color: 'accent'
     },
     {
-      id: "prior",
-      label: "Prior Encoder",
-      sublabel: "Posterior distribution",
-      annotation: "Normalizing flows (4 coupling layers), each has 4 WaveNet residual blocks",
-      color: "highlight"
+      id: 'prior',
+      label: 'Prior Encoder',
+      sublabel: 'Posterior distribution',
+      annotation: 'Normalizing flows (4 coupling layers), each has 4 WaveNet residual blocks',
+      color: 'highlight'
     },
     {
-      id: "duration",
-      label: "Duration Predictor",
-      annotation: "Stochastic: predicts distribution using DDSConv (dilated depthwise sep)",
-      color: "highlight"
+      id: 'duration',
+      label: 'Duration Predictor',
+      annotation: 'Stochastic: predicts distribution using DDSConv (dilated depthwise sep)',
+      color: 'highlight'
     },
     {
-      id: "decoder",
-      label: "HiFi-GAN Decoder",
-      color: "accent"
+      id: 'decoder',
+      label: 'HiFi-GAN Decoder',
+      color: 'accent'
     }
   ]}
 />
@@ -277,6 +291,7 @@ VITS models TTS as a conditional VAE:
 3. **Decoder**: Generates waveform from z
 
 The training objective combines:
+
 - Reconstruction loss (from VAE)
 - KL divergence between prior and posterior
 - Adversarial loss (discriminator judges waveform quality)
@@ -289,6 +304,7 @@ Unlike deterministic duration predictors, VITS uses a stochastic duration predic
 **VITS2 Improvements**
 
 VITS2 enhances the original with:
+
 - Improved duration prediction using a transformer-based predictor
 - Better speaker conditioning for multi-speaker models
 - Monotonic alignment search for more stable training
@@ -308,6 +324,7 @@ The [Tacotron](https://arxiv.org/abs/1712.05884) models pioneered end-to-end TTS
 **Tacotron 2 (2017)**
 
 Key improvements over Tacotron 1:
+
 - Simplified encoder: 3 conv layers + bidirectional LSTM
 - Location-sensitive attention: Adds previous alignment to attention computation
 - Decoder: 2 autoregressive LSTM layers
@@ -320,46 +337,46 @@ Key improvements over Tacotron 1:
   outputLabel="Mel Spectrogram"
   stages={[
     {
-      id: "embed",
-      label: "Character Embedding",
-      sublabel: "512-dim",
-      color: "muted"
+      id: 'embed',
+      label: 'Character Embedding',
+      sublabel: '512-dim',
+      color: 'muted'
     },
     {
-      id: "conv",
-      label: "3x Conv1D Layers",
-      details: ["512 filters, k=5", "BatchNorm + ReLU"],
-      color: "accent"
+      id: 'conv',
+      label: '3x Conv1D Layers',
+      details: ['512 filters, k=5', 'BatchNorm + ReLU'],
+      color: 'accent'
     },
     {
-      id: "lstm-enc",
-      label: "Bidirectional LSTM",
-      sublabel: "512 units",
-      color: "accent"
+      id: 'lstm-enc',
+      label: 'Bidirectional LSTM',
+      sublabel: '512 units',
+      color: 'accent'
     },
     {
-      id: "attention",
-      label: "Location-Sensitive Attention",
-      details: ["Previous alignment", "Conv features", "Content-based scoring"],
-      color: "highlight"
+      id: 'attention',
+      label: 'Location-Sensitive Attention',
+      details: ['Previous alignment', 'Conv features', 'Content-based scoring'],
+      color: 'highlight'
     },
     {
-      id: "lstm-dec",
-      label: "2x Decoder LSTM",
-      details: ["1024 units each", "+ Pre-net"],
-      color: "accent"
+      id: 'lstm-dec',
+      label: '2x Decoder LSTM',
+      details: ['1024 units each', '+ Pre-net'],
+      color: 'accent'
     },
     {
-      id: "proj",
-      label: "Linear Projection",
-      sublabel: "to Mel spectrogram",
-      color: "muted"
+      id: 'proj',
+      label: 'Linear Projection',
+      sublabel: 'to Mel spectrogram',
+      color: 'muted'
     },
     {
-      id: "postnet",
-      label: "PostNet",
-      sublabel: "5x Conv1D layers",
-      color: "accent"
+      id: 'postnet',
+      label: 'PostNet',
+      sublabel: '5x Conv1D layers',
+      color: 'accent'
     }
   ]}
 />
@@ -385,6 +402,7 @@ Vocoders convert mel spectrograms (or other intermediate representations) into a
 [HiFi-GAN](https://github.com/jik876/hifi-gan), published in 2020, uses GANs for efficient high-fidelity synthesis [9].
 
 Architecture:
+
 - **Generator**: Transposed convolutions for upsampling, multi-receptive field fusion (MRF) blocks
 - **Multi-period discriminator (MPD)**: Multiple discriminators operating on different periodic subsequences (periods 2, 3, 5, 7, 11)
 - **Multi-scale discriminator (MSD)**: Discriminators at different audio resolutions
@@ -397,29 +415,29 @@ The key insight is that speech contains multiple periodic components (fundamenta
   outputLabel="Audio Waveform"
   stages={[
     {
-      id: "upsample",
-      label: "Transposed Conv",
-      sublabel: "kernel=16, stride=8",
-      annotation: "Upsample 8x",
-      color: "accent"
+      id: 'upsample',
+      label: 'Transposed Conv',
+      sublabel: 'kernel=16, stride=8',
+      annotation: 'Upsample 8x',
+      color: 'accent'
     },
     {
-      id: "mrf",
-      label: "MRF Block",
-      details: ["Conv (k=3, d=1)", "Conv (k=7, d=1)", "Conv (k=11, d=1)"],
-      annotation: "Multiple parallel residual blocks with different kernel sizes and dilations",
-      color: "highlight"
+      id: 'mrf',
+      label: 'MRF Block',
+      details: ['Conv (k=3, d=1)', 'Conv (k=7, d=1)', 'Conv (k=11, d=1)'],
+      annotation: 'Multiple parallel residual blocks with different kernel sizes and dilations',
+      color: 'highlight'
     },
     {
-      id: "repeat",
-      label: "Repeat 3x",
-      sublabel: "with different upsample factors",
-      color: "muted"
+      id: 'repeat',
+      label: 'Repeat 3x',
+      sublabel: 'with different upsample factors',
+      color: 'muted'
     },
     {
-      id: "output",
-      label: "Conv1D + tanh",
-      color: "accent"
+      id: 'output',
+      label: 'Conv1D + tanh',
+      color: 'accent'
     }
   ]}
 />
@@ -456,24 +474,24 @@ Zero-shot TTS generates speech in any voice given only a few seconds of referenc
   outputLabel="Waveform"
   stages={[
     {
-      id: "ar",
-      label: "Autoregressive Model",
-      sublabel: "predicts 1st codebook",
-      annotation: "Predicts coarse codes",
-      color: "accent"
+      id: 'ar',
+      label: 'Autoregressive Model',
+      sublabel: 'predicts 1st codebook',
+      annotation: 'Predicts coarse codes',
+      color: 'accent'
     },
     {
-      id: "nar",
-      label: "Non-autoregressive Model",
-      sublabel: "predicts codebooks 2-8",
-      annotation: "Predicts fine codes given coarse codes",
-      color: "highlight"
+      id: 'nar',
+      label: 'Non-autoregressive Model',
+      sublabel: 'predicts codebooks 2-8',
+      annotation: 'Predicts fine codes given coarse codes',
+      color: 'highlight'
     },
     {
-      id: "codec",
-      label: "Neural Codec Decoder",
-      sublabel: "EnCodec",
-      color: "accent"
+      id: 'codec',
+      label: 'Neural Codec Decoder',
+      sublabel: 'EnCodec',
+      color: 'accent'
     }
   ]}
 />
@@ -517,26 +535,26 @@ A neural network extracts a fixed-dimension speaker embedding from reference aud
   outputLabel="256-dim d-vector"
   stages={[
     {
-      id: "mel",
-      label: "Mel Spectrogram",
-      sublabel: "40 or 80 channels",
-      color: "muted"
+      id: 'mel',
+      label: 'Mel Spectrogram',
+      sublabel: '40 or 80 channels',
+      color: 'muted'
     },
     {
-      id: "lstm",
-      label: "3x LSTM Layers",
-      sublabel: "768 units each",
-      color: "accent"
+      id: 'lstm',
+      label: '3x LSTM Layers',
+      sublabel: '768 units each',
+      color: 'accent'
     },
     {
-      id: "pool",
-      label: "Temporal Average Pooling",
-      color: "highlight"
+      id: 'pool',
+      label: 'Temporal Average Pooling',
+      color: 'highlight'
     },
     {
-      id: "norm",
-      label: "L2 Normalize",
-      color: "muted"
+      id: 'norm',
+      label: 'L2 Normalize',
+      color: 'muted'
     }
   ]}
 />
@@ -599,23 +617,23 @@ One approach uses information bottlenecks to force separation:
   title="Voice Conversion Disentanglement"
   inputLabel="Source Audio"
   outputLabel="Converted Audio"
-  leftBranch={[
-    { id: "content", label: "Content Encoder", sublabel: "(narrow)", color: "accent" }
-  ]}
-  rightBranch={[
-    { id: "speaker", label: "Speaker Encoder", sublabel: "(narrow)", color: "accent" }
-  ]}
+  leftBranch={[{ id: 'content', label: 'Content Encoder', sublabel: '(narrow)', color: 'accent' }]}
+  rightBranch={[{ id: 'speaker', label: 'Speaker Encoder', sublabel: '(narrow)', color: 'accent' }]}
   leftLabel="Content Path"
   rightLabel="Speaker Path"
-  mergeNode={{ id: "replace", label: "Replace Speaker Embedding", sublabel: "Target speaker embedding", color: "highlight" }}
-  postMerge={[
-    { id: "decoder", label: "Decoder", color: "accent" }
-  ]}
+  mergeNode={{
+    id: 'replace',
+    label: 'Replace Speaker Embedding',
+    sublabel: 'Target speaker embedding',
+    color: 'highlight'
+  }}
+  postMerge={[{ id: 'decoder', label: 'Decoder', color: 'accent' }]}
 />
 
 **Adversarial Disentanglement**
 
 Train with adversarial losses to ensure:
+
 - Content encoder output cannot predict speaker (speaker classifier fails)
 - Speaker encoder output cannot predict content (ASR fails)
 
@@ -635,29 +653,29 @@ CONTENTVEC converts all training audio to a single speaker using an unsupervised
   outputLabel="Converted Audio"
   stages={[
     {
-      id: "hubert",
-      label: "HuBERT Content Encoder",
-      annotation: "Content features (layer 12)",
-      color: "accent"
+      id: 'hubert',
+      label: 'HuBERT Content Encoder',
+      annotation: 'Content features (layer 12)',
+      color: 'accent'
     },
     {
-      id: "rmvpe",
-      label: "RMVPE Pitch Extractor",
-      annotation: "Pitch (F0) extraction, works on polyphonic audio",
-      color: "accent"
+      id: 'rmvpe',
+      label: 'RMVPE Pitch Extractor',
+      annotation: 'Pitch (F0) extraction, works on polyphonic audio',
+      color: 'accent'
     },
     {
-      id: "retrieval",
-      label: "Faiss Index Retrieval",
-      sublabel: "+ Target Speaker Embedding",
-      annotation: "Replace with nearest training set features",
-      color: "highlight"
+      id: 'retrieval',
+      label: 'Faiss Index Retrieval',
+      sublabel: '+ Target Speaker Embedding',
+      annotation: 'Replace with nearest training set features',
+      color: 'highlight'
     },
     {
-      id: "vits",
-      label: "VITS Decoder",
-      details: ["HuBERT features + F0 + speaker embedding"],
-      color: "accent"
+      id: 'vits',
+      label: 'VITS Decoder',
+      details: ['HuBERT features + F0 + speaker embedding'],
+      color: 'accent'
     }
   ]}
 />
@@ -683,6 +701,7 @@ RVC achieves 90ms end-to-end latency with ASIO audio interfaces and learns high-
 **Differences from Speech VC**
 
 Singing voice conversion has additional challenges:
+
 - Must preserve pitch contour exactly (wrong notes are obvious)
 - Longer sustained vowels expose synthesis artifacts
 - Vibrato, breath, and other expressive elements must transfer
@@ -699,6 +718,7 @@ So-VITS-SVC uses:
 **Shallow Diffusion Enhancement**
 
 Recent versions add optional diffusion refinement:
+
 1. VITS generates initial waveform
 2. Diffusion model (from DDSP-SVC) refines quality
 3. Only runs a few diffusion steps ("shallow") for efficiency
@@ -706,6 +726,7 @@ Recent versions add optional diffusion refinement:
 **Clustering for Timbre Matching**
 
 Similar to RVC's retrieval, So-VITS-SVC uses feature clustering:
+
 - K-means cluster centers represent "prototypical" target speaker features
 - Source features are blended with cluster centers
 - Tradeoff: More clustering = better timbre match, less clarity
@@ -731,15 +752,15 @@ AudioLM uses two types of tokens to capture different aspects of audio:
   title="AudioLM Hybrid Tokenization"
   inputLabel="Audio Input"
   outputLabel=""
-  leftBranch={[
-    { id: "w2v", label: "w2v-BERT", sublabel: "(semantic)", color: "accent" }
-  ]}
-  rightBranch={[
-    { id: "sound", label: "SoundStream", sublabel: "(acoustic)", color: "accent" }
-  ]}
+  leftBranch={[{ id: 'w2v', label: 'w2v-BERT', sublabel: '(semantic)', color: 'accent' }]}
+  rightBranch={[{ id: 'sound', label: 'SoundStream', sublabel: '(acoustic)', color: 'accent' }]}
   leftLabel="Semantic Path"
   rightLabel="Acoustic Path"
-  mergeNode={{ id: "output", label: "Semantic Tokens (coarse) + Acoustic Tokens RVQ (fine detail)", color: "highlight" }}
+  mergeNode={{
+    id: 'output',
+    label: 'Semantic Tokens (coarse) + Acoustic Tokens RVQ (fine detail)',
+    color: 'highlight'
+  }}
 />
 
 **Three-Stage Generation**
@@ -755,6 +776,7 @@ This cascade allows the model to first get the high-level content right, then pr
 **Capabilities**
 
 Without any text supervision, AudioLM generates:
+
 - Coherent speech continuations that maintain speaker identity, grammar, and semantic coherence
 - Piano music with proper harmony and rhythm
 - General audio with consistent acoustic properties
@@ -775,21 +797,21 @@ Without any text supervision, AudioLM generates:
   outputLabel="Audio Output"
   stages={[
     {
-      id: "llama",
-      label: "LLaMA-13B",
-      details: ["vocabulary: text + speech", "Embeddings: [text_emb | speech_emb]"],
-      color: "highlight"
+      id: 'llama',
+      label: 'LLaMA-13B',
+      details: ['vocabulary: text + speech', 'Embeddings: [text_emb | speech_emb]'],
+      color: 'highlight'
     },
     {
-      id: "output-tokens",
-      label: "Output",
-      sublabel: "<translated speech tokens>",
-      color: "muted"
+      id: 'output-tokens',
+      label: 'Output',
+      sublabel: '<translated speech tokens>',
+      color: 'muted'
     },
     {
-      id: "vocoder",
-      label: "Unit-based Vocoder",
-      color: "accent"
+      id: 'vocoder',
+      label: 'Unit-based Vocoder',
+      color: 'accent'
     }
   ]}
 />
@@ -809,6 +831,7 @@ The key insight is that by representing speech as tokens within the LLM's vocabu
 **Key Innovation: Parallel Audio Streams**
 
 Moshi models two simultaneous audio streams:
+
 - **Moshi's speech**: What the AI is saying
 - **User's speech**: What the human is saying
 
@@ -819,16 +842,16 @@ This removes turn-taking constraints. The model always listens and always genera
   topStreamLabel="Moshi"
   bottomStreamLabel="User"
   topStream={[
-    { content: "Let me explain...", type: "speech" },
-    { content: "silence", type: "silence" },
-    { content: "So basically...", type: "speech" }
+    { content: 'Let me explain...', type: 'speech' },
+    { content: 'silence', type: 'silence' },
+    { content: 'So basically...', type: 'speech' }
   ]}
   bottomStream={[
-    { content: "silence", type: "silence" },
-    { content: "Uh-huh", type: "speech" },
-    { content: "silence", type: "silence" },
-    { content: "Wait, what?", type: "speech" },
-    { content: "silence", type: "silence" }
+    { content: 'silence', type: 'silence' },
+    { content: 'Uh-huh', type: 'speech' },
+    { content: 'silence', type: 'silence' },
+    { content: 'Wait, what?', type: 'speech' },
+    { content: 'silence', type: 'silence' }
   ]}
   caption="Both streams modeled simultaneously!"
 />
@@ -839,27 +862,28 @@ This removes turn-taking constraints. The model always listens and always genera
   title="Moshi Architecture"
   backbone={[
     {
-      id: "llm",
-      label: "Text LLM Backbone (Helium-7B)",
-      details: ["Standard transformer language model", "Provides reasoning and world knowledge"],
-      color: "highlight"
+      id: 'llm',
+      label: 'Text LLM Backbone (Helium-7B)',
+      details: ['Standard transformer language model', 'Provides reasoning and world knowledge'],
+      color: 'highlight'
     },
     {
-      id: "audio-lm",
-      label: "Audio Language Model (Depth Transformer)",
-      details: ["Small model that maps text to audio tokens", "Handles acoustic details"],
-      color: "accent"
+      id: 'audio-lm',
+      label: 'Audio Language Model (Depth Transformer)',
+      details: ['Small model that maps text to audio tokens', 'Handles acoustic details'],
+      color: 'accent'
     }
   ]}
   outputs={[
-    { id: "moshi", label: "Moshi Audio Stream", color: "accent" },
-    { id: "user", label: "User Audio Stream", color: "accent" }
+    { id: 'moshi', label: 'Moshi Audio Stream', color: 'accent' },
+    { id: 'user', label: 'User Audio Stream', color: 'accent' }
   ]}
 />
 
 **Mimi Codec**
 
 Moshi uses a custom neural codec called Mimi:
+
 - Residual vector quantization (RVQ) like EnCodec
 - Optimized for streaming with low latency
 - 12.5 Hz frame rate for semantic tokens, higher for acoustic
@@ -873,6 +897,7 @@ Internal: [text: "Hello"]  [audio: "Hello"] [text: "how"] [audio: "how"]...
 ```
 
 This provides:
+
 - Implicit speech recognition (text output)
 - Better linguistic quality (text grounds the audio)
 - Debugging capability (see what model "thinks")
@@ -891,6 +916,7 @@ Mixture of Experts (MoE) enables scaling model capacity without proportionally i
 **MoME (Mixture of Matryoshka Experts)**
 
 For audio-visual speech recognition:
+
 - Integrates sparse MoE into matryoshka representation learning
 - Top-k routing activates subset of experts per token
 - Shared experts handle common patterns; routed experts specialize
@@ -899,6 +925,7 @@ For audio-visual speech recognition:
 **MoHAVE (Mixture of Hierarchical Audio-Visual Experts)**
 
 Uses hierarchical gating:
+
 - Modality-specific expert groups (audio vs visual)
 - Dynamic activation based on input context
 - Scales capacity without linear compute increase
@@ -906,6 +933,7 @@ Uses hierarchical gating:
 **Practical Considerations**
 
 MoE for audio faces challenges:
+
 - Load balancing: Ensuring experts are utilized evenly
 - Expert collapse: Preventing all tokens from routing to same expert
 - Memory: All experts must fit in memory even if only subset is active
@@ -959,6 +987,7 @@ MFCCs decorrelate features and compress representation. They're more common in t
 **Raw Waveform**
 
 Some models (Wav2Vec2, HuBERT) operate directly on raw waveforms:
+
 - No information loss from spectrogram conversion
 - Model learns appropriate filterbanks
 - Requires more compute and data
@@ -981,6 +1010,7 @@ Some models (Wav2Vec2, HuBERT) operate directly on raw waveforms:
 - Alignment: Phone-level timestamps improve training stability
 
 For voice cloning:
+
 - Zero-shot: 3-10 seconds reference audio
 - Few-shot fine-tuning: 1-5 minutes
 - Full fine-tuning: 30+ minutes
@@ -1004,6 +1034,7 @@ mfa align /path/to/audio /path/to/dictionary /path/to/model /path/to/output
 ```
 
 MFA uses Kaldi internally with:
+
 - Triphone acoustic models (context-dependent phonemes)
 - Speaker adaptation via CMVN
 - 10ms temporal resolution
@@ -1011,6 +1042,7 @@ MFA uses Kaldi internally with:
 **CTC Segmentation**
 
 Alternative using neural ASR models:
+
 - Use CTC model to get frame-level posterior probabilities
 - Dynamic programming to find best alignment
 - Works without pronunciation dictionary
@@ -1044,6 +1076,7 @@ For adapting TTS to new speakers with limited data [23]:
 **Zero-Shot Models**
 
 YourTTS and XTTS can adapt to new voices without fine-tuning:
+
 - Extract speaker embedding from reference audio
 - Condition synthesis on that embedding
 - Works immediately with 3-10 seconds of reference
@@ -1092,24 +1125,26 @@ RTF = processing_time / audio_duration [25]
 **Latency Components**
 
 For streaming ASR:
+
 - **Algorithmic latency**: Time the model needs to "see ahead" (chunk size + right context)
 - **Compute latency**: Processing time for each chunk
 - **Network latency**: Round-trip time to server (if cloud-based)
 
 For TTS:
+
 - **First-packet latency**: Time to first audio sample
 - **Full synthesis latency**: Time to complete waveform
 
 **Benchmarks**
 
-| Model | Task | RTF (GPU) | Latency |
-|-------|------|-----------|---------|
-| Whisper large-v3 | ASR | ~0.3 | Batch, not streaming |
-| Conformer-CTC | Streaming ASR | ~0.1-0.2 | 200-400ms |
-| FastSpeech 2 | TTS | 0.02 | 20ms per second of audio |
-| VITS | TTS | 0.067 | 67ms per second of audio |
-| XTTS v2 | Zero-shot TTS | 0.48 | 200ms first chunk |
-| HiFi-GAN | Vocoder | 0.02 | ~20ms |
+| Model            | Task          | RTF (GPU) | Latency                  |
+| ---------------- | ------------- | --------- | ------------------------ |
+| Whisper large-v3 | ASR           | ~0.3      | Batch, not streaming     |
+| Conformer-CTC    | Streaming ASR | ~0.1-0.2  | 200-400ms                |
+| FastSpeech 2     | TTS           | 0.02      | 20ms per second of audio |
+| VITS             | TTS           | 0.067     | 67ms per second of audio |
+| XTTS v2          | Zero-shot TTS | 0.48      | 200ms first chunk        |
+| HiFi-GAN         | Vocoder       | 0.02      | ~20ms                    |
 
 ### Streaming Inference for ASR
 
@@ -1138,6 +1173,7 @@ while audio_stream.has_data():
 **Endpointer**
 
 Detect when user stops speaking to finalize transcription:
+
 - Voice Activity Detection (VAD) for speech/silence
 - End-of-query detection for semantic completeness
 - Typically 400-800ms of silence triggers endpoint
@@ -1156,6 +1192,7 @@ Vocoders are often the bottleneck in TTS pipelines.
 **Multi-Band Generation**
 
 Split frequency range into bands, generate each with smaller model:
+
 - Reduces per-band complexity
 - Enables parallel generation
 - MultiBand-MelGAN achieves very low RTF
@@ -1181,6 +1218,7 @@ model_int8 = torch.quantization.quantize_dynamic(
 **Quantization-Aware Training (QAT)**
 
 Train with simulated quantization for better accuracy:
+
 - Fake quantization during forward pass
 - Full precision gradients during backward pass
 - Recovers most accuracy loss from PTQ

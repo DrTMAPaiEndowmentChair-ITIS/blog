@@ -1,5 +1,5 @@
 ---
-title: "How Coding Agents Work: Inside the Agentic Loop"
+title: 'How Coding Agents Work: Inside the Agentic Loop'
 pubDate: 2026-01-26
 author: 'Aadit Agrawal'
 category: 'Ecosystems & Tooling'
@@ -7,8 +7,8 @@ description: 'Look inside the observe, reason, act, and verify loop that turns l
 topics: ['Agents', 'Tool use', 'Software engineering']
 ---
 
-import AgentLoop from '../../components/viz/AgentLoop.astro';
-import AgentComparison from '../../components/viz/AgentComparison.astro';
+import AgentLoop from '../../components/viz/AgentLoop.astro'
+import AgentComparison from '../../components/viz/AgentComparison.astro'
 
 Coding agents are not code completion tools. The distinction matters. GitHub Copilot and similar autocomplete systems predict the next few tokens based on cursor context. Coding agents operate differently: they observe your codebase, reason about a task, execute actions through tools, and iterate until the task is complete. This pattern, called the agentic loop, is what separates a tool that suggests code from one that can implement features, fix bugs, and open pull requests autonomously.
 
@@ -141,6 +141,7 @@ Defense in depth remains necessary: container isolation, network segmentation, e
 Anthropic's CLI agent runs in your terminal and integrates with your bash environment. The tech stack is TypeScript, React, Ink, and Bun [^2]. Design philosophy: low-level and unopinionated, providing close to raw model access without forcing specific workflows.
 
 Key characteristics:
+
 - Tools: Bash, Read, Write, Edit, Grep, Glob, LSP, MCP client/server
 - Context: Auto-compact at 95% capacity, MCP Tool Search for lazy loading
 - Sandbox: macOS sandbox, optional Docker
@@ -153,6 +154,7 @@ Claude Code v2.1.0 (January 2026) introduced Automatic Skill Hot-Reload, Skill C
 OpenAI's agent runs tasks in isolated cloud sandbox environments, preloaded with your repository. Powered by GPT-5.2 Codex for standard tasks and GPT-5.1-Codex-Max for long-running operations [^19].
 
 Key characteristics:
+
 - Tools: Shell, file operations, code execution, agent skills
 - Context: Native compaction, collaboration tools for multi-agent coordination
 - Sandbox: Docker containers in cloud
@@ -165,6 +167,7 @@ Codex v0.85.0 (January 2026) introduced app-server v2 with collaboration tool ca
 Google's open-source agent (Apache 2.0) brings Gemini models to the terminal. Uses a ReAct (reason and act) loop with built-in tools and MCP support [^10].
 
 Key characteristics:
+
 - Tools: Shell, file ops, Google Search grounding, web fetch, MCP
 - Context: 1M token window with Gemini 3
 - Sandbox: Optional Docker
@@ -179,6 +182,7 @@ Gemini 3 Flash became available in Gemini CLI in December 2025, achieving 78% on
 Cursor is a fork of VS Code that integrates AI capabilities directly into the editing experience. Agent is the default mode, designed to handle complex coding tasks with minimal guidance [^24].
 
 Key characteristics:
+
 - Tools: File ops, terminal, web browsing, codebase indexing
 - Context: Multi-file understanding with automatic context detection
 - Sandbox: None (local execution)
@@ -191,6 +195,7 @@ Cursor 2.0 (late 2025) shipped Composer, their own ultra-fast coding model, and 
 Windsurf (by Codeium) is an agentic IDE built for enterprise teams and large codebases. Its Cascade agent plans and executes multi-step changes across repositories [^25].
 
 Key characteristics:
+
 - Tools: File ops, terminal, repository-wide context retrieval
 - Context: Flow feature maintains persistent context across projects
 - Sandbox: None (local execution)
@@ -203,6 +208,7 @@ Windsurf's "Context Awareness Engine" is faster at indexing than Cursor, making 
 Cline is an open-source AI coding agent that runs inside VS Code or the terminal. It plans, previews, and applies multi-file changes with approval checkpoints [^26].
 
 Key characteristics:
+
 - Tools: File ops, terminal, web browsing, MCP orchestration
 - Context: Full repository access with diff transparency
 - Sandbox: None (local-first control)
@@ -217,6 +223,7 @@ Cline demonstrates high autonomy with multi-step execution, self-correction, and
 Devin (by Cognition Labs) is an autonomous AI software engineer that operates as a web app rather than an IDE extension. Users define intent, review a plan, and execution proceeds in the background [^27].
 
 Key characteristics:
+
 - Tools: Code writing, PR creation, bug reproduction, internal tool building
 - Context: Full codebase access with summarized intermediate steps
 - Sandbox: Cloud-based isolated environments
@@ -229,6 +236,7 @@ Devin can independently create PRs, respond to PR comments, review PRs, and hand
 Replit Agent 3 (September 2025) is Replit's most autonomous agent, positioned as Agent-first for all builders, not just developers [^28].
 
 Key characteristics:
+
 - Tools: Code writing, testing, deployment, agent creation
 - Context: Full project access with reflection loops
 - Sandbox: Cloud-based Replit environment
@@ -241,6 +249,7 @@ Agent 3 runs for up to 200 minutes autonomously, handling full tasks with a prop
 GitHub Copilot coding agent works independently in the background to complete tasks like a human developer [^29].
 
 Key characteristics:
+
 - Tools: Code generation, file ops, Git integration
 - Context: Repository-aware with Copilot Spaces
 - Sandbox: Cloud-based execution
@@ -253,6 +262,7 @@ The January 2026 CLI update introduced specialized custom agents: Explore for fa
 Amazon Q Developer provides agentic capabilities for the AWS ecosystem [^30].
 
 Key characteristics:
+
 - Tools: Code generation, documentation, testing, code review, transformation
 - Context: IDE and AWS service integration
 - Sandbox: AWS environment
@@ -267,6 +277,7 @@ Amazon Q Developer agents can autonomously implement features, document, test, r
 OpenHands is an open platform for AI-powered coding agents with 65K+ GitHub stars [^31].
 
 Key characteristics:
+
 - Tools: Code editing, terminal, web browsing, file ops
 - Context: Full repository access
 - Sandbox: Docker or Kubernetes environments
@@ -279,6 +290,7 @@ OpenHands 1.0.0 (January 2026) uses the new software-agent-sdk with optimization
 Open-source (MIT license) alternative that supports any model provider: OpenAI, Anthropic, Google, AWS Bedrock, Groq, local models via Ollama [^3]. Built in Go with a Bubble Tea TUI.
 
 Key characteristics:
+
 - Tools: Shell, file ops, LSP integration
 - Context: Manual/configurable
 - Sandbox: None (native execution)
@@ -291,6 +303,7 @@ OpenCode separates workflows into "Plan Mode" (read-only analysis) and "Build Mo
 Open-source (Apache 2.0) pair programming tool focused on git integration. Creates a repository map of function signatures and file structures for intelligent multi-file edits [^5].
 
 Key characteristics:
+
 - Tools: Git integration, file ops, voice input
 - Context: Repo map plus smart chunking
 - Sandbox: None (native execution)
@@ -303,6 +316,7 @@ Aider automatically commits changes with sensible messages. Three modes: code (e
 Open-source (Apache 2.0) IDE extension for VS Code and JetBrains. Architecture splits into core (business logic), extension (IDE-specific), and gui (React UI), communicating via message passing [^11].
 
 Key characteristics:
+
 - Tools: IDE integration, file ops
 - Context: IDE-managed
 - Sandbox: None (IDE process)
@@ -329,6 +343,7 @@ Agent system prompts are lengthy and detailed. They specify tool usage rules, sa
 ### Configuration Files
 
 Many agents support project-level configuration:
+
 - `agents.md` (Codex): Tells the agent how you prefer to code
 - `CLAUDE.md` (Claude Code): Project-specific instructions and context
 - `.continuerc` (Continue): Model and tool configuration
@@ -391,6 +406,7 @@ LangChain's Open SWE provides an open-source coding agent built on LangGraph wit
 ### Custom Implementation
 
 A minimal agent loop requires:
+
 1. Message accumulation (conversation history)
 2. Tool definitions with schemas
 3. Loop logic: call model, parse tool calls, execute tools, append results
@@ -406,15 +422,15 @@ The benchmark landscape has evolved with more rigorous evaluations. SWE-bench Ve
 
 ### SWE-bench Verified
 
-| Model | Score |
-|-------|-------|
-| Claude Opus 4.5 | 80.9% |
-| GPT-5.2 Codex | 80.0% |
-| Gemini 3 Flash | 78.0% |
-| Gemini 3 Pro | 76.2% |
-| GPT-5.1 | 76.3% |
-| Verdent | 76.1% (81.2% pass@3) |
-| GPT-5 | 74.9% |
+| Model           | Score                |
+| --------------- | -------------------- |
+| Claude Opus 4.5 | 80.9%                |
+| GPT-5.2 Codex   | 80.0%                |
+| Gemini 3 Flash  | 78.0%                |
+| Gemini 3 Pro    | 76.2%                |
+| GPT-5.1         | 76.3%                |
+| Verdent         | 76.1% (81.2% pass@3) |
+| GPT-5           | 74.9%                |
 
 Claude Opus 4.5 became the first model to exceed 80% on SWE-bench Verified, solving 405 of 500 real-world coding problems [^17].
 
@@ -422,22 +438,22 @@ Claude Opus 4.5 became the first model to exceed 80% on SWE-bench Verified, solv
 
 SWE-bench Pro contains 1,865 total tasks across 41 professional repositories, designed to test harder software engineering scenarios [^32].
 
-| Model | Score |
-|-------|-------|
-| GPT-5.2 Codex | 56.4% |
-| GPT-5.1 | 50.8% |
+| Model           | Score |
+| --------------- | ----- |
+| GPT-5.2 Codex   | 56.4% |
+| GPT-5.1         | 50.8% |
 | Claude Opus 4.1 | 23.1% |
-| OpenAI GPT-5 | 23.3% |
+| OpenAI GPT-5    | 23.3% |
 
 The gap between SWE-bench Verified (70%+ scores) and SWE-bench Pro (20-56%) reveals that current agents still struggle with professional-grade complexity.
 
 ### Terminal-Bench
 
-| Model | Score |
-|-------|-------|
+| Model           | Score |
+| --------------- | ----- |
 | Claude Opus 4.5 | 59.3% |
-| Gemini 3 Pro | 54.2% |
-| GPT-5.1 | 47.6% |
+| Gemini 3 Pro    | 54.2% |
+| GPT-5.1         | 47.6% |
 
 ### Code Quality (Sonar LLM Leaderboard)
 

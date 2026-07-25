@@ -1,5 +1,5 @@
 ---
-title: "Edge AI Deployment: Running Models on Constrained Devices"
+title: 'Edge AI Deployment: Running Models on Constrained Devices'
 pubDate: 2026-01-26
 author: 'Aadit Agrawal'
 category: 'Inference & Deployment'
@@ -7,8 +7,8 @@ description: 'Choose hardware, runtimes, and optimization strategies for private
 topics: ['Edge AI', 'On-device', 'Optimization']
 ---
 
-import EdgeHardwareCompare from '../../components/viz/EdgeHardwareCompare.astro';
-import EdgeDeploymentStack from '../../components/viz/EdgeDeploymentStack.astro';
+import EdgeHardwareCompare from '../../components/viz/EdgeHardwareCompare.astro'
+import EdgeDeploymentStack from '../../components/viz/EdgeDeploymentStack.astro'
 
 ## Why deploy AI at the edge
 
@@ -116,13 +116,13 @@ INT8 quantization produces models 4x smaller than FP32 with inference speedups o
 
 For LLMs on edge, GGUF quantization through llama.cpp offers multiple precision levels from 1.5-bit to 8-bit:[^30]
 
-| Quantization | Size (7B model) | Perplexity increase | Notes |
-|--------------|-----------------|---------------------|-------|
-| Q8_0 | ~7.0 GB | +0.0004 | Highest quality |
-| Q5_K_M | ~5.33 GB | +0.0142 | Optimal balance |
-| Q4_K_M | ~4.58 GB | +0.0535 | Recommended default |
-| Q3_K_M | ~3.52 GB | +0.2437 | Aggressive compression |
-| IQ2_XS | ~2.31 bpw | Higher | Extreme compression |
+| Quantization | Size (7B model) | Perplexity increase | Notes                  |
+| ------------ | --------------- | ------------------- | ---------------------- |
+| Q8_0         | ~7.0 GB         | +0.0004             | Highest quality        |
+| Q5_K_M       | ~5.33 GB        | +0.0142             | Optimal balance        |
+| Q4_K_M       | ~4.58 GB        | +0.0535             | Recommended default    |
+| Q3_K_M       | ~3.52 GB        | +0.2437             | Aggressive compression |
+| IQ2_XS       | ~2.31 bpw       | Higher              | Extreme compression    |
 
 Q5_K_M is generally regarded as the optimal balance, applying five bits to most weights while retaining higher precision for crucial layers like attention.wv and feed_forward.w2.[^31] For extreme compression, the IQ (importance-quantized) formats support down to 1.5 bits per weight.[^30]
 
@@ -238,6 +238,7 @@ outputs = session.run(None, {"input": input_data})
 llama.cpp runs quantized LLMs on CPUs and GPUs without Python dependencies. Written in pure C/C++ with no external dependencies, it supports ARM devices, Raspberry Pi, and other edge hardware.[^42]
 
 **Benchmark results on Pi 5 (8GB)**:
+
 - 1B models (Q4): 7+ tokens/second[^43]
 - 3B models (Q4): 4-7 tokens/second[^43]
 - 7B models (Q4_K_M): 0.7-3 tokens/second[^44]
@@ -287,6 +288,7 @@ As of January 2026, WebGPU has reached 70% browser support across Firefox 147, S
 WebGPU delivers 10x faster performance than WebGL for transformer models. Microsoft reports approximately 20x speedup over multi-threaded CPU and approximately 550x over single-threaded CPU for certain workloads.[^51]
 
 Browser AI inference via WebLLM now reaches 80% of native MLC-LLM performance.[^50] Benchmarks show:
+
 - Llama-3.1-8B: 41.1 tokens/second (71.2% native speed)
 - Phi-3.5-mini: 71.1 tokens/second (79.6% native speed)
 - Llama 3.2 models: up to 62 tokens/second in optimal conditions
@@ -301,16 +303,16 @@ Model loading remains a UX challenge: DeepSeek-8B takes 2-3 minutes to download 
 Transformers.js brings Hugging Face pipelines to the browser. It uses ONNX Runtime Web for execution with WebGPU or WASM backends.
 
 ```javascript
-import { pipeline } from '@xenova/transformers';
+import { pipeline } from '@xenova/transformers'
 
 // Load model with WebGPU backend
 const classifier = await pipeline(
   'text-classification',
   'Xenova/distilbert-base-uncased-finetuned-sst-2-english',
   { device: 'webgpu', dtype: 'fp16' }
-);
+)
 
-const result = await classifier('This movie was great!');
+const result = await classifier('This movie was great!')
 ```
 
 For quantization, Transformers.js supports fp32 (default for WebGPU), fp16, q8 (default for WASM), and q4 precisions.[^54]
@@ -320,17 +322,17 @@ For quantization, Transformers.js supports fp32 (default for WebGPU), fp16, q8 (
 WebLLM is a high-performance in-browser LLM inference engine fully compatible with the OpenAI API, supporting streaming, JSON-mode, and function-calling.[^55] It supports Llama 3, Phi-3, Gemma, and Mistral with WebGPU acceleration.
 
 ```javascript
-import * as webllm from "@mlc-ai/web-llm";
+import * as webllm from '@mlc-ai/web-llm'
 
-const engine = await webllm.CreateMLCEngine("Llama-3.2-1B-Instruct-q4f16_1-MLC");
+const engine = await webllm.CreateMLCEngine('Llama-3.2-1B-Instruct-q4f16_1-MLC')
 
 const response = await engine.chat.completions.create({
-  messages: [{ role: "user", content: "What is edge computing?" }],
+  messages: [{ role: 'user', content: 'What is edge computing?' }],
   stream: true
-});
+})
 
 for await (const chunk of response) {
-  console.log(chunk.choices[0]?.delta?.content || "");
+  console.log(chunk.choices[0]?.delta?.content || '')
 }
 ```
 
@@ -355,6 +357,7 @@ When processors overheat, they reduce clock speeds to prevent damage. This therm
 AI chips, particularly high-performance SoCs and NPUs, reduce clock speeds automatically when temperatures exceed thresholds. For latency-sensitive applications like real-time video analysis, throttling creates visible quality degradation.[^56]
 
 Mitigation strategies:
+
 - Active cooling (fans) for continuous high-load operation
 - Passive heatsinks for intermittent workloads
 - Power mode selection matching thermal capacity
@@ -376,12 +379,12 @@ YOLOv8 object detection benchmarks illustrate real-world edge performance.
 
 ### Jetson Orin NX performance
 
-| Model | Precision | FPS | Energy/Inference |
-|-------|-----------|-----|------------------|
-| YOLOv8n | FP16 | 52 | 0.269 J |
-| YOLOv8n | INT8 | 65 | 0.179 J |
-| YOLOv8s | FP16 | 38 | 0.368 J |
-| YOLOv8s | INT8 | 48 | 0.292 J |
+| Model   | Precision | FPS | Energy/Inference |
+| ------- | --------- | --- | ---------------- |
+| YOLOv8n | FP16      | 52  | 0.269 J          |
+| YOLOv8n | INT8      | 65  | 0.179 J          |
+| YOLOv8s | FP16      | 38  | 0.368 J          |
+| YOLOv8s | INT8      | 48  | 0.292 J          |
 
 INT8 quantization delivers 25% higher FPS with 33% lower energy per inference.[^59]
 
@@ -389,11 +392,11 @@ INT8 quantization delivers 25% higher FPS with 33% lower energy per inference.[^
 
 On the 4GB Orin Nano with TensorRT optimization:
 
-| Model | Precision | Latency | FPS |
-|-------|-----------|---------|-----|
-| YOLOv8n | INT8 | 23.16 ms | ~43 |
-| YOLOv8n | FP16 | 26.70 ms | ~37 |
-| YOLOv8s | INT8 | 28.25 ms | ~35 |
+| Model   | Precision | Latency  | FPS |
+| ------- | --------- | -------- | --- |
+| YOLOv8n | INT8      | 23.16 ms | ~43 |
+| YOLOv8n | FP16      | 26.70 ms | ~37 |
+| YOLOv8s | INT8      | 28.25 ms | ~35 |
 
 C++ implementation with TensorRT outperforms Python frameworks by reducing inference overhead.[^60]
 
@@ -419,27 +422,27 @@ Text generation speed varies by hardware, model size, and quantization.
 
 ### Tokens per second by device (2026)
 
-| Device | Model | Quantization | Tokens/s |
-|--------|-------|--------------|----------|
-| Jetson Thor | Llama 3.1 8B | FP8 | 80-120 |
-| Jetson Orin Nano | Llama 3.2 3B | Q4_K_M | 15-20 |
-| Raspberry Pi 5 8GB | Llama 3.2 1B | Q4_K_M | 7+ |
-| Raspberry Pi 5 8GB | Llama 2 7B | Q4_K_M | 0.7-3 |
-| iPhone 17 Pro (A19) | Qwen3 0.6B | QAT | ~40 |
-| Snapdragon 8 Gen 2 | Llama 3 4B | Q4 | 8-10 |
-| Browser (M3 laptop) | 3B model | Q4 | 90 |
-| Browser (RTX 3060) | Phi-3 Mini | Q4 | 20-40 |
+| Device              | Model        | Quantization | Tokens/s |
+| ------------------- | ------------ | ------------ | -------- |
+| Jetson Thor         | Llama 3.1 8B | FP8          | 80-120   |
+| Jetson Orin Nano    | Llama 3.2 3B | Q4_K_M       | 15-20    |
+| Raspberry Pi 5 8GB  | Llama 3.2 1B | Q4_K_M       | 7+       |
+| Raspberry Pi 5 8GB  | Llama 2 7B   | Q4_K_M       | 0.7-3    |
+| iPhone 17 Pro (A19) | Qwen3 0.6B   | QAT          | ~40      |
+| Snapdragon 8 Gen 2  | Llama 3 4B   | Q4           | 8-10     |
+| Browser (M3 laptop) | 3B model     | Q4           | 90       |
+| Browser (RTX 3060)  | Phi-3 Mini   | Q4           | 20-40    |
 
 Source: Compiled from benchmark reports.[^43][^44][^48][^49][^52]
 
 ### Memory requirements
 
 | Model Size | Q4_K_M Size | Minimum RAM |
-|------------|-------------|-------------|
-| 1B | ~0.6 GB | 2 GB |
-| 3B | ~1.8 GB | 4 GB |
-| 7B | ~4.6 GB | 8 GB |
-| 13B | ~7.8 GB | 16 GB |
+| ---------- | ----------- | ----------- |
+| 1B         | ~0.6 GB     | 2 GB        |
+| 3B         | ~1.8 GB     | 4 GB        |
+| 7B         | ~4.6 GB     | 8 GB        |
+| 13B        | ~7.8 GB     | 16 GB       |
 
 Devices with less RAM than model size will page to disk, reducing throughput to near-unusable levels.
 
@@ -461,6 +464,7 @@ OTA (over-the-air) update platforms deploy firmware and model files to fleets of
 Golioth's OTA system supports multi-part deployments including main firmware, cellular modem firmware, and ML models as separate artifacts.[^62] Mender provides image-based updates that create identical environments across devices.[^63]
 
 **Security requirements**:
+
 - Cryptographic signing of all update packages
 - Secure boot verification before installation
 - Automatic rollback on failed updates
@@ -471,6 +475,7 @@ Golioth's OTA system supports multi-part deployments including main firmware, ce
 Remote monitoring tracks inference latency, throughput, error rates, and hardware health.
 
 Key metrics to collect:
+
 - Inference latency (p50, p95, p99)
 - Throughput (inferences/second)
 - Model accuracy on validation samples
@@ -500,71 +505,68 @@ A functional browser-based chatbot using WebLLM and WebGPU.
 ```html
 <!DOCTYPE html>
 <html>
-<head>
-  <title>Edge LLM Chat</title>
-  <script type="module">
-    import * as webllm from 'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@latest';
+  <head>
+    <title>Edge LLM Chat</title>
+    <script type="module">
+      import * as webllm from 'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@latest'
 
-    let engine;
-    const statusEl = document.getElementById('status');
-    const chatEl = document.getElementById('chat');
-    const inputEl = document.getElementById('input');
+      let engine
+      const statusEl = document.getElementById('status')
+      const chatEl = document.getElementById('chat')
+      const inputEl = document.getElementById('input')
 
-    async function init() {
-      statusEl.textContent = 'Loading model...';
+      async function init() {
+        statusEl.textContent = 'Loading model...'
 
-      engine = await webllm.CreateMLCEngine(
-        "Llama-3.2-1B-Instruct-q4f16_1-MLC",
-        {
+        engine = await webllm.CreateMLCEngine('Llama-3.2-1B-Instruct-q4f16_1-MLC', {
           initProgressCallback: (progress) => {
-            statusEl.textContent = `Loading: ${Math.round(progress.progress * 100)}%`;
+            statusEl.textContent = `Loading: ${Math.round(progress.progress * 100)}%`
           }
-        }
-      );
+        })
 
-      statusEl.textContent = 'Ready';
-    }
-
-    async function generate() {
-      const userMessage = inputEl.value.trim();
-      if (!userMessage || !engine) return;
-
-      chatEl.innerHTML += `<div class="user">User: ${userMessage}</div>`;
-      inputEl.value = '';
-      statusEl.textContent = 'Generating...';
-
-      const response = await engine.chat.completions.create({
-        messages: [{ role: "user", content: userMessage }],
-        stream: true
-      });
-
-      let assistantMessage = '';
-      chatEl.innerHTML += `<div class="assistant">Assistant: <span id="response"></span></div>`;
-      const responseEl = document.getElementById('response');
-
-      for await (const chunk of response) {
-        const content = chunk.choices[0]?.delta?.content || '';
-        assistantMessage += content;
-        responseEl.textContent = assistantMessage;
+        statusEl.textContent = 'Ready'
       }
 
-      statusEl.textContent = 'Ready';
-    }
+      async function generate() {
+        const userMessage = inputEl.value.trim()
+        if (!userMessage || !engine) return
 
-    document.getElementById('send').addEventListener('click', generate);
-    inputEl.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') generate();
-    });
+        chatEl.innerHTML += `<div class="user">User: ${userMessage}</div>`
+        inputEl.value = ''
+        statusEl.textContent = 'Generating...'
 
-    init();
-  </script>
-</head>
-<body>
-  <div id="status">Initializing...</div>
-  <div id="chat"></div>
-  <input id="input" type="text" placeholder="Type a message...">
-  <button id="send">Send</button>
-</body>
+        const response = await engine.chat.completions.create({
+          messages: [{ role: 'user', content: userMessage }],
+          stream: true
+        })
+
+        let assistantMessage = ''
+        chatEl.innerHTML += `<div class="assistant">Assistant: <span id="response"></span></div>`
+        const responseEl = document.getElementById('response')
+
+        for await (const chunk of response) {
+          const content = chunk.choices[0]?.delta?.content || ''
+          assistantMessage += content
+          responseEl.textContent = assistantMessage
+        }
+
+        statusEl.textContent = 'Ready'
+      }
+
+      document.getElementById('send').addEventListener('click', generate)
+      inputEl.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') generate()
+      })
+
+      init()
+    </script>
+  </head>
+  <body>
+    <div id="status">Initializing...</div>
+    <div id="chat"></div>
+    <input id="input" type="text" placeholder="Type a message..." />
+    <button id="send">Send</button>
+  </body>
 </html>
 ```
 
@@ -574,17 +576,17 @@ This loads a quantized Llama 3.2 1B model entirely in the browser. No server req
 
 ## Framework selection guide
 
-| Use Case | Recommended Framework | Hardware |
-|----------|----------------------|----------|
-| Robotics, autonomous systems | TensorRT + JetPack 7 | Jetson Thor/Orin |
-| iOS/macOS apps | Core ML | Apple M5/A19 |
-| Android apps | TensorFlow Lite, MLC LLM | Snapdragon 8 Elite NPU |
-| Raspberry Pi vision | HailoRT, TensorFlow Lite | Pi 5 + AI HAT+ |
-| Raspberry Pi LLM | llama.cpp, HailoRT | Pi 5 + AI HAT+ 2 |
-| Browser deployment | WebLLM, Transformers.js | WebGPU |
-| Cross-platform LLM | llama.cpp | Any CPU/GPU |
-| Microcontrollers | TensorFlow Lite Micro | Cortex-M |
-| Ultra-low power IoT | Nordic Edge AI Lab | nRF54L + Axon NPU |
+| Use Case                     | Recommended Framework    | Hardware               |
+| ---------------------------- | ------------------------ | ---------------------- |
+| Robotics, autonomous systems | TensorRT + JetPack 7     | Jetson Thor/Orin       |
+| iOS/macOS apps               | Core ML                  | Apple M5/A19           |
+| Android apps                 | TensorFlow Lite, MLC LLM | Snapdragon 8 Elite NPU |
+| Raspberry Pi vision          | HailoRT, TensorFlow Lite | Pi 5 + AI HAT+         |
+| Raspberry Pi LLM             | llama.cpp, HailoRT       | Pi 5 + AI HAT+ 2       |
+| Browser deployment           | WebLLM, Transformers.js  | WebGPU                 |
+| Cross-platform LLM           | llama.cpp                | Any CPU/GPU            |
+| Microcontrollers             | TensorFlow Lite Micro    | Cortex-M               |
+| Ultra-low power IoT          | Nordic Edge AI Lab       | nRF54L + Axon NPU      |
 
 ---
 

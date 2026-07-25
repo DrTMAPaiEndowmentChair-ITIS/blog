@@ -7,7 +7,7 @@ description: 'A grounded map of models, datasets, runtimes, and provider tools f
 topics: ['Generative AI', 'Runtimes', 'Model selection']
 ---
 
-import EcosystemFlow from '../../components/viz/EcosystemFlow.astro';
+import EcosystemFlow from '../../components/viz/EcosystemFlow.astro'
 
 ## Why this guide
 
@@ -85,14 +85,14 @@ Use format-native runtimes when you want portability (GGUF), maximum throughput 
 
 Best for lightweight local inference and experimentation; strong CPU quantization support and GPU offload.
 
-1) Convert HF weights to GGUF (scripts in the `llama.cpp` repo):
+1. Convert HF weights to GGUF (scripts in the `llama.cpp` repo):
 
 ```bash
 # Example flow (exact script names vary by model family)
 python llama.cpp/convert.py --model /path/to/hf-model --out model.gguf --dtype q4_k_m
 ```
 
-2) Run inference:
+2. Run inference:
 
 ```bash
 ./main -m model.gguf -p "Explain transformers in 3 bullet points" -n 256 --temp 0.7
@@ -172,8 +172,8 @@ OpenRouter aggregates frontier and open models behind a single, OpenAI-compatibl
 
 Setup:
 
-1) Create an API key in your dashboard.
-2) Use an OpenAI-compatible client with `base_url` and your key.
+1. Create an API key in your dashboard.
+2. Use an OpenAI-compatible client with `base_url` and your key.
 
 ```python
 from openai import OpenAI
@@ -257,14 +257,14 @@ Swap the encoder, add reranking, and evaluate retrieval quality. Don't assume de
 
 ## Quick starts
 
-1) Local chat with Ollama
+1. Local chat with Ollama
 
 ```bash
 ollama pull mistral
 ollama run mistral
 ```
 
-2) Serve Llama 3.1 with vLLM and call it with OpenAI SDK
+2. Serve Llama 3.1 with vLLM and call it with OpenAI SDK
 
 ```bash
 python -m vllm.entrypoints.openai.api_server --model meta-llama/Meta-Llama-3.1-8B-Instruct
@@ -276,7 +276,7 @@ client = OpenAI(base_url="http://localhost:8000/v1", api_key="sk-no-key")
 print(client.chat.completions.create(model="meta-llama/Meta-Llama-3.1-8B-Instruct", messages=[{"role": "user", "content": "Say hi"}]).choices[0].message.content)
 ```
 
-3) Try multiple frontier models via OpenRouter
+3. Try multiple frontier models via OpenRouter
 
 ```python
 from openai import OpenAI

@@ -5,58 +5,62 @@
  * Like Moshi's text LLM + Audio LM + dual streams
  */
 interface Block {
-  id: string;
-  label: string;
-  sublabel?: string;
-  details?: string[];
-  color?: 'accent' | 'highlight' | 'muted';
+  id: string
+  label: string
+  sublabel?: string
+  details?: string[]
+  color?: 'accent' | 'highlight' | 'muted'
 }
 
 interface Props {
-  title?: string;
-  backbone: Block[];
-  outputs?: Block[];
+  title?: string
+  backbone: Block[]
+  outputs?: Block[]
 }
 
-const { title, backbone, outputs = [] } = Astro.props;
+const { title, backbone, outputs = [] } = Astro.props
 ---
 
 <div class="hierarchical-flow">
   {title && <div class="flow-title">{title}</div>}
 
   <div class="flow-container">
-    {backbone.map((block, index) => (
-      <>
-        <div class={`main-block ${block.color || 'muted'}`}>
-          <div class="block-label">{block.label}</div>
-          {block.sublabel && <div class="block-sublabel">{block.sublabel}</div>}
-          {block.details && (
-            <div class="block-details">
-              {block.details.map(detail => (
-                <div class="detail-item">{detail}</div>
-              ))}
-            </div>
-          )}
-        </div>
-        {index < backbone.length - 1 && <div class="connector down"></div>}
-      </>
-    ))}
+    {
+      backbone.map((block, index) => (
+        <>
+          <div class={`main-block ${block.color || 'muted'}`}>
+            <div class="block-label">{block.label}</div>
+            {block.sublabel && <div class="block-sublabel">{block.sublabel}</div>}
+            {block.details && (
+              <div class="block-details">
+                {block.details.map((detail) => (
+                  <div class="detail-item">{detail}</div>
+                ))}
+              </div>
+            )}
+          </div>
+          {index < backbone.length - 1 && <div class="connector down" />}
+        </>
+      ))
+    }
 
-    {outputs.length > 0 && (
-      <>
-        <div class="split-connector">
-          <div class="split-line"></div>
-        </div>
-        <div class="outputs-row">
-          {outputs.map((output) => (
-            <div class={`output-block ${output.color || 'muted'}`}>
-              <div class="block-label">{output.label}</div>
-              {output.sublabel && <div class="block-sublabel">{output.sublabel}</div>}
-            </div>
-          ))}
-        </div>
-      </>
-    )}
+    {
+      outputs.length > 0 && (
+        <>
+          <div class="split-connector">
+            <div class="split-line" />
+          </div>
+          <div class="outputs-row">
+            {outputs.map((output) => (
+              <div class={`output-block ${output.color || 'muted'}`}>
+                <div class="block-label">{output.label}</div>
+                {output.sublabel && <div class="block-sublabel">{output.sublabel}</div>}
+              </div>
+            ))}
+          </div>
+        </>
+      )
+    }
   </div>
 </div>
 

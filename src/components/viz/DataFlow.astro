@@ -4,21 +4,21 @@
  * Shows how data moves through processing stages
  */
 interface Stage {
-  id: string;
-  label: string;
-  sublabel?: string;
-  color?: 'accent' | 'highlight' | 'muted';
+  id: string
+  label: string
+  sublabel?: string
+  color?: 'accent' | 'highlight' | 'muted'
 }
 
 interface Props {
-  stages: Stage[];
-  title?: string;
-  animationSpeed?: 'slow' | 'normal' | 'fast';
-  dataLabel?: string;
+  stages: Stage[]
+  title?: string
+  animationSpeed?: 'slow' | 'normal' | 'fast'
+  dataLabel?: string
 }
 
-const { stages, title, animationSpeed = 'normal', dataLabel = 'data' } = Astro.props;
-const speedMs = { slow: 2000, normal: 1200, fast: 800 }[animationSpeed];
+const { stages, title, animationSpeed = 'normal', dataLabel = 'data' } = Astro.props
+const speedMs = { slow: 2000, normal: 1200, fast: 800 }[animationSpeed]
 ---
 
 <div class="data-flow" data-speed={speedMs}>
@@ -27,26 +27,28 @@ const speedMs = { slow: 2000, normal: 1200, fast: 800 }[animationSpeed];
   <div class="flow-container">
     <button class="flow-control play-btn" aria-label="Play animation">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M4 2.5v11l9-5.5-9-5.5z"/>
+        <path d="M4 2.5v11l9-5.5-9-5.5z"></path>
       </svg>
     </button>
 
     <div class="flow-track">
-      {stages.map((stage, index) => (
-        <>
-          {index > 0 && (
-            <div class="flow-pipe">
-              <div class="pipe-line"></div>
-              <div class="data-packet" data-stage={index - 1}></div>
+      {
+        stages.map((stage, index) => (
+          <>
+            {index > 0 && (
+              <div class="flow-pipe">
+                <div class="pipe-line" />
+                <div class="data-packet" data-stage={index - 1} />
+              </div>
+            )}
+            <div class={`flow-stage ${stage.color || 'muted'}`} data-stage-id={stage.id}>
+              <div class="stage-label">{stage.label}</div>
+              {stage.sublabel && <div class="stage-sublabel">{stage.sublabel}</div>}
+              <div class="stage-indicator" />
             </div>
-          )}
-          <div class={`flow-stage ${stage.color || 'muted'}`} data-stage-id={stage.id}>
-            <div class="stage-label">{stage.label}</div>
-            {stage.sublabel && <div class="stage-sublabel">{stage.sublabel}</div>}
-            <div class="stage-indicator"></div>
-          </div>
-        </>
-      ))}
+          </>
+        ))
+      }
     </div>
 
     <div class="flow-legend">
@@ -61,67 +63,67 @@ const speedMs = { slow: 2000, normal: 1200, fast: 800 }[animationSpeed];
 <script>
   function initDataFlow() {
     document.querySelectorAll('.data-flow').forEach((container) => {
-      const playBtn = container.querySelector('.play-btn');
-      const packets = container.querySelectorAll('.data-packet');
-      const stages = container.querySelectorAll('.flow-stage');
-      const speed = parseInt(container.dataset.speed || '1200', 10);
+      const playBtn = container.querySelector('.play-btn')
+      const packets = container.querySelectorAll('.data-packet')
+      const stages = container.querySelectorAll('.flow-stage')
+      const speed = parseInt(container.dataset.speed || '1200', 10)
 
-      let isPlaying = false;
-      let animationFrame;
-      let currentStage = -1;
+      let isPlaying = false
+      let animationFrame
+      let currentStage = -1
 
       const animate = () => {
-        if (!isPlaying) return;
+        if (!isPlaying) return
 
-        currentStage++;
+        currentStage++
         if (currentStage >= stages.length) {
-          currentStage = -1;
-          packets.forEach((p) => p.classList.remove('active', 'arrived'));
-          stages.forEach((s) => s.classList.remove('active'));
+          currentStage = -1
+          packets.forEach((p) => p.classList.remove('active', 'arrived'))
+          stages.forEach((s) => s.classList.remove('active'))
         }
 
         if (currentStage >= 0) {
           // Activate current stage
-          stages[currentStage].classList.add('active');
+          stages[currentStage].classList.add('active')
 
           // Move packet to this stage
           if (currentStage > 0) {
-            const packet = packets[currentStage - 1];
-            packet.classList.add('active');
+            const packet = packets[currentStage - 1]
+            packet.classList.add('active')
             setTimeout(() => {
-              packet.classList.add('arrived');
-            }, speed * 0.8);
+              packet.classList.add('arrived')
+            }, speed * 0.8)
           }
 
           // Deactivate previous stages
           if (currentStage > 0) {
-            stages[currentStage - 1].classList.remove('active');
+            stages[currentStage - 1].classList.remove('active')
           }
         }
 
-        animationFrame = setTimeout(animate, speed);
-      };
+        animationFrame = setTimeout(animate, speed)
+      }
 
       const togglePlay = () => {
-        isPlaying = !isPlaying;
-        playBtn.classList.toggle('playing', isPlaying);
+        isPlaying = !isPlaying
+        playBtn.classList.toggle('playing', isPlaying)
 
         if (isPlaying) {
-          currentStage = -1;
-          packets.forEach((p) => p.classList.remove('active', 'arrived'));
-          stages.forEach((s) => s.classList.remove('active'));
-          animate();
+          currentStage = -1
+          packets.forEach((p) => p.classList.remove('active', 'arrived'))
+          stages.forEach((s) => s.classList.remove('active'))
+          animate()
         } else {
-          clearTimeout(animationFrame);
+          clearTimeout(animationFrame)
         }
-      };
+      }
 
-      playBtn?.addEventListener('click', togglePlay);
-    });
+      playBtn?.addEventListener('click', togglePlay)
+    })
   }
 
-  initDataFlow();
-  document.addEventListener('astro:after-swap', initDataFlow);
+  initDataFlow()
+  document.addEventListener('astro:after-swap', initDataFlow)
 </script>
 
 <style>
@@ -276,7 +278,9 @@ const speedMs = { slow: 2000, normal: 1200, fast: 800 }[animationSpeed];
     background: var(--text-secondary);
     transform: translate(-50%, -50%);
     opacity: 0;
-    transition: left 0.8s ease-in-out, opacity 0.2s ease-out;
+    transition:
+      left 0.8s ease-in-out,
+      opacity 0.2s ease-out;
   }
 
   .data-packet.active {

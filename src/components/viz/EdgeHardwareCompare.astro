@@ -4,30 +4,30 @@
  * Compares TOPS, power, and price across devices
  */
 interface Device {
-  name: string;
-  tops: number;
-  power: number;
-  price: number;
-  category: 'jetson' | 'rpi' | 'coral' | 'mobile';
+  name: string
+  tops: number
+  power: number
+  price: number
+  category: 'jetson' | 'rpi' | 'coral' | 'mobile'
 }
 
 interface Props {
-  title?: string;
+  title?: string
 }
 
-const { title = "Edge AI Hardware Comparison" } = Astro.props;
+const { title = 'Edge AI Hardware Comparison' } = Astro.props
 
 const devices: Device[] = [
-  { name: "Jetson AGX Orin", tops: 275, power: 60, price: 1999, category: "jetson" },
-  { name: "Jetson Orin NX", tops: 157, power: 25, price: 699, category: "jetson" },
-  { name: "Jetson Orin Nano Super", tops: 67, power: 25, price: 249, category: "jetson" },
-  { name: "Raspberry Pi AI HAT+ 26T", tops: 26, power: 3, price: 110, category: "rpi" },
-  { name: "Raspberry Pi AI HAT+ 13T", tops: 13, power: 2.5, price: 70, category: "rpi" },
-  { name: "Google Coral USB", tops: 4, power: 2, price: 60, category: "coral" },
-  { name: "Apple A17 Pro (ANE)", tops: 35, power: 8, price: 0, category: "mobile" },
-];
+  { name: 'Jetson AGX Orin', tops: 275, power: 60, price: 1999, category: 'jetson' },
+  { name: 'Jetson Orin NX', tops: 157, power: 25, price: 699, category: 'jetson' },
+  { name: 'Jetson Orin Nano Super', tops: 67, power: 25, price: 249, category: 'jetson' },
+  { name: 'Raspberry Pi AI HAT+ 26T', tops: 26, power: 3, price: 110, category: 'rpi' },
+  { name: 'Raspberry Pi AI HAT+ 13T', tops: 13, power: 2.5, price: 70, category: 'rpi' },
+  { name: 'Google Coral USB', tops: 4, power: 2, price: 60, category: 'coral' },
+  { name: 'Apple A17 Pro (ANE)', tops: 35, power: 8, price: 0, category: 'mobile' }
+]
 
-const maxTops = Math.max(...devices.map(d => d.tops));
+const maxTops = Math.max(...devices.map((d) => d.tops))
 ---
 
 <div class="hardware-compare">
@@ -40,35 +40,33 @@ const maxTops = Math.max(...devices.map(d => d.tops));
       <div class="header-cell">TOPS/W</div>
       <div class="header-cell">Price</div>
     </div>
-    {devices.map((device) => (
-      <div class={`grid-row ${device.category}`}>
-        <div class="cell device-col">
-          <span class="device-name">{device.name}</span>
-          <span class={`device-badge ${device.category}`}>
-            {device.category === 'jetson' && 'NVIDIA'}
-            {device.category === 'rpi' && 'Hailo'}
-            {device.category === 'coral' && 'Google'}
-            {device.category === 'mobile' && 'Apple'}
-          </span>
-        </div>
-        <div class="cell tops-cell">
-          <div class="bar-container">
-            <div
-              class={`bar ${device.category}`}
-              style={`width: ${(device.tops / maxTops) * 100}%`}
-            ></div>
-            <span class="bar-value">{device.tops}</span>
+    {
+      devices.map((device) => (
+        <div class={`grid-row ${device.category}`}>
+          <div class="cell device-col">
+            <span class="device-name">{device.name}</span>
+            <span class={`device-badge ${device.category}`}>
+              {device.category === 'jetson' && 'NVIDIA'}
+              {device.category === 'rpi' && 'Hailo'}
+              {device.category === 'coral' && 'Google'}
+              {device.category === 'mobile' && 'Apple'}
+            </span>
           </div>
+          <div class="cell tops-cell">
+            <div class="bar-container">
+              <div
+                class={`bar ${device.category}`}
+                style={`width: ${(device.tops / maxTops) * 100}%`}
+              />
+              <span class="bar-value">{device.tops}</span>
+            </div>
+          </div>
+          <div class="cell power-cell">{device.power}W</div>
+          <div class="cell efficiency-cell">{(device.tops / device.power).toFixed(1)}</div>
+          <div class="cell price-cell">{device.price > 0 ? `$${device.price}` : 'N/A'}</div>
         </div>
-        <div class="cell power-cell">{device.power}W</div>
-        <div class="cell efficiency-cell">
-          {(device.tops / device.power).toFixed(1)}
-        </div>
-        <div class="cell price-cell">
-          {device.price > 0 ? `$${device.price}` : 'N/A'}
-        </div>
-      </div>
-    ))}
+      ))
+    }
   </div>
   <div class="compare-note">
     TOPS = Tera Operations Per Second. Mobile NPU price shown as N/A (integrated in SoC).

@@ -4,19 +4,19 @@
  * Highlights differences on hover
  */
 interface Item {
-  name: string;
-  specs: Record<string, string | number>;
-  highlight?: boolean;
+  name: string
+  specs: Record<string, string | number>
+  highlight?: boolean
 }
 
 interface Props {
-  items: Item[];
-  specLabels: Record<string, string>;
-  title?: string;
+  items: Item[]
+  specLabels: Record<string, string>
+  title?: string
 }
 
-const { items, specLabels, title } = Astro.props;
-const specKeys = Object.keys(specLabels);
+const { items, specLabels, title } = Astro.props
+const specKeys = Object.keys(specLabels)
 ---
 
 <div class="comparison-grid">
@@ -24,22 +24,26 @@ const specKeys = Object.keys(specLabels);
   <div class="grid-container">
     <div class="grid-header">
       <div class="grid-cell header-cell spec-label"></div>
-      {items.map((item) => (
-        <div class={`grid-cell header-cell item-name ${item.highlight ? 'highlighted' : ''}`}>
-          {item.name}
-        </div>
-      ))}
-    </div>
-    {specKeys.map((key) => (
-      <div class="grid-row" data-spec={key}>
-        <div class="grid-cell spec-label">{specLabels[key]}</div>
-        {items.map((item) => (
-          <div class={`grid-cell spec-value ${item.highlight ? 'highlighted' : ''}`}>
-            {item.specs[key] ?? '—'}
+      {
+        items.map((item) => (
+          <div class={`grid-cell header-cell item-name ${item.highlight ? 'highlighted' : ''}`}>
+            {item.name}
           </div>
-        ))}
-      </div>
-    ))}
+        ))
+      }
+    </div>
+    {
+      specKeys.map((key) => (
+        <div class="grid-row" data-spec={key}>
+          <div class="grid-cell spec-label">{specLabels[key]}</div>
+          {items.map((item) => (
+            <div class={`grid-cell spec-value ${item.highlight ? 'highlighted' : ''}`}>
+              {item.specs[key] ?? '—'}
+            </div>
+          ))}
+        </div>
+      ))
+    }
   </div>
 </div>
 

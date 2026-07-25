@@ -7,9 +7,9 @@ description: 'Make local models faster and smaller with quantization, speculativ
 topics: ['Local AI', 'Quantization', 'Inference']
 ---
 
-import QuantizationScale from '../../components/viz/QuantizationScale.astro';
-import KVCacheEstimator from '../../components/viz/KVCacheEstimator.astro';
-import OffloadHierarchy from '../../components/viz/OffloadHierarchy.astro';
+import QuantizationScale from '../../components/viz/QuantizationScale.astro'
+import KVCacheEstimator from '../../components/viz/KVCacheEstimator.astro'
+import OffloadHierarchy from '../../components/viz/OffloadHierarchy.astro'
 
 ## Why local inferencing matters
 
@@ -47,6 +47,7 @@ The key insight from the REAP paper is that expert pruning outperforms expert me
 ### Performance results
 
 On the Qwen3-480B-Coder-FP8 model, REAP at 50% pruning retains:
+
 - 97.6% of baseline non-agentic coding ability
 - 96.7% on the agentic SWE-Bench benchmark
 
@@ -114,13 +115,13 @@ Quantization reduces the precision of model weights, trading a small amount of a
 
 **Quantization-Aware Training (QAT)** integrates quantization into the training process. The model learns to handle quantization errors during training. PyTorch demonstrated that QAT can recover up to 96% of the accuracy degradation on HellaSwag and 68% of the perplexity degradation on WikiText for Llama3 compared to PTQ [12].
 
-| Aspect | PTQ | QAT |
-|--------|-----|-----|
-| Training required | No | Yes |
-| Compute cost | Low | High |
-| Accuracy at INT8 | Good | Excellent |
-| Accuracy at INT4 | Variable | Good |
-| Time to deploy | Minutes | Hours/Days |
+| Aspect            | PTQ      | QAT        |
+| ----------------- | -------- | ---------- |
+| Training required | No       | Yes        |
+| Compute cost      | Low      | High       |
+| Accuracy at INT8  | Good     | Excellent  |
+| Accuracy at INT4  | Variable | Good       |
+| Time to deploy    | Minutes  | Hours/Days |
 
 ### GGUF quantization levels
 
@@ -128,13 +129,13 @@ GGUF (Georgi Gerganov Universal Format) is designed for efficient CPU-based infe
 
 <QuantizationScale title="GGUF Quantization Levels" baseModel="7B model" />
 
-| Quantization | Size (7B model) | Perplexity increase | Notes |
-|--------------|-----------------|---------------------|-------|
-| Q8_0 | ~7.0 GB | +0.0004 | Highest quality |
-| Q5_K_M | ~5.33 GB | +0.0142 | Higher quality, slightly larger |
-| Q4_K_M | ~4.58 GB | +0.0535 | Recommended default, best balance |
-| Q4_K_S | ~4.37 GB | +0.0992 | Smaller, lower quality |
-| Q3_K_M | ~3.52 GB | +0.2437 | Aggressive compression |
+| Quantization | Size (7B model) | Perplexity increase | Notes                             |
+| ------------ | --------------- | ------------------- | --------------------------------- |
+| Q8_0         | ~7.0 GB         | +0.0004             | Highest quality                   |
+| Q5_K_M       | ~5.33 GB        | +0.0142             | Higher quality, slightly larger   |
+| Q4_K_M       | ~4.58 GB        | +0.0535             | Recommended default, best balance |
+| Q4_K_S       | ~4.37 GB        | +0.0992             | Smaller, lower quality            |
+| Q3_K_M       | ~3.52 GB        | +0.2437             | Aggressive compression            |
 
 Q4_K_M is the "safe default" for phones and lighter Macs. Q5_K_M improves detail and reasoning stability. Use an importance matrix (`--imatrix`) for optimal results [14].
 
@@ -173,12 +174,12 @@ ExLlamaV2 is an inference library optimized for consumer GPUs. Its EXL2 format s
 
 ExLlamaV2 achieves 56.44 tokens/second on a T4 GPU, providing the highest tokens-per-second compared to GPTQ or llama.cpp. It now supports paged attention via Flash Attention 2.5.7+ and includes dynamic batching with smart prompt caching [18].
 
-| Use Case | Recommended Method |
-|----------|-------------------|
-| GPU inference, high throughput | GPTQ |
-| Quality-critical applications | AWQ |
-| CPU/Apple devices | GGUF |
-| Fine-tuned size control | EXL2 |
+| Use Case                       | Recommended Method |
+| ------------------------------ | ------------------ |
+| GPU inference, high throughput | GPTQ               |
+| Quality-critical applications  | AWQ                |
+| CPU/Apple devices              | GGUF               |
+| Fine-tuned size control        | EXL2               |
 
 ---
 
@@ -238,6 +239,7 @@ FlashAttention-3 targets Hopper GPUs with three optimizations [25]:
 3. **FP8 quantization**: Uses block quantization with incoherent processing for FP8 low-precision
 
 Performance on H100:
+
 - BF16: Up to 840 TFLOPs/s (85% utilization)
 - FP8: Up to 1.3 PFLOPs/s
 
@@ -411,6 +413,7 @@ TensorRT-LLM supports multiple quantization methods, with FP8 recommended as the
 **INT8 SmoothQuant (int8_sq)**: Applies smoothing to weights before INT8 channel-wise quantization. Activation ranges are calibrated tensor-wise. Used as a fallback on Ada GPUs [37].
 
 The calibration process:
+
 1. Load a model checkpoint using the appropriate parallelism strategy
 2. Run calibration data through the model to determine quantization scales
 3. Output a quantized checkpoint with model config (JSON), quantized weights (safetensors), and tokenizer config (YAML) [38]
@@ -440,6 +443,7 @@ quantize(
 In-flight batching (also called continuous batching) eliminates wait times by dynamically managing request execution. Instead of processing fixed batches, TensorRT-LLM merges incoming requests into existing GPU batches, processing context and generation phases together [39].
 
 The scheduler maintains:
+
 - **Prefill queue**: New requests waiting for initial context processing
 - **Generation queue**: Active sequences generating tokens
 - **Memory manager**: Tracks KV cache block allocation
@@ -694,6 +698,7 @@ response2 = llm.generate([
 vLLM supports multiple speculative decoding methods, with Eagle 3 as the current state-of-the-art [52].
 
 **Supported methods**:
+
 - **Draft model**: Separate smaller model proposes tokens
 - **Eagle 1/3**: Lightweight prediction head attached to target model
 - **Suffix decoding**: Pattern-matching against previous generations (roadmap item)
@@ -788,6 +793,7 @@ vLLM's server implements OpenAI's API specification using FastAPI [57].
 ```
 
 **Request handling**:
+
 1. FastAPI receives HTTP request with Pydantic validation
 2. Request is converted to internal format and queued
 3. AsyncLLM handles scheduling via EngineCore
@@ -813,15 +819,15 @@ curl http://localhost:8000/v1/chat/completions \
 
 Key parameters for optimizing vLLM performance [58]:
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `max_num_seqs` | 256 | Maximum concurrent sequences |
-| `max_num_batched_tokens` | 8192 | Token budget per iteration |
-| `gpu_memory_utilization` | 0.9 | Fraction of GPU memory for KV cache |
-| `block_size` | 16 | Tokens per KV block |
-| `swap_space` | 4 | GB of CPU memory for swapping |
-| `enable_chunked_prefill` | True | Split long prompts into chunks |
-| `max_model_len` | model default | Maximum sequence length |
+| Parameter                | Default       | Description                         |
+| ------------------------ | ------------- | ----------------------------------- |
+| `max_num_seqs`           | 256           | Maximum concurrent sequences        |
+| `max_num_batched_tokens` | 8192          | Token budget per iteration          |
+| `gpu_memory_utilization` | 0.9           | Fraction of GPU memory for KV cache |
+| `block_size`             | 16            | Tokens per KV block                 |
+| `swap_space`             | 4             | GB of CPU memory for swapping       |
+| `enable_chunked_prefill` | True          | Split long prompts into chunks      |
+| `max_model_len`          | model default | Maximum sequence length             |
 
 ```python
 from vllm import LLM
@@ -857,12 +863,12 @@ While vLLM's PagedAttention optimizes memory within individual requests, RadixAt
 
 **Key differences**:
 
-| Aspect | PagedAttention | RadixAttention |
-|--------|---------------|----------------|
-| Data structure | Block tables | Radix tree |
-| Prefix matching | Hash lookup | Tree traversal |
-| Cache persistence | Cleared after request | Retained in LRU cache |
-| Primary optimization | Memory efficiency | KV reuse across calls |
+| Aspect               | PagedAttention        | RadixAttention        |
+| -------------------- | --------------------- | --------------------- |
+| Data structure       | Block tables          | Radix tree            |
+| Prefix matching      | Hash lookup           | Tree traversal        |
+| Cache persistence    | Cleared after request | Retained in LRU cache |
+| Primary optimization | Memory efficiency     | KV reuse across calls |
 
 **How RadixAttention works**:
 
@@ -1167,16 +1173,17 @@ llama.cpp supports various quantization types with specialized dequantization ke
 
 **Quantization type families**:
 
-| Family | Types | Description |
-|--------|-------|-------------|
-| Type-0 | Q4_0, Q5_0, Q8_0 | Global scale: `w = d * q` |
-| Type-1 | Q4_1, Q5_1 | Scale + minimum: `w = d * q + m` |
+| Family   | Types            | Description                         |
+| -------- | ---------------- | ----------------------------------- |
+| Type-0   | Q4_0, Q5_0, Q8_0 | Global scale: `w = d * q`           |
+| Type-1   | Q4_1, Q5_1       | Scale + minimum: `w = d * q + m`    |
 | K-quants | Q4_K, Q5_K, Q6_K | Block-wise with super-blocks of 256 |
-| I-quants | IQ4_XS, IQ3_XXS | Importance-based with lookup tables |
+| I-quants | IQ4_XS, IQ3_XXS  | Importance-based with lookup tables |
 
 **K-quant implementation details**:
 
 K-quants use super-blocks of 256 quantized values, subdivided into blocks of 16 or 32. Each super-block stores:
+
 - Scale factors for each sub-block
 - Minimum values (for some types)
 - Quantized weights
@@ -1215,12 +1222,14 @@ K-quants use super-blocks of 256 quantized values, subdivided into blocks of 16 
 Each quantization type has a specific memory layout optimized for efficient dequantization [72].
 
 **Q4_0 layout** (block of 32 weights):
+
 ```
 [scale: fp16 (2 bytes)] [quants: 16 bytes (32 x 4-bit)]
 Total: 18 bytes for 32 weights = 4.5 bits/weight
 ```
 
 **Q4_K layout** (super-block of 256 weights):
+
 ```
 [d: fp16] [dmin: fp16] [scales: 12 bytes] [quants: 128 bytes]
 - 8 sub-blocks of 32 weights each
@@ -1229,6 +1238,7 @@ Total: 144 bytes for 256 weights = 4.5 bits/weight
 ```
 
 **Q5_K layout**:
+
 ```
 [d: fp16] [dmin: fp16] [scales: 12 bytes] [qh: 32 bytes] [ql: 128 bytes]
 - qh contains the 5th bit for each weight
@@ -1267,12 +1277,12 @@ Each engine optimizes for different points on the latency-throughput curve [73].
 
 **Benchmark results** (Llama 3.1 8B, H100, 1000 ShareGPT prompts):
 
-| Engine | Throughput (tok/s) | TTFT (ms) | Per-token latency (ms) |
-|--------|-------------------|-----------|----------------------|
-| SGLang | 16,215 | 156 | 4-21 |
-| LMDeploy | 16,132 | 142 | 12-35 |
-| vLLM | 12,553 | 123 | 8-42 |
-| TensorRT-LLM | 10,847 | 187 | 15-28 |
+| Engine       | Throughput (tok/s) | TTFT (ms) | Per-token latency (ms) |
+| ------------ | ------------------ | --------- | ---------------------- |
+| SGLang       | 16,215             | 156       | 4-21                   |
+| LMDeploy     | 16,132             | 142       | 12-35                  |
+| vLLM         | 12,553             | 123       | 8-42                   |
+| TensorRT-LLM | 10,847             | 187       | 15-28                  |
 
 **Key observations**:
 
@@ -1284,76 +1294,80 @@ Each engine optimizes for different points on the latency-throughput curve [73].
 **At different concurrency levels** (GPT-OSS-120B):
 
 | Concurrency | vLLM (tok/s) | SGLang (tok/s) | TensorRT-LLM (tok/s) |
-|-------------|--------------|----------------|---------------------|
-| 1 | 892 | 756 | 1,024 |
-| 10 | 2,341 | 2,567 | 2,189 |
-| 100 | 4,741 | 4,523 | 3,892 |
+| ----------- | ------------ | -------------- | -------------------- |
+| 1           | 892          | 756            | 1,024                |
+| 10          | 2,341        | 2,567          | 2,189                |
+| 100         | 4,741        | 4,523          | 3,892                |
 
 ### Memory efficiency comparison
 
-| Engine | KV Cache Approach | Memory Waste | Max Context (8B model, 24GB) |
-|--------|------------------|--------------|------------------------------|
-| vLLM | PagedAttention | \<4% | 128K tokens |
-| SGLang | RadixAttention | \<4% | 128K tokens |
-| TensorRT-LLM | Paged + Priority eviction | \<5% | 128K tokens |
-| llama.cpp | Contiguous | 10-20% | 32K tokens |
+| Engine       | KV Cache Approach         | Memory Waste | Max Context (8B model, 24GB) |
+| ------------ | ------------------------- | ------------ | ---------------------------- |
+| vLLM         | PagedAttention            | \<4%         | 128K tokens                  |
+| SGLang       | RadixAttention            | \<4%         | 128K tokens                  |
+| TensorRT-LLM | Paged + Priority eviction | \<5%         | 128K tokens                  |
+| llama.cpp    | Contiguous                | 10-20%       | 32K tokens                   |
 
 **KV cache quantization support**:
 
-| Engine | FP8 KV | INT8 KV | NVFP4 KV |
-|--------|--------|---------|----------|
-| TensorRT-LLM | Yes | Yes | Yes (Blackwell) |
-| vLLM | Yes | Yes | No |
-| SGLang | Yes | Yes | No |
-| llama.cpp | Q8_0, Q4_0 | Via type | No |
+| Engine       | FP8 KV     | INT8 KV  | NVFP4 KV        |
+| ------------ | ---------- | -------- | --------------- |
+| TensorRT-LLM | Yes        | Yes      | Yes (Blackwell) |
+| vLLM         | Yes        | Yes      | No              |
+| SGLang       | Yes        | Yes      | No              |
+| llama.cpp    | Q8_0, Q4_0 | Via type | No              |
 
 ### Feature matrix
 
-| Feature | TensorRT-LLM | vLLM | SGLang | llama.cpp |
-|---------|--------------|------|--------|-----------|
-| **Quantization** |
-| FP8 | Yes (Hopper+) | Yes | Yes | No |
-| INT8 | Yes | Yes | Yes | Yes (Q8_0) |
-| INT4 | Yes (AWQ) | Yes (AWQ/GPTQ) | Yes | Yes (Q4_K) |
-| 2-bit | No | No | No | Yes (Q2_K) |
-| **Parallelism** |
-| Tensor parallel | Yes | Yes | Yes | Limited |
-| Pipeline parallel | Yes | Yes | Yes | No |
-| Expert parallel | Yes | Yes | Yes | No |
-| **Features** |
-| Speculative decoding | Yes | Yes (Eagle3) | Yes | Yes |
-| Prefix caching | Yes | Yes (APC) | Yes (Radix) | Yes |
-| Constrained decoding | No | Yes | Yes (FSM) | Yes (grammar) |
-| Multi-LoRA | Yes | Yes | Yes | Yes |
-| Vision models | Yes | Yes | Yes | Yes (LLaVA) |
-| **Deployment** |
-| OpenAI API | Via Triton | Yes | Yes | Yes (server) |
-| NVIDIA GPUs | Yes | Yes | Yes | Yes |
-| AMD GPUs | No | Yes (ROCm) | Yes (ROCm) | Yes (HIP) |
-| Apple Silicon | No | No | No | Yes (Metal) |
-| CPU only | No | No | No | Yes |
+| Feature              | TensorRT-LLM  | vLLM           | SGLang      | llama.cpp     |
+| -------------------- | ------------- | -------------- | ----------- | ------------- |
+| **Quantization**     |
+| FP8                  | Yes (Hopper+) | Yes            | Yes         | No            |
+| INT8                 | Yes           | Yes            | Yes         | Yes (Q8_0)    |
+| INT4                 | Yes (AWQ)     | Yes (AWQ/GPTQ) | Yes         | Yes (Q4_K)    |
+| 2-bit                | No            | No             | No          | Yes (Q2_K)    |
+| **Parallelism**      |
+| Tensor parallel      | Yes           | Yes            | Yes         | Limited       |
+| Pipeline parallel    | Yes           | Yes            | Yes         | No            |
+| Expert parallel      | Yes           | Yes            | Yes         | No            |
+| **Features**         |
+| Speculative decoding | Yes           | Yes (Eagle3)   | Yes         | Yes           |
+| Prefix caching       | Yes           | Yes (APC)      | Yes (Radix) | Yes           |
+| Constrained decoding | No            | Yes            | Yes (FSM)   | Yes (grammar) |
+| Multi-LoRA           | Yes           | Yes            | Yes         | Yes           |
+| Vision models        | Yes           | Yes            | Yes         | Yes (LLaVA)   |
+| **Deployment**       |
+| OpenAI API           | Via Triton    | Yes            | Yes         | Yes (server)  |
+| NVIDIA GPUs          | Yes           | Yes            | Yes         | Yes           |
+| AMD GPUs             | No            | Yes (ROCm)     | Yes (ROCm)  | Yes (HIP)     |
+| Apple Silicon        | No            | No             | No          | Yes (Metal)   |
+| CPU only             | No            | No             | No          | Yes           |
 
 ### When to use each engine
 
 **TensorRT-LLM**:
+
 - Production deployments on NVIDIA GPUs
 - Maximum throughput on H100/B200
 - When using NVIDIA's full stack (Triton, NIM)
 - Willing to invest in engine building and tuning
 
 **vLLM**:
+
 - High-concurrency API serving
 - Fast time-to-first-token requirements
 - OpenAI API compatibility
 - General-purpose GPU inference with good defaults
 
 **SGLang**:
+
 - Structured output generation (JSON, code)
 - Complex multi-turn or branching LLM programs
 - Maximum KV cache reuse across requests
 - Constrained decoding with FSM
 
 **llama.cpp**:
+
 - Local deployment on consumer hardware
 - Apple Silicon (M1/M2/M3/M4)
 - CPU-only environments
@@ -1363,6 +1377,7 @@ Each engine optimizes for different points on the latency-throughput curve [73].
 ### Practical deployment recommendations
 
 **For startup API products**:
+
 ```
 vLLM + OpenAI-compatible server
 - Fast setup, good defaults
@@ -1371,6 +1386,7 @@ vLLM + OpenAI-compatible server
 ```
 
 **For enterprise on NVIDIA**:
+
 ```
 TensorRT-LLM + Triton Inference Server
 - Maximum throughput per GPU dollar
@@ -1379,6 +1395,7 @@ TensorRT-LLM + Triton Inference Server
 ```
 
 **For structured outputs**:
+
 ```
 SGLang
 - Native JSON schema support
@@ -1387,6 +1404,7 @@ SGLang
 ```
 
 **For local/edge deployment**:
+
 ```
 llama.cpp
 - Q4_K_M for balance of quality and size
@@ -1400,17 +1418,17 @@ llama.cpp
 
 ### When to use each technique
 
-| Technique | Best for | Hardware requirements |
-|-----------|----------|----------------------|
-| REAP | MoE models (Mixtral, DeepSeek, Qwen) | Same as original model |
+| Technique            | Best for                                       | Hardware requirements                |
+| -------------------- | ---------------------------------------------- | ------------------------------------ |
+| REAP                 | MoE models (Mixtral, DeepSeek, Qwen)           | Same as original model               |
 | Speculative decoding | High-latency applications, large target models | GPU memory for both draft and target |
-| Q4_K_M quantization | CPU/Apple devices, limited RAM | 4GB+ RAM for 7B models |
-| AWQ/GPTQ | GPU inference, quality-sensitive tasks | CUDA GPU |
-| PagedAttention | High-concurrency serving | vLLM-compatible GPU |
-| FlashAttention-3 | H100/H200 deployments | Hopper architecture |
-| Tensor parallelism | Models exceeding single GPU memory | Multiple GPUs with NVLink |
-| CPU offloading | Memory-constrained setups | High CPU memory bandwidth |
-| Prompt caching | Repeated prompts, RAG, chat systems | Sufficient memory for cache |
+| Q4_K_M quantization  | CPU/Apple devices, limited RAM                 | 4GB+ RAM for 7B models               |
+| AWQ/GPTQ             | GPU inference, quality-sensitive tasks         | CUDA GPU                             |
+| PagedAttention       | High-concurrency serving                       | vLLM-compatible GPU                  |
+| FlashAttention-3     | H100/H200 deployments                          | Hopper architecture                  |
+| Tensor parallelism   | Models exceeding single GPU memory             | Multiple GPUs with NVLink            |
+| CPU offloading       | Memory-constrained setups                      | High CPU memory bandwidth            |
+| Prompt caching       | Repeated prompts, RAG, chat systems            | Sufficient memory for cache          |
 
 ### Combining techniques
 

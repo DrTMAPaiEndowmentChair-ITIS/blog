@@ -7,7 +7,7 @@ description: 'Build fast, reproducible Python and PyTorch workflows on GPU clust
 topics: ['HPC', 'PyTorch', 'CUDA']
 ---
 
-import HPCWorkflow from '../../components/viz/HPCWorkflow.astro';
+import HPCWorkflow from '../../components/viz/HPCWorkflow.astro'
 
 ## Overview
 
@@ -116,7 +116,7 @@ Tip: uv can also manage project deps via `pyproject.toml` + `uv.lock` with `uv a
 
 ## Install PyTorch with CUDA for A100
 
-1) Confirm drivers and CUDA runtime on the node:
+1. Confirm drivers and CUDA runtime on the node:
 
 ```bash
 nvidia-smi
@@ -125,7 +125,7 @@ nvidia-smi topo -m   # NUMA / PCIe fabric view
 
 Check the “CUDA Version” reported by `nvidia-smi` (this reflects the driver-supported CUDA runtime). On many A100 systems you’ll see CUDA 11.8 or 12.1+.
 
-2) In your venv, install the matching PyTorch wheels. Use the official index URL for CUDA builds (replace cu118/cu121 with what you need):
+2. In your venv, install the matching PyTorch wheels. Use the official index URL for CUDA builds (replace cu118/cu121 with what you need):
 
 ```bash
 # CUDA 11.8
@@ -141,7 +141,7 @@ If your cluster uses modules, load them first (example):
 module load cuda/12.1  # or the site-provided module that matches your drivers
 ```
 
-3) Verify GPU visibility in Python:
+3. Verify GPU visibility in Python:
 
 ```python
 import torch

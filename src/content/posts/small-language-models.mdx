@@ -1,5 +1,5 @@
 ---
-title: "Small Language Models: When Less is More"
+title: 'Small Language Models: When Less is More'
 pubDate: 2026-01-26
 author: 'Aadit Agrawal'
 category: 'Models & Training'
@@ -7,8 +7,8 @@ description: 'Understand where compact models outperform frontier-scale systems 
 topics: ['SLM', 'Efficiency', 'On-device']
 ---
 
-import SLMBenchmarkTable from '../../components/viz/SLMBenchmarkTable.astro';
-import SLMDeploymentTiers from '../../components/viz/SLMDeploymentTiers.astro';
+import SLMBenchmarkTable from '../../components/viz/SLMBenchmarkTable.astro'
+import SLMDeploymentTiers from '../../components/viz/SLMDeploymentTiers.astro'
 
 Small language models have emerged as a practical alternative to their multi-hundred-billion parameter counterparts. While frontier models like GPT-5.2 and Claude Opus 4.5 continue pushing capability boundaries, a parallel track of development focuses on models that trade raw scale for efficiency, deployability, and cost effectiveness.
 
@@ -120,24 +120,89 @@ The current SLM landscape includes strong entries from Microsoft, Google, Meta, 
 <SLMBenchmarkTable
   title="Small Language Model Benchmarks (2025-2026)"
   models={[
-    { name: "Phi-4", params: "14B", mmlu: "84.8%", math: "56.1%", humaneval: "82.6%", context: "16K" },
-    { name: "Phi-4-mini", params: "3.8B", mmlu: "-", math: "92.5%*", humaneval: "-", context: "128K" },
-    { name: "Phi-4-multimodal", params: "5.6B", mmlu: "-", math: "-", humaneval: "-", context: "128K", highlight: true },
-    { name: "Qwen3-4B", params: "4B", mmlu: "83.7%", math: "97.0%*", humaneval: "-", context: "32K" },
-    { name: "Qwen3-8B", params: "8B", mmlu: "85.0%", math: "-", humaneval: "-", context: "32K" },
-    { name: "Qwen3-30B-A3B", params: "30B (3.3B active)", mmlu: "-", math: "-", humaneval: "-", context: "32K" },
-    { name: "Gemma 3n E4B", params: "8B (4B effective)", mmlu: "64.9%", math: "-", humaneval: "-", context: "32K" },
-    { name: "Gemma 3n E2B", params: "5B (2B effective)", mmlu: "60.1%", math: "-", humaneval: "-", context: "32K" },
-    { name: "Gemma 3 4B", params: "4B", mmlu: "-", math: "-", humaneval: "-", context: "128K" },
-    { name: "Llama 4 Scout", params: "109B (17B active)", mmlu: "-", math: "-", humaneval: "-", context: "10M", highlight: true },
-    { name: "Llama 3.2 3B", params: "3B", mmlu: "63.4%", math: "-", humaneval: "-", context: "128K" },
-    { name: "SmolLM3", params: "3B", mmlu: "-", math: "36.7%**", humaneval: "-", context: "128K" },
-    { name: "SmolLM2", params: "1.7B", mmlu: "-", math: "-", humaneval: "-", context: "8K" },
+    {
+      name: 'Phi-4',
+      params: '14B',
+      mmlu: '84.8%',
+      math: '56.1%',
+      humaneval: '82.6%',
+      context: '16K'
+    },
+    {
+      name: 'Phi-4-mini',
+      params: '3.8B',
+      mmlu: '-',
+      math: '92.5%*',
+      humaneval: '-',
+      context: '128K'
+    },
+    {
+      name: 'Phi-4-multimodal',
+      params: '5.6B',
+      mmlu: '-',
+      math: '-',
+      humaneval: '-',
+      context: '128K',
+      highlight: true
+    },
+    {
+      name: 'Qwen3-4B',
+      params: '4B',
+      mmlu: '83.7%',
+      math: '97.0%*',
+      humaneval: '-',
+      context: '32K'
+    },
+    { name: 'Qwen3-8B', params: '8B', mmlu: '85.0%', math: '-', humaneval: '-', context: '32K' },
+    {
+      name: 'Qwen3-30B-A3B',
+      params: '30B (3.3B active)',
+      mmlu: '-',
+      math: '-',
+      humaneval: '-',
+      context: '32K'
+    },
+    {
+      name: 'Gemma 3n E4B',
+      params: '8B (4B effective)',
+      mmlu: '64.9%',
+      math: '-',
+      humaneval: '-',
+      context: '32K'
+    },
+    {
+      name: 'Gemma 3n E2B',
+      params: '5B (2B effective)',
+      mmlu: '60.1%',
+      math: '-',
+      humaneval: '-',
+      context: '32K'
+    },
+    { name: 'Gemma 3 4B', params: '4B', mmlu: '-', math: '-', humaneval: '-', context: '128K' },
+    {
+      name: 'Llama 4 Scout',
+      params: '109B (17B active)',
+      mmlu: '-',
+      math: '-',
+      humaneval: '-',
+      context: '10M',
+      highlight: true
+    },
+    {
+      name: 'Llama 3.2 3B',
+      params: '3B',
+      mmlu: '63.4%',
+      math: '-',
+      humaneval: '-',
+      context: '128K'
+    },
+    { name: 'SmolLM3', params: '3B', mmlu: '-', math: '36.7%**', humaneval: '-', context: '128K' },
+    { name: 'SmolLM2', params: '1.7B', mmlu: '-', math: '-', humaneval: '-', context: '8K' }
   ]}
 />
 
-*MATH-500 score with thinking mode enabled.
-**SmolLM3 AIME 2025 score with extended thinking mode enabled.
+\*MATH-500 score with thinking mode enabled.
+\*\*SmolLM3 AIME 2025 score with extended thinking mode enabled.
 
 ### Microsoft Phi-4 family
 
@@ -361,6 +426,7 @@ cmake --build build --config Release
 ```
 
 Key flags:
+
 - `-ngl 99`: Offload all layers to GPU
 - `-c 4096`: Context window size
 - `-fa`: Enable flash attention (reduces memory)

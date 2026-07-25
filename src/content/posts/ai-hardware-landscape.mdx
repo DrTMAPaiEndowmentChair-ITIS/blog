@@ -7,7 +7,7 @@ description: 'Compare the architectures, economics, and tradeoffs behind GPUs, T
 topics: ['Accelerators', 'TPU', 'AI chips']
 ---
 
-import SystolicArray from '../../components/viz/SystolicArray.astro';
+import SystolicArray from '../../components/viz/SystolicArray.astro'
 
 The AI hardware landscape is undergoing a transformation. While NVIDIA maintains its grip on approximately 86-92% of the AI accelerator market, a constellation of alternatives has emerged, each with distinct architectural philosophies and target workloads. This diversification matters for engineers who need to optimize for cost, latency, throughput, or specific model architectures.
 
@@ -97,6 +97,7 @@ Checkpoints from TPU training can be deployed on other hardware platforms (CPU o
 ### TPU Generations
 
 **TPU v5e** targets cost-sensitive inference and smaller training workloads:
+
 - 128x128 MXU array, 16,384 MACs per cycle
 - 197 BF16 TFLOPS peak
 - 16 GB HBM2e with 819 GB/s bandwidth
@@ -104,12 +105,14 @@ Checkpoints from TPU training can be deployed on other hardware platforms (CPU o
 - 2D torus interconnect topology
 
 **TPU v5p** is designed for large-scale training:
+
 - 128x128 MXU array, 459 BF16 TFLOPS peak
 - 95 GB HBM2e with 2,765 GB/s bandwidth
 - 3D torus topology connecting up to 8,960 chips per pod
 - Single slice training for up to 6,144 chips; multislice scaling to 18,432 chips
 
 **Trillium (TPU v6e)**, generally available since late 2024, represents an architectural inflection point:
+
 - 256x256 MXU array, quadrupling FLOPs per cycle
 - 918 BF16 TFLOPS peak (4.7x improvement over v5e)
 - 32 GB HBM with 1,600 GB/s bandwidth
@@ -240,6 +243,7 @@ Artificial Analysis independently benchmarked Groq serving Llama 3.3 70B at 1,66
 Speculative decoding uses a smaller "draft model" (e.g., Llama 8B) to rapidly guess subsequent tokens, which the primary model then verifies. Verification is faster than generation. Groq implemented this without compromising response quality per independent evaluations.
 
 Other benchmarks:
+
 - Gemma 7B: 814 tokens per second (Artificial Analysis)
 - LLaMA 3: over 800 tokens per second
 - Llama 2 Chat 70B: 241 tokens per second, more than double other providers (ArtificialAnalysis.ai)
@@ -329,6 +333,7 @@ AMD announced UDNA, which will unify RDNA and CDNA into one microarchitecture, e
 ### Matrix Cores vs Tensor Cores
 
 **AMD MI300X (CDNA 3)**:
+
 - 4 Matrix Cores per Compute Unit, 304 CUs per GPU
 - Multi-chip module design: 8 accelerator complex dies (XCD) on TSMC 5nm
 - Each compute die: 38 Compute Units, 4MB L2 cache
@@ -336,6 +341,7 @@ AMD announced UDNA, which will unify RDNA and CDNA into one microarchitecture, e
 - 1.31 petaflops peak at FP16
 
 **NVIDIA H100 (Hopper)**:
+
 - 4 Tensor Cores per SM, 132 SMs per GPU
 - Tensor Cores support FP8, FP16, BF16, TF32, FP64, INT8 for A/B matrices
 - 80 GB HBM2e memory, 3.35 TB/s bandwidth
@@ -369,6 +375,7 @@ elif torch.cuda.is_available() and torch.version.cuda:
 ```
 
 AMD provides HIPIFY tools for translating CUDA code:
+
 - **hipify-clang**: Parses CUDA code into an AST, traverses it with transformation matchers, and produces HIP source
 - **hipify-perl**: Uses pattern matching for simpler translations
 
@@ -467,6 +474,7 @@ Hardware selection depends on workload characteristics, scale, and constraints.
 ### Targeting Different Hardware: Code Examples
 
 **JAX/TPU**:
+
 ```python
 import jax
 import jax.numpy as jnp
@@ -480,6 +488,7 @@ result = matmul(jnp.ones((1024, 1024)), jnp.ones((1024, 1024)))
 ```
 
 **PyTorch/ROCm (AMD)**:
+
 ```python
 import torch
 
@@ -495,6 +504,7 @@ if torch.version.hip:
 ```
 
 **MLX (Apple Silicon)**:
+
 ```python
 import mlx.core as mx
 
@@ -508,6 +518,7 @@ mx.eval(result)  # Explicit evaluation
 ### Cost Considerations
 
 GPU cloud pricing in 2025:
+
 - H100: $2.10-7.57 per GPU-hour depending on provider and commitment
 - H200: From $2.14-2.50 per GPU-hour
 - TPU v5e: Competitive with H100 at large scale

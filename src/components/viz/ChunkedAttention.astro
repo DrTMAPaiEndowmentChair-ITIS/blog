@@ -4,37 +4,37 @@
  * Shows streaming ASR with chunked attention patterns
  */
 interface Chunk {
-  id: string;
-  label: string;
+  id: string
+  label: string
 }
 
 interface AttentionPattern {
-  type: 'self' | 'left+self';
-  contextFrames?: number;
+  type: 'self' | 'left+self'
+  contextFrames?: number
 }
 
 interface Props {
-  title?: string;
-  chunks?: Chunk[];
-  attentionPatterns?: AttentionPattern[];
-  contextLabel?: string;
+  title?: string
+  chunks?: Chunk[]
+  attentionPatterns?: AttentionPattern[]
+  contextLabel?: string
 }
 
 const {
-  title = "Chunked Attention for Streaming",
+  title = 'Chunked Attention for Streaming',
   chunks = [
-    { id: "1", label: "chunk1" },
-    { id: "2", label: "chunk2" },
-    { id: "3", label: "chunk3" },
-    { id: "4", label: "chunk4" }
+    { id: '1', label: 'chunk1' },
+    { id: '2', label: 'chunk2' },
+    { id: '3', label: 'chunk3' },
+    { id: '4', label: 'chunk4' }
   ],
   attentionPatterns = [
     { type: 'self' },
     { type: 'left+self', contextFrames: 32 },
     { type: 'left+self', contextFrames: 32 }
   ],
-  contextLabel = "left ctx"
-} = Astro.props;
+  contextLabel = 'left ctx'
+} = Astro.props
 ---
 
 <div class="chunked-attention">
@@ -44,39 +44,48 @@ const {
     <div class="stream-row">
       <span class="row-label">Audio Stream:</span>
       <div class="chunks">
-        {chunks.map((chunk, index) => (
-          <>
-            <div class="chunk" data-chunk-id={chunk.id}>
-              [{chunk.label}]
-            </div>
-            {index < chunks.length - 1 && <span class="ellipsis"></span>}
-          </>
-        ))}
+        {
+          chunks.map((chunk, index) => (
+            <>
+              <div class="chunk" data-chunk-id={chunk.id}>
+                [{chunk.label}]
+              </div>
+              {index < chunks.length - 1 && <span class="ellipsis" />}
+            </>
+          ))
+        }
         <span class="ellipsis">...</span>
       </div>
     </div>
 
     <div class="connectors">
-      {attentionPatterns.map((_, index) => (
-        <div class="connector-line" style={`left: ${(index + 0.5) * (100 / attentionPatterns.length)}%`}></div>
-      ))}
+      {
+        attentionPatterns.map((_, index) => (
+          <div
+            class="connector-line"
+            style={`left: ${(index + 0.5) * (100 / attentionPatterns.length)}%`}
+          />
+        ))
+      }
     </div>
 
     <div class="attention-row">
       <span class="row-label">Attention:</span>
       <div class="patterns">
-        {attentionPatterns.map((pattern) => (
-          <div class={`pattern ${pattern.type === 'self' ? 'self-only' : 'with-context'}`}>
-            <div class="pattern-type">[{pattern.type}]</div>
-            {pattern.contextFrames && (
-              <div class="context-info">
-                <div class="context-line"></div>
-                <span class="context-frames">{pattern.contextFrames} frames</span>
-                <span class="context-label">{contextLabel}</span>
-              </div>
-            )}
-          </div>
-        ))}
+        {
+          attentionPatterns.map((pattern) => (
+            <div class={`pattern ${pattern.type === 'self' ? 'self-only' : 'with-context'}`}>
+              <div class="pattern-type">[{pattern.type}]</div>
+              {pattern.contextFrames && (
+                <div class="context-info">
+                  <div class="context-line" />
+                  <span class="context-frames">{pattern.contextFrames} frames</span>
+                  <span class="context-label">{contextLabel}</span>
+                </div>
+              )}
+            </div>
+          ))
+        }
       </div>
     </div>
   </div>
@@ -105,7 +114,8 @@ const {
     gap: 0.5rem;
   }
 
-  .stream-row, .attention-row {
+  .stream-row,
+  .attention-row {
     display: flex;
     align-items: flex-start;
     gap: 0.75rem;
@@ -221,7 +231,8 @@ const {
   }
 
   @media (max-width: 500px) {
-    .stream-row, .attention-row {
+    .stream-row,
+    .attention-row {
       flex-direction: column;
     }
 

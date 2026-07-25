@@ -4,19 +4,19 @@
  * Displays different ML model formats with their characteristics
  */
 interface FormatInfo {
-  name: string;
-  extension: string;
-  loadSpeed: 'Fast' | 'Medium' | 'Slow';
-  sizeReduction: string;
-  useCase: string;
-  highlight?: boolean;
+  name: string
+  extension: string
+  loadSpeed: 'Fast' | 'Medium' | 'Slow'
+  sizeReduction: string
+  useCase: string
+  highlight?: boolean
 }
 
 interface Props {
-  title?: string;
+  title?: string
 }
 
-const { title = 'Model Format Comparison' } = Astro.props;
+const { title = 'Model Format Comparison' } = Astro.props
 
 const formats: FormatInfo[] = [
   {
@@ -24,7 +24,7 @@ const formats: FormatInfo[] = [
     extension: '.safetensors',
     loadSpeed: 'Fast',
     sizeReduction: 'None',
-    useCase: 'Default for Transformers, secure loading',
+    useCase: 'Default for Transformers, secure loading'
   },
   {
     name: 'GGUF',
@@ -32,30 +32,34 @@ const formats: FormatInfo[] = [
     loadSpeed: 'Fast',
     sizeReduction: '2-6x',
     useCase: 'llama.cpp, Ollama, CPU inference',
-    highlight: true,
+    highlight: true
   },
   {
     name: 'ONNX',
     extension: '.onnx',
     loadSpeed: 'Medium',
     sizeReduction: 'Varies',
-    useCase: 'Cross-platform deployment',
+    useCase: 'Cross-platform deployment'
   },
   {
     name: 'PyTorch bin',
     extension: '.bin',
     loadSpeed: 'Slow',
     sizeReduction: 'None',
-    useCase: 'Legacy format (security risk)',
-  },
-];
+    useCase: 'Legacy format (security risk)'
+  }
+]
 
 function getSpeedClass(speed: string): string {
   switch (speed) {
-    case 'Fast': return 'speed-fast';
-    case 'Medium': return 'speed-medium';
-    case 'Slow': return 'speed-slow';
-    default: return '';
+    case 'Fast':
+      return 'speed-fast'
+    case 'Medium':
+      return 'speed-medium'
+    case 'Slow':
+      return 'speed-slow'
+    default:
+      return ''
   }
 }
 ---
@@ -63,27 +67,29 @@ function getSpeedClass(speed: string): string {
 <div class="format-compare">
   <div class="format-title">{title}</div>
   <div class="format-grid">
-    {formats.map((format) => (
-      <div class={`format-card ${format.highlight ? 'highlighted' : ''}`}>
-        <div class="format-header">
-          <span class="format-name">{format.name}</span>
-          <code class="format-ext">{format.extension}</code>
-        </div>
-        <div class="format-specs">
-          <div class="spec-row">
-            <span class="spec-label">Load Speed</span>
-            <span class={`spec-value ${getSpeedClass(format.loadSpeed)}`}>
-              {format.loadSpeed}
-            </span>
+    {
+      formats.map((format) => (
+        <div class={`format-card ${format.highlight ? 'highlighted' : ''}`}>
+          <div class="format-header">
+            <span class="format-name">{format.name}</span>
+            <code class="format-ext">{format.extension}</code>
           </div>
-          <div class="spec-row">
-            <span class="spec-label">Size Reduction</span>
-            <span class="spec-value">{format.sizeReduction}</span>
+          <div class="format-specs">
+            <div class="spec-row">
+              <span class="spec-label">Load Speed</span>
+              <span class={`spec-value ${getSpeedClass(format.loadSpeed)}`}>
+                {format.loadSpeed}
+              </span>
+            </div>
+            <div class="spec-row">
+              <span class="spec-label">Size Reduction</span>
+              <span class="spec-value">{format.sizeReduction}</span>
+            </div>
           </div>
+          <div class="format-usecase">{format.useCase}</div>
         </div>
-        <div class="format-usecase">{format.useCase}</div>
-      </div>
-    ))}
+      ))
+    }
   </div>
 </div>
 
@@ -115,7 +121,9 @@ function getSpeedClass(speed: string): string {
     display: flex;
     flex-direction: column;
     gap: 0.875rem;
-    transition: border-color 0.15s ease-out, background 0.15s ease-out;
+    transition:
+      border-color 0.15s ease-out,
+      background 0.15s ease-out;
   }
 
   .format-card:hover {

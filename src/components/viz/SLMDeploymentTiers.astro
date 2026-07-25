@@ -4,91 +4,101 @@
  * From cloud to edge to mobile to browser
  */
 interface DeploymentTier {
-  name: string;
-  device: string;
-  memory: string;
-  models: string[];
-  latency: string;
+  name: string
+  device: string
+  memory: string
+  models: string[]
+  latency: string
 }
 
 interface Props {
-  title?: string;
+  title?: string
 }
 
-const { title } = Astro.props;
+const { title } = Astro.props
 
 const tiers: DeploymentTier[] = [
   {
-    name: "Server",
-    device: "GPU Server",
-    memory: "24-80GB VRAM",
-    models: ["Phi-4 14B", "Qwen 2.5 7B", "Llama 3.2 3B"],
-    latency: "10-50ms"
+    name: 'Server',
+    device: 'GPU Server',
+    memory: '24-80GB VRAM',
+    models: ['Phi-4 14B', 'Qwen 2.5 7B', 'Llama 3.2 3B'],
+    latency: '10-50ms'
   },
   {
-    name: "Desktop",
-    device: "Mac/PC with GPU",
-    memory: "8-16GB RAM",
-    models: ["Phi-4-mini 3.8B", "Gemma 3 4B", "Qwen 2.5 3B"],
-    latency: "30-100ms"
+    name: 'Desktop',
+    device: 'Mac/PC with GPU',
+    memory: '8-16GB RAM',
+    models: ['Phi-4-mini 3.8B', 'Gemma 3 4B', 'Qwen 2.5 3B'],
+    latency: '30-100ms'
   },
   {
-    name: "Edge",
-    device: "Raspberry Pi / NPU",
-    memory: "4-8GB RAM",
-    models: ["Llama 3.2 1B", "SmolLM2 1.7B", "Gemma 3 1B"],
-    latency: "100-500ms"
+    name: 'Edge',
+    device: 'Raspberry Pi / NPU',
+    memory: '4-8GB RAM',
+    models: ['Llama 3.2 1B', 'SmolLM2 1.7B', 'Gemma 3 1B'],
+    latency: '100-500ms'
   },
   {
-    name: "Mobile",
-    device: "Phone / Tablet",
-    memory: "2-6GB RAM",
-    models: ["Gemma 3 270M", "SmolLM 360M", "Phi Silica"],
-    latency: "50-200ms"
+    name: 'Mobile',
+    device: 'Phone / Tablet',
+    memory: '2-6GB RAM',
+    models: ['Gemma 3 270M', 'SmolLM 360M', 'Phi Silica'],
+    latency: '50-200ms'
   }
-];
+]
 ---
 
 <div class="deployment-tiers">
   {title && <div class="tiers-title">{title}</div>}
   <div class="tiers-container">
-    {tiers.map((tier, index) => (
-      <div class="tier-card">
-        <div class="tier-header">
-          <span class="tier-name">{tier.name}</span>
-          <span class="tier-index">{String(index + 1).padStart(2, '0')}</span>
-        </div>
-        <div class="tier-device">{tier.device}</div>
-        <div class="tier-specs">
-          <div class="spec-row">
-            <span class="spec-label">Memory</span>
-            <span class="spec-value">{tier.memory}</span>
+    {
+      tiers.map((tier, index) => (
+        <div class="tier-card">
+          <div class="tier-header">
+            <span class="tier-name">{tier.name}</span>
+            <span class="tier-index">{String(index + 1).padStart(2, '0')}</span>
           </div>
-          <div class="spec-row">
-            <span class="spec-label">Latency</span>
-            <span class="spec-value">{tier.latency}</span>
+          <div class="tier-device">{tier.device}</div>
+          <div class="tier-specs">
+            <div class="spec-row">
+              <span class="spec-label">Memory</span>
+              <span class="spec-value">{tier.memory}</span>
+            </div>
+            <div class="spec-row">
+              <span class="spec-label">Latency</span>
+              <span class="spec-value">{tier.latency}</span>
+            </div>
           </div>
-        </div>
-        <div class="tier-models">
-          <span class="models-label">Suitable models</span>
-          <ul class="model-list">
-            {tier.models.map((model) => (
-              <li>{model}</li>
-            ))}
-          </ul>
-        </div>
-        {index < tiers.length - 1 && (
-          <div class="tier-arrow" aria-hidden="true">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 5v14M19 12l-7 7-7-7"/>
-            </svg>
+          <div class="tier-models">
+            <span class="models-label">Suitable models</span>
+            <ul class="model-list">
+              {tier.models.map((model) => (
+                <li>{model}</li>
+              ))}
+            </ul>
           </div>
-        )}
-      </div>
-    ))}
+          {index < tiers.length - 1 && (
+            <div class="tier-arrow" aria-hidden="true">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M12 5v14M19 12l-7 7-7-7" />
+              </svg>
+            </div>
+          )}
+        </div>
+      ))
+    }
   </div>
   <div class="tiers-note">
-    Deployment tiers represent typical configurations. Actual performance depends on quantization level and specific hardware.
+    Deployment tiers represent typical configurations. Actual performance depends on quantization
+    level and specific hardware.
   </div>
 </div>
 
@@ -199,7 +209,7 @@ const tiers: DeploymentTier[] = [
   }
 
   .model-list li::before {
-    content: ">";
+    content: '>';
     margin-right: 0.5rem;
     color: var(--text-tertiary);
     font-family: var(--mono);

@@ -5,11 +5,11 @@
  * through PyTorch, CUDA configuration, performance tuning, and monitoring
  */
 interface Props {
-  title?: string;
-  layout?: 'horizontal' | 'vertical';
+  title?: string
+  layout?: 'horizontal' | 'vertical'
 }
 
-const { title = "HPC Workflow", layout = 'vertical' } = Astro.props;
+const { title = 'HPC Workflow', layout = 'vertical' } = Astro.props
 
 const stages = [
   {
@@ -52,36 +52,38 @@ const stages = [
     description: 'Track utilization',
     color: 'accent'
   }
-];
+]
 ---
 
 <div class={`hpc-workflow layout-${layout}`}>
   {title && <div class="flow-title">{title}</div>}
 
   <div class="workflow-track">
-    {stages.map((stage, index) => (
-      <>
-        <div class={`workflow-stage ${stage.color}`} data-stage-id={stage.id}>
-          <div class="stage-number">{index + 1}</div>
-          <div class="stage-content">
-            <div class="stage-phase">{stage.phase}</div>
-            <div class="stage-name">{stage.name}</div>
-            <div class="stage-description">{stage.description}</div>
-            <div class="stage-tools">
-              {stage.tools.map((tool) => (
-                <span class="tool-tag">{tool}</span>
-              ))}
+    {
+      stages.map((stage, index) => (
+        <>
+          <div class={`workflow-stage ${stage.color}`} data-stage-id={stage.id}>
+            <div class="stage-number">{index + 1}</div>
+            <div class="stage-content">
+              <div class="stage-phase">{stage.phase}</div>
+              <div class="stage-name">{stage.name}</div>
+              <div class="stage-description">{stage.description}</div>
+              <div class="stage-tools">
+                {stage.tools.map((tool) => (
+                  <span class="tool-tag">{tool}</span>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-        {index < stages.length - 1 && (
-          <div class="workflow-connector">
-            <div class="connector-line"></div>
-            <div class="connector-arrow"></div>
-          </div>
-        )}
-      </>
-    ))}
+          {index < stages.length - 1 && (
+            <div class="workflow-connector">
+              <div class="connector-line" />
+              <div class="connector-arrow" />
+            </div>
+          )}
+        </>
+      ))
+    }
   </div>
 
   <div class="flow-legend">

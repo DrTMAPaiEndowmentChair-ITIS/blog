@@ -4,35 +4,31 @@
  * Shows how text is split into tokens with IDs
  */
 interface Token {
-  text: string;
-  id?: number;
-  type?: 'normal' | 'special' | 'subword';
+  text: string
+  id?: number
+  type?: 'normal' | 'special' | 'subword'
 }
 
 interface Props {
-  tokens: Token[];
-  title?: string;
-  showIds?: boolean;
+  tokens: Token[]
+  title?: string
+  showIds?: boolean
 }
 
-const { tokens, title, showIds = true } = Astro.props;
+const { tokens, title, showIds = true } = Astro.props
 ---
 
 <div class="token-visualizer">
   {title && <div class="viz-title">{title}</div>}
   <div class="token-container">
-    {tokens.map((token, index) => (
-      <div
-        class={`token ${token.type || 'normal'}`}
-        data-token-index={index}
-        tabindex="0"
-      >
-        <span class="token-text">{token.text}</span>
-        {showIds && token.id !== undefined && (
-          <span class="token-id">{token.id}</span>
-        )}
-      </div>
-    ))}
+    {
+      tokens.map((token, index) => (
+        <div class={`token ${token.type || 'normal'}`} data-token-index={index} tabindex="0">
+          <span class="token-text">{token.text}</span>
+          {showIds && token.id !== undefined && <span class="token-id">{token.id}</span>}
+        </div>
+      ))
+    }
   </div>
 </div>
 

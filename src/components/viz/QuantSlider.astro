@@ -4,21 +4,21 @@
  * Client-side JavaScript handles the interactivity
  */
 interface DataPoint {
-  label: string;
-  size: string;
-  quality: number; // 0-100
-  speed: number; // relative, higher is faster
-  description?: string;
+  label: string
+  size: string
+  quality: number // 0-100
+  speed: number // relative, higher is faster
+  description?: string
 }
 
 interface Props {
-  title?: string;
-  dataPoints: DataPoint[];
-  xLabel?: string;
-  yLabel?: string;
+  title?: string
+  dataPoints: DataPoint[]
+  xLabel?: string
+  yLabel?: string
 }
 
-const { title, dataPoints, xLabel = 'Model Size', yLabel = 'Quality' } = Astro.props;
+const { title, dataPoints, xLabel = 'Model Size', yLabel = 'Quality' } = Astro.props
 ---
 
 <div class="quant-slider">
@@ -31,19 +31,21 @@ const { title, dataPoints, xLabel = 'Model Size', yLabel = 'Quality' } = Astro.p
     </div>
 
     <div class="slider-track">
-      {dataPoints.map((point, index) => (
-        <button
-          class="slider-point"
-          data-index={index}
-          data-quality={point.quality}
-          data-speed={point.speed}
-          style={`left: ${(index / (dataPoints.length - 1)) * 100}%`}
-          aria-label={`${point.label}: ${point.size}`}
-        >
-          <span class="point-dot"></span>
-          <span class="point-label">{point.label}</span>
-        </button>
-      ))}
+      {
+        dataPoints.map((point, index) => (
+          <button
+            class="slider-point"
+            data-index={index}
+            data-quality={point.quality}
+            data-speed={point.speed}
+            style={`left: ${(index / (dataPoints.length - 1)) * 100}%`}
+            aria-label={`${point.label}: ${point.size}`}
+          >
+            <span class="point-dot" />
+            <span class="point-label">{point.label}</span>
+          </button>
+        ))
+      }
       <div class="slider-line"></div>
     </div>
 
@@ -80,47 +82,48 @@ const { title, dataPoints, xLabel = 'Model Size', yLabel = 'Quality' } = Astro.p
 <script define:vars={{ dataPoints }}>
   function initQuantSlider() {
     document.querySelectorAll('.quant-slider').forEach((slider) => {
-      const points = slider.querySelectorAll('.slider-point');
-      const infoDisplay = slider.querySelector('#slider-info-display');
+      const points = slider.querySelectorAll('.slider-point')
+      const infoDisplay = slider.querySelector('#slider-info-display')
 
-      if (!infoDisplay) return;
+      if (!infoDisplay) return
 
       const updateDisplay = (index) => {
-        const data = dataPoints[index];
-        if (!data) return;
+        const data = dataPoints[index]
+        if (!data) return
 
-        infoDisplay.querySelector('[data-field="label"]').textContent = data.label;
-        infoDisplay.querySelector('[data-field="size"]').textContent = data.size;
-        infoDisplay.querySelector('[data-field="quality"]').textContent = `${data.quality}%`;
-        infoDisplay.querySelector('[data-field="speed"]').textContent = `${data.speed}x`;
-        infoDisplay.querySelector('[data-field="quality-bar"]').style.width = `${data.quality}%`;
-        infoDisplay.querySelector('[data-field="speed-bar"]').style.width = `${Math.min(data.speed * 20, 100)}%`;
+        infoDisplay.querySelector('[data-field="label"]').textContent = data.label
+        infoDisplay.querySelector('[data-field="size"]').textContent = data.size
+        infoDisplay.querySelector('[data-field="quality"]').textContent = `${data.quality}%`
+        infoDisplay.querySelector('[data-field="speed"]').textContent = `${data.speed}x`
+        infoDisplay.querySelector('[data-field="quality-bar"]').style.width = `${data.quality}%`
+        infoDisplay.querySelector('[data-field="speed-bar"]').style.width =
+          `${Math.min(data.speed * 20, 100)}%`
 
-        const descEl = infoDisplay.querySelector('[data-field="description"]');
+        const descEl = infoDisplay.querySelector('[data-field="description"]')
         if (data.description) {
-          descEl.textContent = data.description;
-          descEl.style.display = 'block';
+          descEl.textContent = data.description
+          descEl.style.display = 'block'
         } else {
-          descEl.style.display = 'none';
+          descEl.style.display = 'none'
         }
 
         points.forEach((p, i) => {
-          p.classList.toggle('active', i === index);
-        });
-      };
+          p.classList.toggle('active', i === index)
+        })
+      }
 
       points.forEach((point, index) => {
-        point.addEventListener('click', () => updateDisplay(index));
-        point.addEventListener('mouseenter', () => updateDisplay(index));
-      });
+        point.addEventListener('click', () => updateDisplay(index))
+        point.addEventListener('mouseenter', () => updateDisplay(index))
+      })
 
       // Initialize with middle point
-      updateDisplay(Math.floor(dataPoints.length / 2));
-    });
+      updateDisplay(Math.floor(dataPoints.length / 2))
+    })
   }
 
-  initQuantSlider();
-  document.addEventListener('astro:after-swap', initQuantSlider);
+  initQuantSlider()
+  document.addEventListener('astro:after-swap', initQuantSlider)
 </script>
 
 <style>

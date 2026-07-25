@@ -5,13 +5,13 @@
  * Demonstrates sparse activation pattern
  */
 interface Props {
-  showLabels?: boolean;
-  numExperts?: number;
-  activeExperts?: number;
+  showLabels?: boolean
+  numExperts?: number
+  activeExperts?: number
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- props reserved for future dynamic expert rendering
-const { showLabels = true, numExperts = 8, activeExperts = 2 } = Astro.props;
+const { showLabels = true, numExperts = 8, activeExperts = 2 } = Astro.props
 ---
 
 <div class="moe-routing">
@@ -27,7 +27,12 @@ const { showLabels = true, numExperts = 8, activeExperts = 2 } = Astro.props;
     <!-- Arrow to Router -->
     <div class="routing-arrow">
       <svg width="40" height="24" viewBox="0 0 40 24" fill="none">
-        <path d="M2 12H38M38 12L30 4M38 12L30 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path
+          d="M2 12H38M38 12L30 4M38 12L30 20"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"></path>
       </svg>
     </div>
 
@@ -56,14 +61,44 @@ const { showLabels = true, numExperts = 8, activeExperts = 2 } = Astro.props;
     <div class="expert-fanout">
       <svg class="fanout-svg" viewBox="0 0 80 160" fill="none">
         <!-- Lines from center to each expert -->
-        <path d="M10 80 L70 20" stroke="var(--text-tertiary)" stroke-width="1" stroke-dasharray="4 2" opacity="0.3"/>
-        <path d="M10 80 L70 40" stroke="var(--expert-active)" stroke-width="2"/>
-        <path d="M10 80 L70 60" stroke="var(--text-tertiary)" stroke-width="1" stroke-dasharray="4 2" opacity="0.3"/>
-        <path d="M10 80 L70 80" stroke="var(--text-tertiary)" stroke-width="1" stroke-dasharray="4 2" opacity="0.3"/>
-        <path d="M10 80 L70 100" stroke="var(--text-tertiary)" stroke-width="1" stroke-dasharray="4 2" opacity="0.3"/>
-        <path d="M10 80 L70 120" stroke="var(--expert-active)" stroke-width="2"/>
-        <path d="M10 80 L70 140" stroke="var(--text-tertiary)" stroke-width="1" stroke-dasharray="4 2" opacity="0.3"/>
-        <path d="M10 80 L70 160" stroke="var(--text-tertiary)" stroke-width="1" stroke-dasharray="4 2" opacity="0.3"/>
+        <path
+          d="M10 80 L70 20"
+          stroke="var(--text-tertiary)"
+          stroke-width="1"
+          stroke-dasharray="4 2"
+          opacity="0.3"></path>
+        <path d="M10 80 L70 40" stroke="var(--expert-active)" stroke-width="2"></path>
+        <path
+          d="M10 80 L70 60"
+          stroke="var(--text-tertiary)"
+          stroke-width="1"
+          stroke-dasharray="4 2"
+          opacity="0.3"></path>
+        <path
+          d="M10 80 L70 80"
+          stroke="var(--text-tertiary)"
+          stroke-width="1"
+          stroke-dasharray="4 2"
+          opacity="0.3"></path>
+        <path
+          d="M10 80 L70 100"
+          stroke="var(--text-tertiary)"
+          stroke-width="1"
+          stroke-dasharray="4 2"
+          opacity="0.3"></path>
+        <path d="M10 80 L70 120" stroke="var(--expert-active)" stroke-width="2"></path>
+        <path
+          d="M10 80 L70 140"
+          stroke="var(--text-tertiary)"
+          stroke-width="1"
+          stroke-dasharray="4 2"
+          opacity="0.3"></path>
+        <path
+          d="M10 80 L70 160"
+          stroke="var(--text-tertiary)"
+          stroke-width="1"
+          stroke-dasharray="4 2"
+          opacity="0.3"></path>
       </svg>
     </div>
 
@@ -106,7 +141,12 @@ const { showLabels = true, numExperts = 8, activeExperts = 2 } = Astro.props;
     <!-- Combine Arrow -->
     <div class="routing-arrow combine-arrow">
       <svg width="40" height="24" viewBox="0 0 40 24" fill="none">
-        <path d="M2 12H38M38 12L30 4M38 12L30 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path
+          d="M2 12H38M38 12L30 4M38 12L30 20"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"></path>
       </svg>
       <span class="arrow-label">weighted sum</span>
     </div>
@@ -115,23 +155,27 @@ const { showLabels = true, numExperts = 8, activeExperts = 2 } = Astro.props;
     <div class="routing-output">
       <div class="output-box">
         <span class="output-text">Output</span>
-        <span class="output-formula">y = w<sub>2</sub>E<sub>2</sub>(h) + w<sub>6</sub>E<sub>6</sub>(h)</span>
+        <span class="output-formula"
+          >y = w<sub>2</sub>E<sub>2</sub>(h) + w<sub>6</sub>E<sub>6</sub>(h)</span
+        >
       </div>
     </div>
   </div>
 
-  {showLabels && (
-    <div class="routing-legend">
-      <div class="legend-item">
-        <span class="legend-dot active"></span>
-        <span class="legend-text">Active experts (Top-K)</span>
+  {
+    showLabels && (
+      <div class="routing-legend">
+        <div class="legend-item">
+          <span class="legend-dot active" />
+          <span class="legend-text">Active experts (Top-K)</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot inactive" />
+          <span class="legend-text">Inactive experts (skipped)</span>
+        </div>
       </div>
-      <div class="legend-item">
-        <span class="legend-dot inactive"></span>
-        <span class="legend-text">Inactive experts (skipped)</span>
-      </div>
-    </div>
-  )}
+    )
+  }
 </div>
 
 <style>

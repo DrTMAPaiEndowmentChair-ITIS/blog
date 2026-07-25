@@ -4,35 +4,35 @@
  * For diagrams with parallel branches that merge, like voice conversion
  */
 interface Node {
-  id: string;
-  label: string;
-  sublabel?: string;
-  color?: 'accent' | 'highlight' | 'muted';
+  id: string
+  label: string
+  sublabel?: string
+  color?: 'accent' | 'highlight' | 'muted'
 }
 
 interface Props {
-  title?: string;
-  inputLabel?: string;
-  outputLabel?: string;
-  leftBranch: Node[];
-  rightBranch: Node[];
-  mergeNode: Node;
-  postMerge?: Node[];
-  leftLabel?: string;
-  rightLabel?: string;
+  title?: string
+  inputLabel?: string
+  outputLabel?: string
+  leftBranch: Node[]
+  rightBranch: Node[]
+  mergeNode: Node
+  postMerge?: Node[]
+  leftLabel?: string
+  rightLabel?: string
 }
 
 const {
   title,
-  inputLabel = "Input",
-  outputLabel = "Output",
+  inputLabel = 'Input',
+  outputLabel = 'Output',
   leftBranch,
   rightBranch,
   mergeNode,
   postMerge = [],
   leftLabel,
   rightLabel
-} = Astro.props;
+} = Astro.props
 ---
 
 <div class="branching-flow">
@@ -45,15 +45,17 @@ const {
     <div class="branch-section">
       <div class="branch left">
         {leftLabel && <div class="branch-label">{leftLabel}</div>}
-        {leftBranch.map((node, index) => (
-          <>
-            <div class={`node-box ${node.color || 'muted'}`}>
-              <div class="node-label">{node.label}</div>
-              {node.sublabel && <div class="node-sublabel">{node.sublabel}</div>}
-            </div>
-            {index < leftBranch.length - 1 && <div class="connector down small"></div>}
-          </>
-        ))}
+        {
+          leftBranch.map((node, index) => (
+            <>
+              <div class={`node-box ${node.color || 'muted'}`}>
+                <div class="node-label">{node.label}</div>
+                {node.sublabel && <div class="node-sublabel">{node.sublabel}</div>}
+              </div>
+              {index < leftBranch.length - 1 && <div class="connector down small" />}
+            </>
+          ))
+        }
       </div>
 
       <div class="branch-connector">
@@ -62,15 +64,17 @@ const {
 
       <div class="branch right">
         {rightLabel && <div class="branch-label">{rightLabel}</div>}
-        {rightBranch.map((node, index) => (
-          <>
-            <div class={`node-box ${node.color || 'muted'}`}>
-              <div class="node-label">{node.label}</div>
-              {node.sublabel && <div class="node-sublabel">{node.sublabel}</div>}
-            </div>
-            {index < rightBranch.length - 1 && <div class="connector down small"></div>}
-          </>
-        ))}
+        {
+          rightBranch.map((node, index) => (
+            <>
+              <div class={`node-box ${node.color || 'muted'}`}>
+                <div class="node-label">{node.label}</div>
+                {node.sublabel && <div class="node-sublabel">{node.sublabel}</div>}
+              </div>
+              {index < rightBranch.length - 1 && <div class="connector down small" />}
+            </>
+          ))
+        }
       </div>
     </div>
 
@@ -84,15 +88,17 @@ const {
       {mergeNode.sublabel && <div class="node-sublabel">{mergeNode.sublabel}</div>}
     </div>
 
-    {postMerge.map((node) => (
-      <>
-        <div class="connector down"></div>
-        <div class={`node-box ${node.color || 'muted'}`}>
-          <div class="node-label">{node.label}</div>
-          {node.sublabel && <div class="node-sublabel">{node.sublabel}</div>}
-        </div>
-      </>
-    ))}
+    {
+      postMerge.map((node) => (
+        <>
+          <div class="connector down" />
+          <div class={`node-box ${node.color || 'muted'}`}>
+            <div class="node-label">{node.label}</div>
+            {node.sublabel && <div class="node-sublabel">{node.sublabel}</div>}
+          </div>
+        </>
+      ))
+    }
 
     <div class="connector down"></div>
     <div class="io-node output">{outputLabel}</div>

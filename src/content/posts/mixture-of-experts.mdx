@@ -1,5 +1,5 @@
 ---
-title: "Mixture of Experts: Sparse Computation for Efficient LLMs"
+title: 'Mixture of Experts: Sparse Computation for Efficient LLMs'
 pubDate: 2026-01-26
 author: 'Aadit Agrawal'
 category: 'Models & Training'
@@ -8,8 +8,8 @@ topics: ['MoE', 'Transformers', 'Sparse models']
 featured: true
 ---
 
-import MoERouting from '../../components/viz/MoERouting.astro';
-import MoEComparison from '../../components/viz/MoEComparison.astro';
+import MoERouting from '../../components/viz/MoERouting.astro'
+import MoEComparison from '../../components/viz/MoEComparison.astro'
 
 Dense transformer models activate every parameter for every token. This approach scales poorly; doubling model capacity means doubling compute. Mixture of Experts (MoE) breaks this constraint by routing each token to a subset of specialized sub-networks, enabling models with hundreds of billions of parameters while maintaining reasonable inference costs.
 
@@ -23,7 +23,7 @@ Consider Mixtral 8x7B. The model contains 46.7 billion total parameters, but eac
 
 <MoERouting />
 
-The routing mechanism computes a probability distribution over experts for each token. A gating function G(x) = softmax(W_g * x) produces weights, and the top-K experts by weight process the token. The final output combines expert outputs weighted by their routing scores.
+The routing mechanism computes a probability distribution over experts for each token. A gating function G(x) = softmax(W_g \* x) produces weights, and the top-K experts by weight process the token. The final output combines expert outputs weighted by their routing scores.
 
 ## How Routing Works at Implementation Level
 

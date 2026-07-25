@@ -1,10 +1,6 @@
 // Date format types
 export type DateFormat =
-  | 'YYYY-MM-DD'
-  | 'MM-DD-YYYY'
-  | 'DD-MM-YYYY'
-  | 'MONTH DAY YYYY'
-  | 'DAY MONTH YYYY'
+  'YYYY-MM-DD' | 'MM-DD-YYYY' | 'DD-MM-YYYY' | 'MONTH DAY YYYY' | 'DAY MONTH YYYY'
 
 // Site info configuration type
 export interface SiteInfo {

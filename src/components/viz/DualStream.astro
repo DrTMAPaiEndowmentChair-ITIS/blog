@@ -4,27 +4,27 @@
  * For architectures like Moshi that process two parallel streams
  */
 interface StreamEvent {
-  content: string;
-  type: 'speech' | 'silence';
+  content: string
+  type: 'speech' | 'silence'
 }
 
 interface Props {
-  title?: string;
-  topStreamLabel?: string;
-  bottomStreamLabel?: string;
-  topStream: StreamEvent[];
-  bottomStream: StreamEvent[];
-  caption?: string;
+  title?: string
+  topStreamLabel?: string
+  bottomStreamLabel?: string
+  topStream: StreamEvent[]
+  bottomStream: StreamEvent[]
+  caption?: string
 }
 
 const {
-  title = "Full-Duplex Audio Streams",
-  topStreamLabel = "AI",
-  bottomStreamLabel = "User",
+  title = 'Full-Duplex Audio Streams',
+  topStreamLabel = 'AI',
+  bottomStreamLabel = 'User',
   topStream,
   bottomStream,
   caption
-} = Astro.props;
+} = Astro.props
 ---
 
 <div class="dual-stream">
@@ -40,22 +40,26 @@ const {
     <div class="stream-row">
       <div class="stream-label">{topStreamLabel}:</div>
       <div class="stream-events">
-        {topStream.map((event) => (
-          <div class={`event ${event.type}`}>
-            {event.type === 'speech' ? `"${event.content}"` : `[${event.content}]`}
-          </div>
-        ))}
+        {
+          topStream.map((event) => (
+            <div class={`event ${event.type}`}>
+              {event.type === 'speech' ? `"${event.content}"` : `[${event.content}]`}
+            </div>
+          ))
+        }
       </div>
     </div>
 
     <div class="stream-row">
       <div class="stream-label">{bottomStreamLabel}:</div>
       <div class="stream-events">
-        {bottomStream.map((event) => (
-          <div class={`event ${event.type}`}>
-            {event.type === 'speech' ? `"${event.content}"` : `[${event.content}]`}
-          </div>
-        ))}
+        {
+          bottomStream.map((event) => (
+            <div class={`event ${event.type}`}>
+              {event.type === 'speech' ? `"${event.content}"` : `[${event.content}]`}
+            </div>
+          ))
+        }
       </div>
     </div>
   </div>

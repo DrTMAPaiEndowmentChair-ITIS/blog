@@ -4,59 +4,59 @@
  * Shows TensorRT-LLM vs vLLM vs TGI characteristics
  */
 interface Engine {
-  name: string;
-  highlight?: boolean;
+  name: string
+  highlight?: boolean
   metrics: {
-    throughput: string;
-    latency: string;
-    setupTime: string;
-    bestFor: string;
-  };
+    throughput: string
+    latency: string
+    setupTime: string
+    bestFor: string
+  }
 }
 
 interface Props {
-  title?: string;
+  title?: string
 }
 
-const { title = "LLM Inference Engine Comparison" } = Astro.props;
+const { title = 'LLM Inference Engine Comparison' } = Astro.props
 
 const engines: Engine[] = [
   {
-    name: "TensorRT-LLM",
+    name: 'TensorRT-LLM',
     highlight: true,
     metrics: {
-      throughput: "700 tok/s @ 100 users",
-      latency: "35-50ms TTFT",
-      setupTime: "1-2 weeks",
-      bestFor: "Peak performance"
+      throughput: '700 tok/s @ 100 users',
+      latency: '35-50ms TTFT',
+      setupTime: '1-2 weeks',
+      bestFor: 'Peak performance'
     }
   },
   {
-    name: "vLLM",
+    name: 'vLLM',
     metrics: {
-      throughput: "600-650 tok/s @ 100 users",
-      latency: "50-80ms TTFT",
-      setupTime: "1-2 days",
-      bestFor: "High concurrency"
+      throughput: '600-650 tok/s @ 100 users',
+      latency: '50-80ms TTFT',
+      setupTime: '1-2 days',
+      bestFor: 'High concurrency'
     }
   },
   {
-    name: "TGI v3",
+    name: 'TGI v3',
     metrics: {
-      throughput: "600-650 tok/s @ 100 users",
-      latency: "50-70ms TTFT",
-      setupTime: "1-2 days",
-      bestFor: "Long contexts"
+      throughput: '600-650 tok/s @ 100 users',
+      latency: '50-70ms TTFT',
+      setupTime: '1-2 days',
+      bestFor: 'Long contexts'
     }
   }
-];
+]
 
 const metricLabels: Record<string, string> = {
-  throughput: "Throughput (A100 80GB)",
-  latency: "Time to First Token",
-  setupTime: "Setup Complexity",
-  bestFor: "Best Use Case"
-};
+  throughput: 'Throughput (A100 80GB)',
+  latency: 'Time to First Token',
+  setupTime: 'Setup Complexity',
+  bestFor: 'Best Use Case'
+}
 ---
 
 <div class="inference-compare">
@@ -65,23 +65,27 @@ const metricLabels: Record<string, string> = {
   <div class="compare-grid">
     <div class="grid-header">
       <div class="grid-cell header-cell metric-label"></div>
-      {engines.map((engine) => (
-        <div class={`grid-cell header-cell engine-name ${engine.highlight ? 'highlighted' : ''}`}>
-          {engine.name}
-        </div>
-      ))}
+      {
+        engines.map((engine) => (
+          <div class={`grid-cell header-cell engine-name ${engine.highlight ? 'highlighted' : ''}`}>
+            {engine.name}
+          </div>
+        ))
+      }
     </div>
 
-    {Object.keys(metricLabels).map((key) => (
-      <div class="grid-row" data-metric={key}>
-        <div class="grid-cell metric-label">{metricLabels[key]}</div>
-        {engines.map((engine) => (
-          <div class={`grid-cell metric-value ${engine.highlight ? 'highlighted' : ''}`}>
-            {engine.metrics[key as keyof typeof engine.metrics]}
-          </div>
-        ))}
-      </div>
-    ))}
+    {
+      Object.keys(metricLabels).map((key) => (
+        <div class="grid-row" data-metric={key}>
+          <div class="grid-cell metric-label">{metricLabels[key]}</div>
+          {engines.map((engine) => (
+            <div class={`grid-cell metric-value ${engine.highlight ? 'highlighted' : ''}`}>
+              {engine.metrics[key as keyof typeof engine.metrics]}
+            </div>
+          ))}
+        </div>
+      ))
+    }
   </div>
 
   <div class="compare-note">

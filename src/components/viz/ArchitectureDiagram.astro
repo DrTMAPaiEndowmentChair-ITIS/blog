@@ -4,45 +4,51 @@
  * Displays a pipeline/flow diagram with hover states and optional descriptions
  */
 interface Block {
-  id: string;
-  label: string;
-  description?: string;
-  color?: 'accent' | 'highlight' | 'muted';
+  id: string
+  label: string
+  description?: string
+  color?: 'accent' | 'highlight' | 'muted'
 }
 
 interface Props {
-  blocks: Block[];
-  title?: string;
-  direction?: 'horizontal' | 'vertical';
+  blocks: Block[]
+  title?: string
+  direction?: 'horizontal' | 'vertical'
 }
 
-const { blocks, title, direction = 'horizontal' } = Astro.props;
+const { blocks, title, direction = 'horizontal' } = Astro.props
 ---
 
 <div class="arch-diagram" data-direction={direction}>
   {title && <div class="diagram-title">{title}</div>}
   <div class="diagram-flow">
-    {blocks.map((block, index) => (
-      <>
-        <div
-          class={`diagram-block ${block.color || 'muted'}`}
-          data-block-id={block.id}
-          tabindex="0"
-        >
-          <span class="block-label">{block.label}</span>
-          {block.description && (
-            <div class="block-tooltip">{block.description}</div>
-          )}
-        </div>
-        {index < blocks.length - 1 && (
-          <div class="diagram-arrow">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path d="M5 12H19M19 12L13 6M19 12L13 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+    {
+      blocks.map((block, index) => (
+        <>
+          <div
+            class={`diagram-block ${block.color || 'muted'}`}
+            data-block-id={block.id}
+            tabindex="0"
+          >
+            <span class="block-label">{block.label}</span>
+            {block.description && <div class="block-tooltip">{block.description}</div>}
           </div>
-        )}
-      </>
-    ))}
+          {index < blocks.length - 1 && (
+            <div class="diagram-arrow">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M5 12H19M19 12L13 6M19 12L13 18"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </div>
+          )}
+        </>
+      ))
+    }
   </div>
 </div>
 
@@ -72,11 +78,11 @@ const { blocks, title, direction = 'horizontal' } = Astro.props;
     justify-content: center;
   }
 
-  [data-direction="vertical"] .diagram-flow {
+  [data-direction='vertical'] .diagram-flow {
     flex-direction: column;
   }
 
-  [data-direction="vertical"] .diagram-arrow {
+  [data-direction='vertical'] .diagram-arrow {
     transform: rotate(90deg);
   }
 

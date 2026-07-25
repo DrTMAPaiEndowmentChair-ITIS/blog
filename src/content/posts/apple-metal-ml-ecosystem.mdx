@@ -7,7 +7,7 @@ description: 'Understand the complete Apple machine-learning stack—from Metal 
 topics: ['Metal', 'Core ML', 'Apple Silicon']
 ---
 
-import AppleMLStack from '../../components/viz/AppleMLStack.astro';
+import AppleMLStack from '../../components/viz/AppleMLStack.astro'
 
 ## Introduction
 
@@ -258,18 +258,21 @@ CoreML and MLX serve different purposes despite both running on Apple Silicon. U
 ### Decision Framework
 
 **Use CoreML when:**
+
 - Building iOS, watchOS, tvOS, or visionOS apps
 - Power efficiency is critical (mobile devices)
 - You need Neural Engine acceleration
 - Deploying to end users through the App Store
 
 **Use MLX when:**
+
 - Running experiments on your Mac
 - Training or fine-tuning models
 - Working with LLMs interactively
 - Building macOS developer tools
 
 **Use both when:**
+
 - Developing on Mac with MLX, then converting to CoreML for deployment
 - Research teams shipping production apps
 
@@ -836,15 +839,15 @@ CoreML manages this complexity by analyzing your model and routing operations to
 
 Apple's Metal ML ecosystem provides multiple layers of optimization:
 
-| Layer | Purpose | When to Use |
-|-------|---------|-------------|
-| CoreML | Production deployment | iOS/macOS/watchOS/visionOS apps |
-| MLX | Research and training | Mac-based ML development |
-| MPSGraph | GPU compute graphs | Custom inference engines |
-| MPS | GPU primitives | Building custom ML ops |
-| BNNS | CPU inference | Low-latency, power-sensitive workloads |
-| Accelerate | Numerical computing | Preprocessing, custom algorithms |
-| Metal | Custom GPU kernels | Operations not in MPS |
+| Layer      | Purpose               | When to Use                            |
+| ---------- | --------------------- | -------------------------------------- |
+| CoreML     | Production deployment | iOS/macOS/watchOS/visionOS apps        |
+| MLX        | Research and training | Mac-based ML development               |
+| MPSGraph   | GPU compute graphs    | Custom inference engines               |
+| MPS        | GPU primitives        | Building custom ML ops                 |
+| BNNS       | CPU inference         | Low-latency, power-sensitive workloads |
+| Accelerate | Numerical computing   | Preprocessing, custom algorithms       |
+| Metal      | Custom GPU kernels    | Operations not in MPS                  |
 
 For most developers, the right approach is:
 

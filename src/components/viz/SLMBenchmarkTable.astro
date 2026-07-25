@@ -4,21 +4,21 @@
  * Shows key metrics across popular SLM families
  */
 interface ModelData {
-  name: string;
-  params: string;
-  mmlu?: string;
-  math?: string;
-  humaneval?: string;
-  context: string;
-  highlight?: boolean;
+  name: string
+  params: string
+  mmlu?: string
+  math?: string
+  humaneval?: string
+  context: string
+  highlight?: boolean
 }
 
 interface Props {
-  title?: string;
-  models: ModelData[];
+  title?: string
+  models: ModelData[]
 }
 
-const { title, models } = Astro.props;
+const { title, models } = Astro.props
 ---
 
 <div class="slm-benchmark">
@@ -36,22 +36,24 @@ const { title, models } = Astro.props;
         </tr>
       </thead>
       <tbody>
-        {models.map((model) => (
-          <tr class={model.highlight ? 'highlighted' : ''}>
-            <td class="model-name">{model.name}</td>
-            <td class="mono">{model.params}</td>
-            <td class="mono">{model.mmlu || '-'}</td>
-            <td class="mono">{model.math || '-'}</td>
-            <td class="mono">{model.humaneval || '-'}</td>
-            <td class="mono">{model.context}</td>
-          </tr>
-        ))}
+        {
+          models.map((model) => (
+            <tr class={model.highlight ? 'highlighted' : ''}>
+              <td class="model-name">{model.name}</td>
+              <td class="mono">{model.params}</td>
+              <td class="mono">{model.mmlu || '-'}</td>
+              <td class="mono">{model.math || '-'}</td>
+              <td class="mono">{model.humaneval || '-'}</td>
+              <td class="mono">{model.context}</td>
+            </tr>
+          ))
+        }
       </tbody>
     </table>
   </div>
   <div class="table-note">
-    Benchmark scores compiled from official model releases and technical reports.
-    MMLU = Multitask Language Understanding; MATH = competition-level math; HumanEval = code generation.
+    Benchmark scores compiled from official model releases and technical reports. MMLU = Multitask
+    Language Understanding; MATH = competition-level math; HumanEval = code generation.
   </div>
 </div>
 
@@ -142,7 +144,8 @@ const { title, models } = Astro.props;
   }
 
   @media (max-width: 600px) {
-    th, td {
+    th,
+    td {
       padding: 0.5rem 0.625rem;
       font-size: 0.8125rem;
     }

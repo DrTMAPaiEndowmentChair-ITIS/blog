@@ -6,11 +6,11 @@
  * With image input on left and text output on right
  */
 interface Props {
-  showLabels?: boolean;
-  compact?: boolean;
+  showLabels?: boolean
+  compact?: boolean
 }
 
-const { showLabels = true, compact = false } = Astro.props;
+const { showLabels = true, compact = false } = Astro.props
 ---
 
 <div class="vlm-architecture" data-compact={compact}>
@@ -18,10 +18,17 @@ const { showLabels = true, compact = false } = Astro.props;
     <!-- Input: Image -->
     <div class="vlm-input">
       <div class="input-icon">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <circle cx="8.5" cy="8.5" r="1.5" />
-          <path d="M21 15l-5-5L5 21" />
+        <svg
+          width="32"
+          height="32"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
+          <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <path d="M21 15l-5-5L5 21"></path>
         </svg>
       </div>
       {showLabels && <span class="input-label">Image</span>}
@@ -29,7 +36,12 @@ const { showLabels = true, compact = false } = Astro.props;
 
     <div class="vlm-arrow input-arrow">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-        <path d="M5 12H19M19 12L13 6M19 12L13 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path
+          d="M5 12H19M19 12L13 6M19 12L13 18"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"></path>
       </svg>
     </div>
 
@@ -45,9 +57,7 @@ const { showLabels = true, compact = false } = Astro.props;
           <span class="model-tag">SigLIP</span>
           <span class="model-tag">CLIP</span>
         </div>
-        <div class="component-description">
-          Converts image patches into feature vectors
-        </div>
+        <div class="component-description">Converts image patches into feature vectors</div>
       </div>
       <div class="component-detail">
         <div class="detail-row">
@@ -63,7 +73,12 @@ const { showLabels = true, compact = false } = Astro.props;
 
     <div class="vlm-arrow">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-        <path d="M5 12H19M19 12L13 6M19 12L13 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path
+          d="M5 12H19M19 12L13 6M19 12L13 18"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"></path>
       </svg>
       <span class="arrow-label">patch embeddings</span>
     </div>
@@ -80,9 +95,7 @@ const { showLabels = true, compact = false } = Astro.props;
           <span class="model-tag">Linear</span>
           <span class="model-tag">Adapter</span>
         </div>
-        <div class="component-description">
-          Bridges vision and language spaces
-        </div>
+        <div class="component-description">Bridges vision and language spaces</div>
       </div>
       <div class="component-detail">
         <div class="detail-row">
@@ -94,7 +107,12 @@ const { showLabels = true, compact = false } = Astro.props;
 
     <div class="vlm-arrow">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-        <path d="M5 12H19M19 12L13 6M19 12L13 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path
+          d="M5 12H19M19 12L13 6M19 12L13 18"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"></path>
       </svg>
       <span class="arrow-label">aligned tokens</span>
     </div>
@@ -111,9 +129,7 @@ const { showLabels = true, compact = false } = Astro.props;
           <span class="model-tag">Qwen</span>
           <span class="model-tag">Gemma</span>
         </div>
-        <div class="component-description">
-          Generates text from multimodal context
-        </div>
+        <div class="component-description">Generates text from multimodal context</div>
       </div>
       <div class="component-detail">
         <div class="detail-row">
@@ -125,17 +141,29 @@ const { showLabels = true, compact = false } = Astro.props;
 
     <div class="vlm-arrow output-arrow">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-        <path d="M5 12H19M19 12L13 6M19 12L13 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path
+          d="M5 12H19M19 12L13 6M19 12L13 18"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"></path>
       </svg>
     </div>
 
     <!-- Output: Text -->
     <div class="vlm-output">
       <div class="output-icon">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M4 7V4h16v3" />
-          <path d="M9 20h6" />
-          <path d="M12 4v16" />
+        <svg
+          width="32"
+          height="32"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
+          <path d="M4 7V4h16v3"></path>
+          <path d="M9 20h6"></path>
+          <path d="M12 4v16"></path>
         </svg>
       </div>
       {showLabels && <span class="output-label">Text</span>}
@@ -385,16 +413,16 @@ const { showLabels = true, compact = false } = Astro.props;
   }
 
   /* Compact mode */
-  [data-compact="true"] .vlm-component {
+  [data-compact='true'] .vlm-component {
     min-width: 120px;
     max-width: 150px;
   }
 
-  [data-compact="true"] .component-description {
+  [data-compact='true'] .component-description {
     display: none;
   }
 
-  [data-compact="true"] .component-body {
+  [data-compact='true'] .component-body {
     padding: 0.5rem;
   }
 

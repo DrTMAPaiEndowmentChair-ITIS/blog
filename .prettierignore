@@ -5,6 +5,11 @@ dist/
 # Dependencies
 node_modules/
 
+# Vendored, already-minified assets. Formatting these expands a one-line file
+# into a thousand and buries real changes in the diff.
+*.min.css
+*.min.js
+
 # Package manager files
 package-lock.json
 yarn.lock

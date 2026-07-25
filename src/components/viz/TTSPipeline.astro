@@ -4,64 +4,60 @@
  * Vertical flow diagram for text-to-speech architectures
  */
 interface Stage {
-  id: string;
-  label: string;
-  sublabel?: string;
-  details?: string[];
-  annotation?: string;
-  color?: 'accent' | 'highlight' | 'muted';
+  id: string
+  label: string
+  sublabel?: string
+  details?: string[]
+  annotation?: string
+  color?: 'accent' | 'highlight' | 'muted'
 }
 
 interface Props {
-  title?: string;
-  subtitle?: string;
-  inputLabel?: string;
-  outputLabel?: string;
-  stages: Stage[];
+  title?: string
+  subtitle?: string
+  inputLabel?: string
+  outputLabel?: string
+  stages: Stage[]
 }
 
-const {
-  title,
-  subtitle,
-  inputLabel = "Input",
-  outputLabel = "Output",
-  stages
-} = Astro.props;
+const { title, subtitle, inputLabel = 'Input', outputLabel = 'Output', stages } = Astro.props
 ---
 
 <div class="tts-pipeline">
-  {title && (
-    <div class="pipeline-header">
-      <div class="pipeline-title">{title}</div>
-      {subtitle && <div class="pipeline-subtitle">{subtitle}</div>}
-    </div>
-  )}
+  {
+    title && (
+      <div class="pipeline-header">
+        <div class="pipeline-title">{title}</div>
+        {subtitle && <div class="pipeline-subtitle">{subtitle}</div>}
+      </div>
+    )
+  }
 
   <div class="pipeline-container">
     <div class="io-node input">{inputLabel}</div>
     <div class="connector down"></div>
 
-    {stages.map((stage, index) => (
-      <>
-        <div class={`stage-box ${stage.color || 'muted'}`} data-stage-id={stage.id}>
-          <div class="stage-content">
-            <div class="stage-label">{stage.label}</div>
-            {stage.sublabel && <div class="stage-sublabel">{stage.sublabel}</div>}
-            {stage.details && (
-              <div class="stage-details">
-                {stage.details.map(detail => (
-                  <div class="detail-line">{detail}</div>
-                ))}
-              </div>
-            )}
+    {
+      stages.map((stage, index) => (
+        <>
+          <div class={`stage-box ${stage.color || 'muted'}`} data-stage-id={stage.id}>
+            <div class="stage-content">
+              <div class="stage-label">{stage.label}</div>
+              {stage.sublabel && <div class="stage-sublabel">{stage.sublabel}</div>}
+              {stage.details && (
+                <div class="stage-details">
+                  {stage.details.map((detail) => (
+                    <div class="detail-line">{detail}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {stage.annotation && <div class="stage-annotation">{stage.annotation}</div>}
           </div>
-          {stage.annotation && (
-            <div class="stage-annotation">{stage.annotation}</div>
-          )}
-        </div>
-        {index < stages.length - 1 && <div class="connector down"></div>}
-      </>
-    ))}
+          {index < stages.length - 1 && <div class="connector down" />}
+        </>
+      ))
+    }
 
     <div class="connector down"></div>
     <div class="io-node output">{outputLabel}</div>

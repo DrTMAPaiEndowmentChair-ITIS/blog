@@ -4,57 +4,57 @@
  * Shows the "macaron" structure with sandwich pattern
  */
 interface Module {
-  name: string;
-  details?: string[];
-  annotation?: string;
-  color?: 'accent' | 'highlight' | 'muted';
+  name: string
+  details?: string[]
+  annotation?: string
+  color?: 'accent' | 'highlight' | 'muted'
 }
 
 interface Props {
-  title?: string;
-  modules?: Module[];
+  title?: string
+  modules?: Module[]
 }
 
-const { title = "Conformer Block Structure" } = Astro.props;
+const { title = 'Conformer Block Structure' } = Astro.props
 
 const defaultModules: Module[] = [
   {
-    name: "Feed-Forward (half-step)",
-    details: ["x + 0.5 * FFN(x)"],
+    name: 'Feed-Forward (half-step)',
+    details: ['x + 0.5 * FFN(x)'],
     annotation: 'First "bun"',
-    color: "accent"
+    color: 'accent'
   },
   {
-    name: "Multi-Head Self-Attention",
-    details: ["+ Relative Positional Encoding"],
-    color: "highlight"
+    name: 'Multi-Head Self-Attention',
+    details: ['+ Relative Positional Encoding'],
+    color: 'highlight'
   },
   {
-    name: "Convolution Module",
+    name: 'Convolution Module',
     details: [
-      "Pointwise Conv (2x expand)",
-      "GLU activation",
-      "Depthwise Conv (kernel=31)",
-      "BatchNorm",
-      "Swish activation",
-      "Pointwise Conv (compress)"
+      'Pointwise Conv (2x expand)',
+      'GLU activation',
+      'Depthwise Conv (kernel=31)',
+      'BatchNorm',
+      'Swish activation',
+      'Pointwise Conv (compress)'
     ],
     annotation: 'The "filling"',
-    color: "highlight"
+    color: 'highlight'
   },
   {
-    name: "Feed-Forward (half-step)",
-    details: ["x + 0.5 * FFN(x)"],
+    name: 'Feed-Forward (half-step)',
+    details: ['x + 0.5 * FFN(x)'],
     annotation: 'Second "bun"',
-    color: "accent"
+    color: 'accent'
   },
   {
-    name: "LayerNorm",
-    color: "muted"
+    name: 'LayerNorm',
+    color: 'muted'
   }
-];
+]
 
-const modules = Astro.props.modules || defaultModules;
+const modules = Astro.props.modules || defaultModules
 ---
 
 <div class="conformer-block">
@@ -64,26 +64,26 @@ const modules = Astro.props.modules || defaultModules;
     <div class="io-node input">Input</div>
     <div class="connector down"></div>
 
-    {modules.map((module, index) => (
-      <>
-        <div class={`module-box ${module.color || 'muted'}`}>
-          <div class="module-content">
-            <div class="module-name">{module.name}</div>
-            {module.details && (
-              <div class="module-details">
-                {module.details.map(detail => (
-                  <div class="detail-item">{detail}</div>
-                ))}
-              </div>
-            )}
+    {
+      modules.map((module, index) => (
+        <>
+          <div class={`module-box ${module.color || 'muted'}`}>
+            <div class="module-content">
+              <div class="module-name">{module.name}</div>
+              {module.details && (
+                <div class="module-details">
+                  {module.details.map((detail) => (
+                    <div class="detail-item">{detail}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {module.annotation && <div class="module-annotation">{module.annotation}</div>}
           </div>
-          {module.annotation && (
-            <div class="module-annotation">{module.annotation}</div>
-          )}
-        </div>
-        {index < modules.length - 1 && <div class="connector down"></div>}
-      </>
-    ))}
+          {index < modules.length - 1 && <div class="connector down" />}
+        </>
+      ))
+    }
 
     <div class="connector down"></div>
     <div class="io-node output">Output</div>

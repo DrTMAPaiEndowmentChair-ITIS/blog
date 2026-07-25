@@ -4,20 +4,20 @@
  * Shows DPO, IPO, KTO, ORPO, SimPO characteristics
  */
 interface Method {
-  name: string;
-  fullName: string;
-  requiresRef: boolean;
-  dataType: 'paired' | 'unpaired' | 'either';
-  complexity: 'low' | 'medium' | 'high';
-  bestFor: string;
-  color: string;
+  name: string
+  fullName: string
+  requiresRef: boolean
+  dataType: 'paired' | 'unpaired' | 'either'
+  complexity: 'low' | 'medium' | 'high'
+  bestFor: string
+  color: string
 }
 
 interface Props {
-  title?: string;
+  title?: string
 }
 
-const { title = "Preference Optimization Methods Comparison" } = Astro.props;
+const { title = 'Preference Optimization Methods Comparison' } = Astro.props
 
 const methods: Method[] = [
   {
@@ -65,7 +65,7 @@ const methods: Method[] = [
     bestFor: 'Noisy labels, stability',
     color: '#10b981'
   }
-];
+]
 ---
 
 <div class="methods-compare">
@@ -80,38 +80,48 @@ const methods: Method[] = [
       <div class="header-cell best-for-header">Best For</div>
     </div>
 
-    {methods.map((method) => (
-      <div class="method-row" style={`--method-color: ${method.color}`}>
-        <div class="method-cell method-name">
-          <span class="method-badge">{method.name}</span>
-          <span class="method-full">{method.fullName}</span>
-        </div>
-        <div class="method-cell">
-          <span class={`ref-indicator ${method.requiresRef ? 'required' : 'not-required'}`}>
-            {method.requiresRef ? 'Required' : 'Not needed'}
-          </span>
-        </div>
-        <div class="method-cell">
-          <span class={`data-type data-${method.dataType}`}>
-            {method.dataType === 'paired' ? 'Paired' : method.dataType === 'unpaired' ? 'Unpaired' : 'Either'}
-          </span>
-        </div>
-        <div class="method-cell">
-          <div class="complexity-bar">
-            <div class={`complexity-fill complexity-${method.complexity}`}></div>
+    {
+      methods.map((method) => (
+        <div class="method-row" style={`--method-color: ${method.color}`}>
+          <div class="method-cell method-name">
+            <span class="method-badge">{method.name}</span>
+            <span class="method-full">{method.fullName}</span>
           </div>
-          <span class="complexity-label">{method.complexity}</span>
+          <div class="method-cell">
+            <span class={`ref-indicator ${method.requiresRef ? 'required' : 'not-required'}`}>
+              {method.requiresRef ? 'Required' : 'Not needed'}
+            </span>
+          </div>
+          <div class="method-cell">
+            <span class={`data-type data-${method.dataType}`}>
+              {method.dataType === 'paired'
+                ? 'Paired'
+                : method.dataType === 'unpaired'
+                  ? 'Unpaired'
+                  : 'Either'}
+            </span>
+          </div>
+          <div class="method-cell">
+            <div class="complexity-bar">
+              <div class={`complexity-fill complexity-${method.complexity}`} />
+            </div>
+            <span class="complexity-label">{method.complexity}</span>
+          </div>
+          <div class="method-cell best-for">{method.bestFor}</div>
         </div>
-        <div class="method-cell best-for">{method.bestFor}</div>
-      </div>
-    ))}
+      ))
+    }
   </div>
 
   <div class="legend">
     <div class="legend-section">
       <span class="legend-title">Data Format:</span>
-      <span class="legend-item"><span class="data-type data-paired">Paired</span> = (chosen, rejected) pairs</span>
-      <span class="legend-item"><span class="data-type data-unpaired">Unpaired</span> = individual ratings</span>
+      <span class="legend-item"
+        ><span class="data-type data-paired">Paired</span> = (chosen, rejected) pairs</span
+      >
+      <span class="legend-item"
+        ><span class="data-type data-unpaired">Unpaired</span> = individual ratings</span
+      >
     </div>
   </div>
 </div>

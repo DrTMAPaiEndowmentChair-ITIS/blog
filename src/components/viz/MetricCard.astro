@@ -3,18 +3,18 @@
  * Metric display card with optional comparison
  */
 interface Props {
-  label: string;
-  value: string | number;
-  unit?: string;
+  label: string
+  value: string | number
+  unit?: string
   comparison?: {
-    value: string | number;
-    label: string;
-  };
-  trend?: 'up' | 'down' | 'neutral';
-  size?: 'normal' | 'large';
+    value: string | number
+    label: string
+  }
+  trend?: 'up' | 'down' | 'neutral'
+  size?: 'normal' | 'large'
 }
 
-const { label, value, unit, comparison, trend, size = 'normal' } = Astro.props;
+const { label, value, unit, comparison, trend, size = 'normal' } = Astro.props
 ---
 
 <div class={`metric-card ${size}`}>
@@ -22,19 +22,23 @@ const { label, value, unit, comparison, trend, size = 'normal' } = Astro.props;
   <div class="metric-value-container">
     <span class="metric-value">{value}</span>
     {unit && <span class="metric-unit">{unit}</span>}
-    {trend && (
-      <span class={`metric-trend ${trend}`}>
-        {trend === 'up' && '↑'}
-        {trend === 'down' && '↓'}
-        {trend === 'neutral' && '→'}
-      </span>
-    )}
+    {
+      trend && (
+        <span class={`metric-trend ${trend}`}>
+          {trend === 'up' && '↑'}
+          {trend === 'down' && '↓'}
+          {trend === 'neutral' && '→'}
+        </span>
+      )
+    }
   </div>
-  {comparison && (
-    <div class="metric-comparison">
-      vs {comparison.value} {comparison.label}
-    </div>
-  )}
+  {
+    comparison && (
+      <div class="metric-comparison">
+        vs {comparison.value} {comparison.label}
+      </div>
+    )
+  }
 </div>
 
 <style>

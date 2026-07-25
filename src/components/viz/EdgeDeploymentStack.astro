@@ -4,90 +4,90 @@
  * Shows the software stack for different edge platforms
  */
 interface StackLayer {
-  name: string;
-  description: string;
-  highlight?: boolean;
+  name: string
+  description: string
+  highlight?: boolean
 }
 
 interface Platform {
-  name: string;
-  layers: StackLayer[];
-  color: 'jetson' | 'mobile' | 'browser' | 'rpi';
+  name: string
+  layers: StackLayer[]
+  color: 'jetson' | 'mobile' | 'browser' | 'rpi'
 }
 
 interface Props {
-  title?: string;
+  title?: string
 }
 
-const { title = "Edge Deployment Software Stacks" } = Astro.props;
+const { title = 'Edge Deployment Software Stacks' } = Astro.props
 
 const platforms: Platform[] = [
   {
-    name: "NVIDIA Jetson",
-    color: "jetson",
+    name: 'NVIDIA Jetson',
+    color: 'jetson',
     layers: [
-      { name: "Application", description: "Python / C++" },
-      { name: "TensorRT", description: "Optimized inference", highlight: true },
-      { name: "cuDNN / CUDA", description: "GPU acceleration" },
-      { name: "JetPack SDK", description: "L4T Linux" },
-      { name: "Hardware", description: "Ampere GPU + DLA" },
+      { name: 'Application', description: 'Python / C++' },
+      { name: 'TensorRT', description: 'Optimized inference', highlight: true },
+      { name: 'cuDNN / CUDA', description: 'GPU acceleration' },
+      { name: 'JetPack SDK', description: 'L4T Linux' },
+      { name: 'Hardware', description: 'Ampere GPU + DLA' }
     ]
   },
   {
-    name: "Apple CoreML",
-    color: "mobile",
+    name: 'Apple CoreML',
+    color: 'mobile',
     layers: [
-      { name: "Application", description: "Swift / Obj-C" },
-      { name: "Core ML", description: "Model inference", highlight: true },
-      { name: "BNNS / MPS", description: "Neural / GPU compute" },
-      { name: "iOS / macOS", description: "Operating system" },
-      { name: "Hardware", description: "ANE + GPU + CPU" },
+      { name: 'Application', description: 'Swift / Obj-C' },
+      { name: 'Core ML', description: 'Model inference', highlight: true },
+      { name: 'BNNS / MPS', description: 'Neural / GPU compute' },
+      { name: 'iOS / macOS', description: 'Operating system' },
+      { name: 'Hardware', description: 'ANE + GPU + CPU' }
     ]
   },
   {
-    name: "Browser WebGPU",
-    color: "browser",
+    name: 'Browser WebGPU',
+    color: 'browser',
     layers: [
-      { name: "Application", description: "JavaScript / TS" },
-      { name: "Transformers.js", description: "ML pipelines", highlight: true },
-      { name: "ONNX Runtime Web", description: "Model execution" },
-      { name: "WebGPU / WASM", description: "Compute backend" },
-      { name: "Hardware", description: "GPU / CPU" },
+      { name: 'Application', description: 'JavaScript / TS' },
+      { name: 'Transformers.js', description: 'ML pipelines', highlight: true },
+      { name: 'ONNX Runtime Web', description: 'Model execution' },
+      { name: 'WebGPU / WASM', description: 'Compute backend' },
+      { name: 'Hardware', description: 'GPU / CPU' }
     ]
   },
   {
-    name: "Raspberry Pi + Hailo",
-    color: "rpi",
+    name: 'Raspberry Pi + Hailo',
+    color: 'rpi',
     layers: [
-      { name: "Application", description: "Python / C++" },
-      { name: "HailoRT", description: "NPU runtime", highlight: true },
-      { name: "rpicam-apps", description: "Camera pipeline" },
-      { name: "Raspberry Pi OS", description: "Linux" },
-      { name: "Hardware", description: "Hailo-8L NPU" },
+      { name: 'Application', description: 'Python / C++' },
+      { name: 'HailoRT', description: 'NPU runtime', highlight: true },
+      { name: 'rpicam-apps', description: 'Camera pipeline' },
+      { name: 'Raspberry Pi OS', description: 'Linux' },
+      { name: 'Hardware', description: 'Hailo-8L NPU' }
     ]
-  },
-];
+  }
+]
 ---
 
 <div class="deployment-stack">
   <div class="stack-title">{title}</div>
   <div class="platforms-grid">
-    {platforms.map((platform) => (
-      <div class={`platform-column ${platform.color}`}>
-        <div class="platform-header">{platform.name}</div>
-        <div class="layers-container">
-          {platform.layers.map((layer, index) => (
-            <div class={`layer ${layer.highlight ? 'highlighted' : ''}`}>
-              <div class="layer-name">{layer.name}</div>
-              <div class="layer-desc">{layer.description}</div>
-              {index < platform.layers.length - 1 && (
-                <div class="layer-arrow">↓</div>
-              )}
-            </div>
-          ))}
+    {
+      platforms.map((platform) => (
+        <div class={`platform-column ${platform.color}`}>
+          <div class="platform-header">{platform.name}</div>
+          <div class="layers-container">
+            {platform.layers.map((layer, index) => (
+              <div class={`layer ${layer.highlight ? 'highlighted' : ''}`}>
+                <div class="layer-name">{layer.name}</div>
+                <div class="layer-desc">{layer.description}</div>
+                {index < platform.layers.length - 1 && <div class="layer-arrow">↓</div>}
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
-    ))}
+      ))
+    }
   </div>
 </div>
 

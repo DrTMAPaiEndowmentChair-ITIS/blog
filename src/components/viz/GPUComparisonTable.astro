@@ -4,64 +4,64 @@
  * Shows key specifications side by side
  */
 interface GPU {
-  name: string;
-  vendor: 'amd' | 'nvidia';
-  vram: string;
-  bandwidth: string;
-  tdp: string;
-  architecture: string;
-  highlight?: boolean;
+  name: string
+  vendor: 'amd' | 'nvidia'
+  vram: string
+  bandwidth: string
+  tdp: string
+  architecture: string
+  highlight?: boolean
 }
 
 interface Props {
-  gpus?: GPU[];
-  title?: string;
+  gpus?: GPU[]
+  title?: string
 }
 
 const defaultGPUs: GPU[] = [
   {
-    name: "MI300X",
-    vendor: "amd",
-    vram: "192 GB HBM3",
-    bandwidth: "5.3 TB/s",
-    tdp: "750W",
-    architecture: "CDNA 3",
+    name: 'MI300X',
+    vendor: 'amd',
+    vram: '192 GB HBM3',
+    bandwidth: '5.3 TB/s',
+    tdp: '750W',
+    architecture: 'CDNA 3',
     highlight: true
   },
   {
-    name: "MI325X",
-    vendor: "amd",
-    vram: "256 GB HBM3e",
-    bandwidth: "6.0 TB/s",
-    tdp: "750W",
-    architecture: "CDNA 3"
+    name: 'MI325X',
+    vendor: 'amd',
+    vram: '256 GB HBM3e',
+    bandwidth: '6.0 TB/s',
+    tdp: '750W',
+    architecture: 'CDNA 3'
   },
   {
-    name: "H100 SXM",
-    vendor: "nvidia",
-    vram: "80 GB HBM3",
-    bandwidth: "3.35 TB/s",
-    tdp: "700W",
-    architecture: "Hopper"
+    name: 'H100 SXM',
+    vendor: 'nvidia',
+    vram: '80 GB HBM3',
+    bandwidth: '3.35 TB/s',
+    tdp: '700W',
+    architecture: 'Hopper'
   },
   {
-    name: "H200",
-    vendor: "nvidia",
-    vram: "141 GB HBM3e",
-    bandwidth: "4.8 TB/s",
-    tdp: "700W",
-    architecture: "Hopper"
+    name: 'H200',
+    vendor: 'nvidia',
+    vram: '141 GB HBM3e',
+    bandwidth: '4.8 TB/s',
+    tdp: '700W',
+    architecture: 'Hopper'
   }
-];
+]
 
-const { gpus = defaultGPUs, title = "Data Center GPU Comparison" } = Astro.props;
+const { gpus = defaultGPUs, title = 'Data Center GPU Comparison' } = Astro.props
 
 const specs = [
   { key: 'vram', label: 'VRAM' },
   { key: 'bandwidth', label: 'Memory Bandwidth' },
   { key: 'tdp', label: 'TDP' },
   { key: 'architecture', label: 'Architecture' }
-];
+]
 ---
 
 <div class="gpu-comparison">
@@ -69,23 +69,27 @@ const specs = [
   <div class="table-container">
     <div class="table-header">
       <div class="header-cell spec-label"></div>
-      {gpus.map((gpu) => (
-        <div class={`header-cell gpu-name ${gpu.vendor} ${gpu.highlight ? 'highlighted' : ''}`}>
-          <span class="vendor-badge">{gpu.vendor.toUpperCase()}</span>
-          {gpu.name}
-        </div>
-      ))}
-    </div>
-    {specs.map((spec) => (
-      <div class="table-row">
-        <div class="row-cell spec-label">{spec.label}</div>
-        {gpus.map((gpu) => (
-          <div class={`row-cell spec-value ${gpu.vendor} ${gpu.highlight ? 'highlighted' : ''}`}>
-            {gpu[spec.key as keyof GPU]}
+      {
+        gpus.map((gpu) => (
+          <div class={`header-cell gpu-name ${gpu.vendor} ${gpu.highlight ? 'highlighted' : ''}`}>
+            <span class="vendor-badge">{gpu.vendor.toUpperCase()}</span>
+            {gpu.name}
           </div>
-        ))}
-      </div>
-    ))}
+        ))
+      }
+    </div>
+    {
+      specs.map((spec) => (
+        <div class="table-row">
+          <div class="row-cell spec-label">{spec.label}</div>
+          {gpus.map((gpu) => (
+            <div class={`row-cell spec-value ${gpu.vendor} ${gpu.highlight ? 'highlighted' : ''}`}>
+              {gpu[spec.key as keyof GPU]}
+            </div>
+          ))}
+        </div>
+      ))
+    }
   </div>
 </div>
 

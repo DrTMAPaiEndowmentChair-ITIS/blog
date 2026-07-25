@@ -4,20 +4,20 @@
  * Shows tokenization/collapse patterns like CTC
  */
 interface Props {
-  title?: string;
-  inputTokens: string[];
-  outputText: string;
-  collapseLabel?: string;
-  blankToken?: string;
+  title?: string
+  inputTokens: string[]
+  outputText: string
+  collapseLabel?: string
+  blankToken?: string
 }
 
 const {
-  title = "Token Collapse",
+  title = 'Token Collapse',
   inputTokens,
   outputText,
-  collapseLabel = "collapse",
-  blankToken = "-"
-} = Astro.props;
+  collapseLabel = 'collapse',
+  blankToken = '-'
+} = Astro.props
 ---
 
 <div class="token-flow">
@@ -27,9 +27,11 @@ const {
     <div class="token-row">
       <span class="row-label">Output:</span>
       <div class="tokens">
-        {inputTokens.map((token) => (
-          <span class={`token ${token === blankToken ? 'blank' : ''}`}>{token}</span>
-        ))}
+        {
+          inputTokens.map((token) => (
+            <span class={`token ${token === blankToken ? 'blank' : ''}`}>{token}</span>
+          ))
+        }
       </div>
     </div>
 
@@ -68,7 +70,8 @@ const {
     gap: 0.75rem;
   }
 
-  .token-row, .result-row {
+  .token-row,
+  .result-row {
     display: flex;
     align-items: center;
     gap: 0.75rem;

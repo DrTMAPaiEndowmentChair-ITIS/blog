@@ -4,89 +4,89 @@
  * Displays size vs quality trade-off with visual bars and metrics
  */
 interface QuantLevel {
-  name: string;
-  bits: string;
-  size: string;
-  sizeGB: number;
-  quality: number; // 0-100, based on perplexity
-  perplexityIncrease: string;
-  notes: string;
+  name: string
+  bits: string
+  size: string
+  sizeGB: number
+  quality: number // 0-100, based on perplexity
+  perplexityIncrease: string
+  notes: string
 }
 
 interface Props {
-  title?: string;
-  baseModel?: string;
+  title?: string
+  baseModel?: string
 }
 
-const { title = "GGUF Quantization Levels", baseModel = "7B model" } = Astro.props;
+const { title = 'GGUF Quantization Levels', baseModel = '7B model' } = Astro.props
 
 const quantLevels: QuantLevel[] = [
   {
-    name: "Q8_0",
-    bits: "8-bit",
-    size: "~7.0 GB",
+    name: 'Q8_0',
+    bits: '8-bit',
+    size: '~7.0 GB',
     sizeGB: 7.0,
     quality: 100,
-    perplexityIncrease: "+0.0004",
-    notes: "Highest quality, minimal loss"
+    perplexityIncrease: '+0.0004',
+    notes: 'Highest quality, minimal loss'
   },
   {
-    name: "Q6_K",
-    bits: "6-bit",
-    size: "~5.9 GB",
+    name: 'Q6_K',
+    bits: '6-bit',
+    size: '~5.9 GB',
     sizeGB: 5.9,
     quality: 98,
-    perplexityIncrease: "+0.008",
-    notes: "Excellent quality, good compression"
+    perplexityIncrease: '+0.008',
+    notes: 'Excellent quality, good compression'
   },
   {
-    name: "Q5_K_M",
-    bits: "5-bit",
-    size: "~5.33 GB",
+    name: 'Q5_K_M',
+    bits: '5-bit',
+    size: '~5.33 GB',
     sizeGB: 5.33,
     quality: 95,
-    perplexityIncrease: "+0.0142",
-    notes: "Higher quality, slightly larger"
+    perplexityIncrease: '+0.0142',
+    notes: 'Higher quality, slightly larger'
   },
   {
-    name: "Q4_K_M",
-    bits: "4-bit",
-    size: "~4.58 GB",
+    name: 'Q4_K_M',
+    bits: '4-bit',
+    size: '~4.58 GB',
     sizeGB: 4.58,
     quality: 85,
-    perplexityIncrease: "+0.0535",
-    notes: "Recommended default, best balance"
+    perplexityIncrease: '+0.0535',
+    notes: 'Recommended default, best balance'
   },
   {
-    name: "Q4_K_S",
-    bits: "4-bit",
-    size: "~4.37 GB",
+    name: 'Q4_K_S',
+    bits: '4-bit',
+    size: '~4.37 GB',
     sizeGB: 4.37,
     quality: 78,
-    perplexityIncrease: "+0.0992",
-    notes: "Smaller, lower quality"
+    perplexityIncrease: '+0.0992',
+    notes: 'Smaller, lower quality'
   },
   {
-    name: "Q3_K_M",
-    bits: "3-bit",
-    size: "~3.52 GB",
+    name: 'Q3_K_M',
+    bits: '3-bit',
+    size: '~3.52 GB',
     sizeGB: 3.52,
     quality: 55,
-    perplexityIncrease: "+0.2437",
-    notes: "Aggressive compression"
+    perplexityIncrease: '+0.2437',
+    notes: 'Aggressive compression'
   },
   {
-    name: "Q2_K",
-    bits: "2-bit",
-    size: "~2.87 GB",
+    name: 'Q2_K',
+    bits: '2-bit',
+    size: '~2.87 GB',
     sizeGB: 2.87,
     quality: 30,
-    perplexityIncrease: "+0.8",
-    notes: "Extreme compression, notable degradation"
+    perplexityIncrease: '+0.8',
+    notes: 'Extreme compression, notable degradation'
   }
-];
+]
 
-const maxSize = Math.max(...quantLevels.map(l => l.sizeGB));
+const maxSize = Math.max(...quantLevels.map((l) => l.sizeGB))
 ---
 
 <div class="quant-scale" data-levels={JSON.stringify(quantLevels)}>
@@ -107,46 +107,45 @@ const maxSize = Math.max(...quantLevels.map(l => l.sizeGB));
   </div>
 
   <div class="scale-container">
-    {quantLevels.map((level, index) => (
-      <button
-        class={`scale-row ${level.name === 'Q4_K_M' ? 'recommended' : ''}`}
-        data-index={index}
-        aria-label={`${level.name}: ${level.size}, ${level.quality}% quality`}
-      >
-        <div class="row-header">
-          <span class="quant-name">{level.name}</span>
-          <span class="quant-bits">{level.bits}</span>
-          {level.name === 'Q4_K_M' && <span class="recommended-badge">Recommended</span>}
-        </div>
-
-        <div class="row-bars">
-          <div class="bar-group">
-            <div class="bar-track">
-              <div
-                class="bar-fill size-fill"
-                style={`width: ${(level.sizeGB / maxSize) * 100}%`}
-              ></div>
-            </div>
-            <span class="bar-value">{level.size}</span>
+    {
+      quantLevels.map((level, index) => (
+        <button
+          class={`scale-row ${level.name === 'Q4_K_M' ? 'recommended' : ''}`}
+          data-index={index}
+          aria-label={`${level.name}: ${level.size}, ${level.quality}% quality`}
+        >
+          <div class="row-header">
+            <span class="quant-name">{level.name}</span>
+            <span class="quant-bits">{level.bits}</span>
+            {level.name === 'Q4_K_M' && <span class="recommended-badge">Recommended</span>}
           </div>
 
-          <div class="bar-group">
-            <div class="bar-track">
-              <div
-                class="bar-fill quality-fill"
-                style={`width: ${level.quality}%`}
-              ></div>
+          <div class="row-bars">
+            <div class="bar-group">
+              <div class="bar-track">
+                <div
+                  class="bar-fill size-fill"
+                  style={`width: ${(level.sizeGB / maxSize) * 100}%`}
+                />
+              </div>
+              <span class="bar-value">{level.size}</span>
             </div>
-            <span class="bar-value">{level.quality}%</span>
-          </div>
-        </div>
 
-        <div class="row-details">
-          <span class="detail-ppl">PPL: {level.perplexityIncrease}</span>
-          <span class="detail-notes">{level.notes}</span>
-        </div>
-      </button>
-    ))}
+            <div class="bar-group">
+              <div class="bar-track">
+                <div class="bar-fill quality-fill" style={`width: ${level.quality}%`} />
+              </div>
+              <span class="bar-value">{level.quality}%</span>
+            </div>
+          </div>
+
+          <div class="row-details">
+            <span class="detail-ppl">PPL: {level.perplexityIncrease}</span>
+            <span class="detail-notes">{level.notes}</span>
+          </div>
+        </button>
+      ))
+    }
   </div>
 
   <div class="scale-info" id="quant-info-panel">
@@ -176,7 +175,8 @@ const maxSize = Math.max(...quantLevels.map(l => l.sizeGB));
 
   <div class="scale-footer">
     <div class="footer-note">
-      Lower bits = smaller files but reduced quality. Q4_K_M offers the best balance for most use cases.
+      Lower bits = smaller files but reduced quality. Q4_K_M offers the best balance for most use
+      cases.
     </div>
   </div>
 </div>
@@ -184,48 +184,48 @@ const maxSize = Math.max(...quantLevels.map(l => l.sizeGB));
 <script>
   function initQuantScale() {
     document.querySelectorAll('.quant-scale').forEach((scale) => {
-      const rows = scale.querySelectorAll('.scale-row');
-      const infoPanel = scale.querySelector('#quant-info-panel');
-      const levelsData = JSON.parse(scale.getAttribute('data-levels') || '[]');
+      const rows = scale.querySelectorAll('.scale-row')
+      const infoPanel = scale.querySelector('#quant-info-panel')
+      const levelsData = JSON.parse(scale.getAttribute('data-levels') || '[]')
 
-      if (!infoPanel || !levelsData.length) return;
+      if (!infoPanel || !levelsData.length) return
 
       const updateInfo = (index: number) => {
-        const data = levelsData[index];
-        if (!data) return;
+        const data = levelsData[index]
+        if (!data) return
 
-        const nameEl = infoPanel.querySelector('.info-name');
-        const sizeEl = infoPanel.querySelector('[data-field="size"]');
-        const qualityEl = infoPanel.querySelector('[data-field="quality"]');
-        const pplEl = infoPanel.querySelector('[data-field="ppl"]');
-        const notesEl = infoPanel.querySelector('[data-field="notes"]');
+        const nameEl = infoPanel.querySelector('.info-name')
+        const sizeEl = infoPanel.querySelector('[data-field="size"]')
+        const qualityEl = infoPanel.querySelector('[data-field="quality"]')
+        const pplEl = infoPanel.querySelector('[data-field="ppl"]')
+        const notesEl = infoPanel.querySelector('[data-field="notes"]')
 
-        if (nameEl) nameEl.textContent = `${data.name} (${data.bits})`;
-        if (sizeEl) sizeEl.textContent = data.size;
-        if (qualityEl) qualityEl.textContent = `${data.quality}%`;
-        if (pplEl) pplEl.textContent = data.perplexityIncrease;
-        if (notesEl) notesEl.textContent = data.notes;
+        if (nameEl) nameEl.textContent = `${data.name} (${data.bits})`
+        if (sizeEl) sizeEl.textContent = data.size
+        if (qualityEl) qualityEl.textContent = `${data.quality}%`
+        if (pplEl) pplEl.textContent = data.perplexityIncrease
+        if (notesEl) notesEl.textContent = data.notes
 
         rows.forEach((r, i) => {
-          r.classList.toggle('active', i === index);
-        });
-      };
+          r.classList.toggle('active', i === index)
+        })
+      }
 
       rows.forEach((row, index) => {
-        row.addEventListener('click', () => updateInfo(index));
-        row.addEventListener('mouseenter', () => updateInfo(index));
-      });
+        row.addEventListener('click', () => updateInfo(index))
+        row.addEventListener('mouseenter', () => updateInfo(index))
+      })
 
       // Initialize with recommended (Q4_K_M)
-      const recommendedIndex = levelsData.findIndex((l: { name: string }) => l.name === 'Q4_K_M');
+      const recommendedIndex = levelsData.findIndex((l: { name: string }) => l.name === 'Q4_K_M')
       if (recommendedIndex !== -1) {
-        updateInfo(recommendedIndex);
+        updateInfo(recommendedIndex)
       }
-    });
+    })
   }
 
-  initQuantScale();
-  document.addEventListener('astro:after-swap', initQuantScale);
+  initQuantScale()
+  document.addEventListener('astro:after-swap', initQuantScale)
 </script>
 
 <style>

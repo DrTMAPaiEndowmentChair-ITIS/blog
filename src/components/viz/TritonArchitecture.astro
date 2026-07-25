@@ -4,91 +4,99 @@
  * Shows the complete request flow through the inference stack
  */
 interface Layer {
-  id: string;
-  label: string;
-  sublabel?: string;
-  components?: string[];
-  color?: 'accent' | 'highlight' | 'muted';
+  id: string
+  label: string
+  sublabel?: string
+  components?: string[]
+  color?: 'accent' | 'highlight' | 'muted'
 }
 
 interface Props {
-  title?: string;
+  title?: string
 }
 
-const { title = "Triton + TensorRT-LLM Architecture" } = Astro.props;
+const { title = 'Triton + TensorRT-LLM Architecture' } = Astro.props
 
 const layers: Layer[] = [
   {
-    id: "clients",
-    label: "Client Applications",
-    sublabel: "gRPC / HTTP / OpenAI-compatible API",
-    color: "muted"
+    id: 'clients',
+    label: 'Client Applications',
+    sublabel: 'gRPC / HTTP / OpenAI-compatible API',
+    color: 'muted'
   },
   {
-    id: "triton",
-    label: "Triton Inference Server",
-    sublabel: "Request scheduling, model management, metrics",
-    components: ["Model Repository", "Scheduler", "Backend Manager"],
-    color: "accent"
+    id: 'triton',
+    label: 'Triton Inference Server',
+    sublabel: 'Request scheduling, model management, metrics',
+    components: ['Model Repository', 'Scheduler', 'Backend Manager'],
+    color: 'accent'
   },
   {
-    id: "ensemble",
-    label: "Ensemble Pipeline",
-    sublabel: "Preprocessing → TRT-LLM → Postprocessing",
-    components: ["Tokenizer", "TensorRT-LLM Backend", "Detokenizer"],
-    color: "highlight"
+    id: 'ensemble',
+    label: 'Ensemble Pipeline',
+    sublabel: 'Preprocessing → TRT-LLM → Postprocessing',
+    components: ['Tokenizer', 'TensorRT-LLM Backend', 'Detokenizer'],
+    color: 'highlight'
   },
   {
-    id: "trtllm",
-    label: "TensorRT-LLM Runtime",
-    sublabel: "Executor API with in-flight batching",
-    components: ["KV Cache Manager", "Batch Scheduler", "CUDA Graphs"],
-    color: "accent"
+    id: 'trtllm',
+    label: 'TensorRT-LLM Runtime',
+    sublabel: 'Executor API with in-flight batching',
+    components: ['KV Cache Manager', 'Batch Scheduler', 'CUDA Graphs'],
+    color: 'accent'
   },
   {
-    id: "engine",
-    label: "TensorRT Engine",
-    sublabel: "Optimized CUDA kernels",
-    components: ["Fused Attention", "Quantized Weights", "Layer Fusion"],
-    color: "highlight"
+    id: 'engine',
+    label: 'TensorRT Engine',
+    sublabel: 'Optimized CUDA kernels',
+    components: ['Fused Attention', 'Quantized Weights', 'Layer Fusion'],
+    color: 'highlight'
   },
   {
-    id: "gpu",
-    label: "NVIDIA GPU",
-    sublabel: "H100 / A100 / L40S",
-    color: "muted"
+    id: 'gpu',
+    label: 'NVIDIA GPU',
+    sublabel: 'H100 / A100 / L40S',
+    color: 'muted'
   }
-];
+]
 ---
 
 <div class="triton-arch">
   <div class="arch-title">{title}</div>
 
   <div class="arch-stack">
-    {layers.map((layer, index) => (
-      <>
-        <div class={`arch-layer ${layer.color}`} data-layer={layer.id}>
-          <div class="layer-main">
-            <span class="layer-label">{layer.label}</span>
-            <span class="layer-sublabel">{layer.sublabel}</span>
+    {
+      layers.map((layer, index) => (
+        <>
+          <div class={`arch-layer ${layer.color}`} data-layer={layer.id}>
+            <div class="layer-main">
+              <span class="layer-label">{layer.label}</span>
+              <span class="layer-sublabel">{layer.sublabel}</span>
+            </div>
+            {layer.components && (
+              <div class="layer-components">
+                {layer.components.map((comp) => (
+                  <span class="component-tag">{comp}</span>
+                ))}
+              </div>
+            )}
           </div>
-          {layer.components && (
-            <div class="layer-components">
-              {layer.components.map((comp) => (
-                <span class="component-tag">{comp}</span>
-              ))}
+          {index < layers.length - 1 && (
+            <div class="arch-connector">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M12 5V19M12 19L6 13M12 19L18 13"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
             </div>
           )}
-        </div>
-        {index < layers.length - 1 && (
-          <div class="arch-connector">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path d="M12 5V19M12 19L6 13M12 19L18 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </div>
-        )}
-      </>
-    ))}
+        </>
+      ))
+    }
   </div>
 
   <div class="arch-legend">

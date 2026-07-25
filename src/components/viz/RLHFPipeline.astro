@@ -6,85 +6,82 @@
  * 3. PPO Optimization
  */
 interface Stage {
-  id: string;
-  label: string;
-  sublabel: string;
-  details: string[];
-  color: 'sft' | 'rm' | 'ppo';
+  id: string
+  label: string
+  sublabel: string
+  details: string[]
+  color: 'sft' | 'rm' | 'ppo'
 }
 
 interface Props {
-  title?: string;
+  title?: string
 }
 
-const { title = "RLHF Training Pipeline" } = Astro.props;
+const { title = 'RLHF Training Pipeline' } = Astro.props
 
 const stages: Stage[] = [
   {
     id: 'sft',
     label: 'Stage 1: SFT',
     sublabel: 'Supervised Fine-Tuning',
-    details: [
-      'Human demonstrations',
-      'Standard cross-entropy loss',
-      'Creates initial policy'
-    ],
+    details: ['Human demonstrations', 'Standard cross-entropy loss', 'Creates initial policy'],
     color: 'sft'
   },
   {
     id: 'rm',
     label: 'Stage 2: RM',
     sublabel: 'Reward Model Training',
-    details: [
-      'Pairwise comparisons',
-      'Bradley-Terry model',
-      'Learns human preferences'
-    ],
+    details: ['Pairwise comparisons', 'Bradley-Terry model', 'Learns human preferences'],
     color: 'rm'
   },
   {
     id: 'ppo',
     label: 'Stage 3: PPO',
     sublabel: 'Policy Optimization',
-    details: [
-      'KL-penalized reward',
-      'Clipped surrogate objective',
-      'Iterative updates'
-    ],
+    details: ['KL-penalized reward', 'Clipped surrogate objective', 'Iterative updates'],
     color: 'ppo'
   }
-];
+]
 ---
 
 <div class="rlhf-pipeline">
   <div class="pipeline-title">{title}</div>
 
   <div class="pipeline-container">
-    {stages.map((stage, index) => (
-      <>
-        <div class={`pipeline-stage stage-${stage.color}`} data-stage={stage.id}>
-          <div class="stage-header">
-            <div class="stage-number">{index + 1}</div>
-            <div class="stage-titles">
-              <div class="stage-label">{stage.label}</div>
-              <div class="stage-sublabel">{stage.sublabel}</div>
+    {
+      stages.map((stage, index) => (
+        <>
+          <div class={`pipeline-stage stage-${stage.color}`} data-stage={stage.id}>
+            <div class="stage-header">
+              <div class="stage-number">{index + 1}</div>
+              <div class="stage-titles">
+                <div class="stage-label">{stage.label}</div>
+                <div class="stage-sublabel">{stage.sublabel}</div>
+              </div>
             </div>
+            <ul class="stage-details">
+              {stage.details.map((detail) => (
+                <li>{detail}</li>
+              ))}
+            </ul>
           </div>
-          <ul class="stage-details">
-            {stage.details.map((detail) => (
-              <li>{detail}</li>
-            ))}
-          </ul>
-        </div>
-        {index < stages.length - 1 && (
-          <div class="pipeline-arrow">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M5 12h14M12 5l7 7-7 7"/>
-            </svg>
-          </div>
-        )}
-      </>
-    ))}
+          {index < stages.length - 1 && (
+            <div class="pipeline-arrow">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+            </div>
+          )}
+        </>
+      ))
+    }
   </div>
 
   <div class="pipeline-feedback">

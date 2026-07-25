@@ -4,70 +4,70 @@
  * Compares different MoE architectures and their specifications
  */
 interface MoEModel {
-  name: string;
-  totalParams: string;
-  activeParams: string;
-  experts: string;
-  activeExperts: string;
-  routing: string;
-  year: string;
-  highlight?: boolean;
+  name: string
+  totalParams: string
+  activeParams: string
+  experts: string
+  activeExperts: string
+  routing: string
+  year: string
+  highlight?: boolean
 }
 
 interface Props {
-  title?: string;
+  title?: string
 }
 
-const { title = "MoE Model Comparison" } = Astro.props;
+const { title = 'MoE Model Comparison' } = Astro.props
 
 const models: MoEModel[] = [
   {
-    name: "Switch Transformer",
-    totalParams: "1.6T",
-    activeParams: "~100B",
-    experts: "2048",
-    activeExperts: "1",
-    routing: "Top-1",
-    year: "2021"
+    name: 'Switch Transformer',
+    totalParams: '1.6T',
+    activeParams: '~100B',
+    experts: '2048',
+    activeExperts: '1',
+    routing: 'Top-1',
+    year: '2021'
   },
   {
-    name: "Mixtral 8x7B",
-    totalParams: "46.7B",
-    activeParams: "12.9B",
-    experts: "8",
-    activeExperts: "2",
-    routing: "Top-2",
-    year: "2024"
+    name: 'Mixtral 8x7B',
+    totalParams: '46.7B',
+    activeParams: '12.9B',
+    experts: '8',
+    activeExperts: '2',
+    routing: 'Top-2',
+    year: '2024'
   },
   {
-    name: "DeepSeek-V3",
-    totalParams: "671B",
-    activeParams: "37B",
-    experts: "256",
-    activeExperts: "8",
-    routing: "Top-8 (fine-grained)",
-    year: "2024",
+    name: 'DeepSeek-V3',
+    totalParams: '671B',
+    activeParams: '37B',
+    experts: '256',
+    activeExperts: '8',
+    routing: 'Top-8 (fine-grained)',
+    year: '2024',
     highlight: true
   },
   {
-    name: "Qwen3-235B",
-    totalParams: "235B",
-    activeParams: "22B",
-    experts: "128",
-    activeExperts: "8",
-    routing: "Top-8",
-    year: "2025"
+    name: 'Qwen3-235B',
+    totalParams: '235B',
+    activeParams: '22B',
+    experts: '128',
+    activeExperts: '8',
+    routing: 'Top-8',
+    year: '2025'
   },
   {
-    name: "Qwen3-Next-80B",
-    totalParams: "80B",
-    activeParams: "3B",
-    experts: "512",
-    activeExperts: "~19",
-    routing: "Ultra-sparse",
-    year: "2025"
+    name: 'Qwen3-Next-80B',
+    totalParams: '80B',
+    activeParams: '3B',
+    experts: '512',
+    activeExperts: '~19',
+    routing: 'Ultra-sparse',
+    year: '2025'
   }
-];
+]
 ---
 
 <div class="moe-comparison">
@@ -83,19 +83,21 @@ const models: MoEModel[] = [
       <div class="table-cell header-cell routing-col">Routing</div>
     </div>
 
-    {models.map((model) => (
-      <div class={`table-row ${model.highlight ? 'highlighted' : ''}`}>
-        <div class="table-cell model-col">
-          <span class="model-name">{model.name}</span>
-          <span class="model-year">{model.year}</span>
+    {
+      models.map((model) => (
+        <div class={`table-row ${model.highlight ? 'highlighted' : ''}`}>
+          <div class="table-cell model-col">
+            <span class="model-name">{model.name}</span>
+            <span class="model-year">{model.year}</span>
+          </div>
+          <div class="table-cell param-cell">{model.totalParams}</div>
+          <div class="table-cell param-cell active-param">{model.activeParams}</div>
+          <div class="table-cell">{model.experts}</div>
+          <div class="table-cell">{model.activeExperts}</div>
+          <div class="table-cell routing-col routing-cell">{model.routing}</div>
         </div>
-        <div class="table-cell param-cell">{model.totalParams}</div>
-        <div class="table-cell param-cell active-param">{model.activeParams}</div>
-        <div class="table-cell">{model.experts}</div>
-        <div class="table-cell">{model.activeExperts}</div>
-        <div class="table-cell routing-col routing-cell">{model.routing}</div>
-      </div>
-    ))}
+      ))
+    }
   </div>
 
   <div class="comparison-footer">

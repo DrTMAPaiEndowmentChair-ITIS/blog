@@ -4,71 +4,76 @@
  * Shows the hierarchical layers of the ROCm ecosystem
  */
 interface Layer {
-  name: string;
-  components: string[];
-  color: 'accent' | 'highlight' | 'muted';
-  description?: string;
+  name: string
+  components: string[]
+  color: 'accent' | 'highlight' | 'muted'
+  description?: string
 }
 
 const layers: Layer[] = [
   {
-    name: "Applications & Frameworks",
-    components: ["PyTorch", "TensorFlow", "JAX", "vLLM", "llama.cpp"],
-    color: "accent",
-    description: "ML frameworks and inference engines"
+    name: 'Applications & Frameworks',
+    components: ['PyTorch', 'TensorFlow', 'JAX', 'vLLM', 'llama.cpp'],
+    color: 'accent',
+    description: 'ML frameworks and inference engines'
   },
   {
-    name: "ROCm Libraries",
-    components: ["MIOpen", "rocBLAS", "hipBLASLt", "RCCL", "rocFFT"],
-    color: "highlight",
-    description: "Optimized compute primitives"
+    name: 'ROCm Libraries',
+    components: ['MIOpen', 'rocBLAS', 'hipBLASLt', 'RCCL', 'rocFFT'],
+    color: 'highlight',
+    description: 'Optimized compute primitives'
   },
   {
-    name: "HIP Runtime",
-    components: ["HIP API", "hipify-clang", "hipify-perl"],
-    color: "muted",
-    description: "CUDA portability layer"
+    name: 'HIP Runtime',
+    components: ['HIP API', 'hipify-clang', 'hipify-perl'],
+    color: 'muted',
+    description: 'CUDA portability layer'
   },
   {
-    name: "ROCm Runtime",
-    components: ["HSA Runtime", "ROCr", "ROCt"],
-    color: "muted",
-    description: "Low-level GPU runtime"
+    name: 'ROCm Runtime',
+    components: ['HSA Runtime', 'ROCr', 'ROCt'],
+    color: 'muted',
+    description: 'Low-level GPU runtime'
   },
   {
-    name: "Kernel Driver",
-    components: ["amdgpu", "KFD"],
-    color: "highlight",
-    description: "Linux kernel modules"
+    name: 'Kernel Driver',
+    components: ['amdgpu', 'KFD'],
+    color: 'highlight',
+    description: 'Linux kernel modules'
   }
-];
+]
 ---
 
 <div class="rocm-stack">
   <div class="stack-title">ROCm Software Stack</div>
   <div class="stack-container">
-    {layers.map((layer, index) => (
-      <div class={`stack-layer ${layer.color}`}>
-        <div class="layer-header">
-          <span class="layer-name">{layer.name}</span>
-          {layer.description && (
-            <span class="layer-desc">{layer.description}</span>
+    {
+      layers.map((layer, index) => (
+        <div class={`stack-layer ${layer.color}`}>
+          <div class="layer-header">
+            <span class="layer-name">{layer.name}</span>
+            {layer.description && <span class="layer-desc">{layer.description}</span>}
+          </div>
+          <div class="layer-components">
+            {layer.components.map((comp) => (
+              <span class="component-tag">{comp}</span>
+            ))}
+          </div>
+          {index < layers.length - 1 && (
+            <div class="layer-connector">
+              <svg width="20" height="16" viewBox="0 0 20 16">
+                <path
+                  d="M10 0 L10 16 M5 11 L10 16 L15 11"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  fill="none"
+                />
+              </svg>
+            </div>
           )}
         </div>
-        <div class="layer-components">
-          {layer.components.map((comp) => (
-            <span class="component-tag">{comp}</span>
-          ))}
-        </div>
-        {index < layers.length - 1 && (
-          <div class="layer-connector">
-            <svg width="20" height="16" viewBox="0 0 20 16">
-              <path d="M10 0 L10 16 M5 11 L10 16 L15 11" stroke="currentColor" stroke-width="1.5" fill="none"/>
-            </svg>
-          </div>
-        )}
-      </div>
-    ))}
+      ))
+    }
   </div>
 </div>
 

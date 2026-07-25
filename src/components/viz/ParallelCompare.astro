@@ -5,16 +5,16 @@
  * Animates on hover to demonstrate serial vs parallel execution
  */
 interface Props {
-  title?: string;
-  cpuCores?: number;
-  gpuCores?: number;
+  title?: string
+  cpuCores?: number
+  gpuCores?: number
 }
 
-const { title = "CPU vs GPU Architecture", cpuCores = 4, gpuCores = 64 } = Astro.props;
+const { title = 'CPU vs GPU Architecture', cpuCores = 4, gpuCores = 64 } = Astro.props
 
 // Generate grid dimensions for GPU cores (aim for roughly square)
-const gpuCols = Math.ceil(Math.sqrt(gpuCores));
-const gpuRows = Math.ceil(gpuCores / gpuCols);
+const gpuCols = Math.ceil(Math.sqrt(gpuCores))
+const gpuRows = Math.ceil(gpuCores / gpuCols)
 ---
 
 <div class="parallel-compare" data-component="parallel-compare">
@@ -28,14 +28,16 @@ const gpuRows = Math.ceil(gpuCores / gpuCols);
         <span class="processor-subtitle">Few Powerful Cores</span>
       </div>
       <div class="core-grid cpu-grid" data-cores="cpu">
-        {Array.from({ length: cpuCores }).map((_, i) => (
-          <div class="core cpu-core" data-core-index={i}>
-            <div class="core-inner">
-              <span class="core-number">{i + 1}</span>
+        {
+          Array.from({ length: cpuCores }).map((_, i) => (
+            <div class="core cpu-core" data-core-index={i}>
+              <div class="core-inner">
+                <span class="core-number">{i + 1}</span>
+              </div>
+              <div class="core-activity" />
             </div>
-            <div class="core-activity"></div>
-          </div>
-        ))}
+          ))
+        }
       </div>
       <div class="execution-label">
         <span class="label-text">Serial Execution</span>
@@ -61,11 +63,13 @@ const gpuRows = Math.ceil(gpuCores / gpuCols);
         data-cores="gpu"
         style={`--gpu-cols: ${gpuCols}; --gpu-rows: ${gpuRows};`}
       >
-        {Array.from({ length: gpuCores }).map((_, i) => (
-          <div class="core gpu-core" data-core-index={i}>
-            <div class="core-activity"></div>
-          </div>
-        ))}
+        {
+          Array.from({ length: gpuCores }).map((_, i) => (
+            <div class="core gpu-core" data-core-index={i}>
+              <div class="core-activity" />
+            </div>
+          ))
+        }
       </div>
       <div class="execution-label">
         <span class="label-text">Parallel Execution</span>
@@ -211,22 +215,40 @@ const gpuRows = Math.ceil(gpuCores / gpuCols);
     animation: cpu-pulse 1.6s infinite;
   }
 
-  .cpu-section:hover .cpu-core:nth-child(1) { animation-delay: 0s; }
-  .cpu-section:hover .cpu-core:nth-child(2) { animation-delay: 0.4s; }
-  .cpu-section:hover .cpu-core:nth-child(3) { animation-delay: 0.8s; }
-  .cpu-section:hover .cpu-core:nth-child(4) { animation-delay: 1.2s; }
-  .cpu-section:hover .cpu-core:nth-child(5) { animation-delay: 0.2s; }
-  .cpu-section:hover .cpu-core:nth-child(6) { animation-delay: 0.6s; }
-  .cpu-section:hover .cpu-core:nth-child(7) { animation-delay: 1.0s; }
-  .cpu-section:hover .cpu-core:nth-child(8) { animation-delay: 1.4s; }
+  .cpu-section:hover .cpu-core:nth-child(1) {
+    animation-delay: 0s;
+  }
+  .cpu-section:hover .cpu-core:nth-child(2) {
+    animation-delay: 0.4s;
+  }
+  .cpu-section:hover .cpu-core:nth-child(3) {
+    animation-delay: 0.8s;
+  }
+  .cpu-section:hover .cpu-core:nth-child(4) {
+    animation-delay: 1.2s;
+  }
+  .cpu-section:hover .cpu-core:nth-child(5) {
+    animation-delay: 0.2s;
+  }
+  .cpu-section:hover .cpu-core:nth-child(6) {
+    animation-delay: 0.6s;
+  }
+  .cpu-section:hover .cpu-core:nth-child(7) {
+    animation-delay: 1s;
+  }
+  .cpu-section:hover .cpu-core:nth-child(8) {
+    animation-delay: 1.4s;
+  }
 
   @keyframes cpu-pulse {
-    0%, 20% {
+    0%,
+    20% {
       background: var(--text-secondary);
       transform: scale(1.05);
       box-shadow: 0 0 12px var(--text-tertiary);
     }
-    25%, 100% {
+    25%,
+    100% {
       background: var(--selection);
       transform: scale(1);
       box-shadow: none;
@@ -239,11 +261,13 @@ const gpuRows = Math.ceil(gpuCores / gpuCols);
   }
 
   @keyframes gpu-pulse {
-    0%, 50% {
+    0%,
+    50% {
       background: var(--text-tertiary);
       box-shadow: 0 0 4px var(--text-tertiary);
     }
-    51%, 100% {
+    51%,
+    100% {
       background: var(--code-bg);
       box-shadow: none;
     }

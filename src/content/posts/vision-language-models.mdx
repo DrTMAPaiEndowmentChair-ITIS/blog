@@ -7,7 +7,7 @@ description: 'Trace how visual encoders, projectors, and language models combine
 topics: ['VLM', 'Multimodal', 'Computer vision']
 ---
 
-import VLMArchitecture from '../../components/viz/VLMArchitecture.astro';
+import VLMArchitecture from '../../components/viz/VLMArchitecture.astro'
 
 Vision Language Models (VLMs) combine computer vision and natural language processing into unified systems capable of reasoning about images and text together. Unlike earlier approaches that treated vision and language as separate pipelines, modern VLMs learn joint representations that enable tasks like visual question answering, image captioning, document analysis, and multimodal reasoning.
 
@@ -60,18 +60,19 @@ The output is a sequence of vectors: one per patch plus the CLS token. For a 224
 
 **Popular vision encoders:**
 
-| Encoder | Parameters | Patch Size | Output Dim | Notes |
-|---------|------------|------------|------------|-------|
-| CLIP ViT-L/14 | 428M | 14x14 | 1024 | Trained on 400M image-text pairs |
-| SigLIP-So400m | 400M | 14x14 | 1152 | Sigmoid loss, better small-batch training |
-| InternViT-6B | 6B | 14x14 | 3200 | Scaled up for InternVL |
-| DaViT | 88M | varies | varies | Dual attention (spatial + channel) |
+| Encoder       | Parameters | Patch Size | Output Dim | Notes                                     |
+| ------------- | ---------- | ---------- | ---------- | ----------------------------------------- |
+| CLIP ViT-L/14 | 428M       | 14x14      | 1024       | Trained on 400M image-text pairs          |
+| SigLIP-So400m | 400M       | 14x14      | 1152       | Sigmoid loss, better small-batch training |
+| InternViT-6B  | 6B         | 14x14      | 3200       | Scaled up for InternVL                    |
+| DaViT         | 88M        | varies     | varies     | Dual attention (spatial + channel)        |
 
 **CLIP vs SigLIP**
 
 CLIP (Contrastive Language-Image Pre-training) trains vision and text encoders jointly using a contrastive softmax loss. Given a batch of N image-text pairs, the model learns to match correct pairs while pushing incorrect pairs apart. The softmax normalization requires computing similarities across the entire batch.
 
 SigLIP (Sigmoid Loss for Language-Image Pre-training) replaces softmax with sigmoid loss that operates on each image-text pair independently. This removes the need for cross-batch normalization, enabling:
+
 - Better performance with smaller batch sizes
 - Reduced memory usage (4096 batch on 4 TPUs vs 2048 for CLIP)
 - Comparable or better accuracy on downstream tasks
@@ -123,6 +124,7 @@ The additional nonlinearity allows more complex transformations and improved mul
 **Cross-attention adapters (Flamingo-style)**
 
 Some architectures use cross-attention layers that let language model tokens attend to vision features rather than concatenating them directly. This approach:
+
 - Keeps vision and language computations more separate
 - Allows selective attention to relevant image regions
 - Can be more parameter-efficient
@@ -173,17 +175,20 @@ Standard language models use 1D position encoding. Images require 2D spatial inf
 LLaVA (Large Language and Vision Assistant) established the dominant paradigm: frozen CLIP encoder + MLP projector + instruction-tuned LLM.
 
 **LLaVA 1.0 (2023)**
+
 - Vision: CLIP ViT-L/14 (frozen)
 - Projector: Linear layer
 - LLM: Vicuna-13B
 - Training: Two-stage (projector pretraining, then full fine-tuning)
 
 **LLaVA 1.5 (2023)**
+
 - Projector: Two-layer MLP (significant improvement)
 - Higher resolution support: 336x336
 - Better instruction-following data
 
 **LLaVA-NeXT / LLaVA 1.6 (2024)**
+
 - Dynamic high resolution: Up to 672x672
 - AnyRes: Handles varying aspect ratios by tiling
 - Multiple LLM backends (Vicuna, Mistral, Hermes)
@@ -191,12 +196,14 @@ LLaVA (Large Language and Vision Assistant) established the dominant paradigm: f
 **Training process:**
 
 Stage 1: Projector pretraining
+
 - Freeze vision encoder and LLM
 - Train only the MLP projector
 - Use image-caption pairs
 - Goal: Align vision features with language embedding space
 
 Stage 2: Full fine-tuning
+
 - Freeze vision encoder
 - Unfreeze projector and LLM
 - Train on visual instruction data
@@ -211,6 +218,7 @@ Alibaba's Qwen vision models introduced Naive Dynamic Resolution, processing ima
 **Dynamic resolution**: Images are converted to a variable number of visual tokens based on their actual dimensions. A small icon might use 256 tokens; a high-resolution document might use 4096+.
 
 **M-RoPE (Multimodal RoPE)**: Unified position encoding for text, images, and video. Enables the model to understand:
+
 - Absolute text positions
 - 2D spatial positions within images
 - Temporal positions across video frames
@@ -220,6 +228,7 @@ Alibaba's Qwen vision models introduced Naive Dynamic Resolution, processing ima
 **Model sizes**: 2B, 8B, 72B parameters.
 
 **Qwen2.5-VL improvements (2025)**:
+
 - ViT trained from scratch with native dynamic resolution
 - Window attention for reduced compute
 - Dynamic FPS sampling for video
@@ -233,12 +242,14 @@ OpenGVLab's InternVL scales both vision and language components, with InternViT 
 **Architecture**: ViT-MLP-LLM paradigm with a pixel unshuffle operation that reduces visual tokens to 1/4 of the original count.
 
 **InternVL 2.5 / 3.0 (2025)**:
+
 - Native Multimodal Pre-Training: Interleaves vision-language data with text corpora in a single pretraining stage (rather than adapting a text-only model)
 - Variable Visual Position Encoding (V2PE)
 - Dynamic High Resolution from InternVL 1.5
 - Mixed Preference Optimization for alignment
 
 **InternVL 3.5 (August 2025)**:
+
 - Cascade Reinforcement Learning for improved reasoning
 - Visual Resolution Router (ViR): Dynamically adjusts visual token resolution
 - Decoupled Vision-Language Deployment: Separate vision and language servers for async pipelining
@@ -250,21 +261,25 @@ OpenGVLab's InternVL scales both vision and language components, with InternViT 
 Google's PaliGemma combines SigLIP with Gemma in a straightforward architecture.
 
 **Components**:
+
 - Vision: SigLIP-So400m (400M params)
 - Language: Gemma-2B
 - Projection: Linear layer (1152 to 2048 dimensions)
 
 **Resolution and tokens**:
+
 - Pretrained at 224x224, 448x448, or 896x896
 - Patch size: 14
 - Token counts: 256 (224px), 1024 (448px), 4096 (896px)
 
 **PaliGemma 2 (2024)**:
+
 - Upgraded to Gemma 2
 - Sizes: 3B, 10B, 28B
 - Multiple resolution support per model
 
 **Gemma 3 with vision (2025)**:
+
 - Custom SigLIP encoder
 - Pan and Scan algorithm for varying aspect ratios
 - 896x896 fixed encoder input
@@ -274,22 +289,26 @@ Google's PaliGemma combines SigLIP with Gemma in a straightforward architecture.
 Microsoft's Phi-3 Vision packs vision capabilities into a 4.2B parameter model.
 
 **Architecture**:
+
 - Image encoder
 - Connector
 - Projector
 - Phi-3 Mini language model
 
 **Specifications**:
+
 - 4.2B total parameters
 - 128K context length
 - Inputs: Text and images
 
 **Strengths**:
+
 - Chart, graph, and table understanding
 - Document analysis
 - Small footprint suitable for edge deployment
 
 **Phi-3.5 Vision**:
+
 - Multi-frame capabilities (image comparison, video summarization)
 - Improved single-image benchmarks
 - Training: 6 days on 256 A100-80G GPUs with 500B tokens
@@ -311,6 +330,7 @@ CogVLM layer:
 ```
 
 **Benefits**:
+
 - Deep fusion of vision and language (not just early concatenation)
 - Preserves language model performance on text-only tasks
 - Visual expert parameters initialized from pretrained weights
@@ -318,6 +338,7 @@ CogVLM layer:
 **Scale**: CogVLM-17B has 10B vision parameters + 7B language parameters.
 
 **CogVLM2 (2024)**:
+
 - Improved training recipes
 - Up to 1344x1344 input resolution
 
@@ -326,6 +347,7 @@ CogVLM layer:
 Microsoft's Florence-2 takes a different approach: a unified sequence-to-sequence model for all vision tasks.
 
 **Architecture**:
+
 - Vision encoder: DaViT (Dual Attention Vision Transformer)
 - Text processing: BART-style encoder-decoder
 - Sizes: 0.2B and 0.7B parameters
@@ -345,6 +367,7 @@ VLM inference presents challenges beyond text-only LLMs.
 ### Variable Image Resolutions
 
 Text inputs have predictable token counts (roughly 4 chars per token). Images vary wildly:
+
 - Thumbnail: 224x224 = 256 tokens (with 14x14 patches)
 - Document: 896x896 = 4096 tokens
 - High-res photo with dynamic tiling: 10000+ tokens
@@ -354,6 +377,7 @@ Dynamic resolution models like Qwen2-VL convert resolution directly to token cou
 ### Token Count Variability
 
 A batch of requests might contain:
+
 - Request 1: 100 text tokens, no images
 - Request 2: 50 text tokens, 256 image tokens
 - Request 3: 200 text tokens, 2048 image tokens (high-res document)
@@ -404,11 +428,13 @@ Quantization reduces model size and speeds inference by using lower-precision we
 ### Quantizing the Vision Encoder
 
 Vision encoders are often left at higher precision because:
+
 - They're smaller than the LLM (typically < 1B params)
 - Visual features are sensitive to quantization artifacts
 - The encoder runs once per image (not autoregressive), so speed gains are less impactful
 
 However, for edge deployment, encoder quantization matters. Research shows:
+
 - INT8 quantization typically maintains quality
 - INT4 can work with careful calibration
 - The vision modality is generally less sensitive than language
@@ -416,6 +442,7 @@ However, for edge deployment, encoder quantization matters. Research shows:
 ### Quantizing the Language Model
 
 Standard LLM quantization techniques apply:
+
 - **GPTQ**: Post-training quantization using calibration data
 - **AWQ**: Activation-aware weight quantization
 - **GGUF**: llama.cpp's format with various quantization levels (Q4_K_M, Q5_K_S, etc.)
@@ -430,6 +457,7 @@ The language model dominates parameter count (e.g., 72B LLM vs 400M vision encod
 Results: 2.78x memory compression, 1.44x speedup on 13B LLaVA without performance degradation.
 
 **MBQ (Modality-Balanced Quantization)** (CVPR 2025) observes that language modules are more sensitive to quantization than vision modules. Their approach:
+
 - 4-bit quantization for vision (ViT modules)
 - 8-bit quantization for language
 - Up to 4% improvement under W3A16 and 11% under W4A8 vs uniform quantization
@@ -437,6 +465,7 @@ Results: 2.78x memory compression, 1.44x speedup on 13B LLaVA without performanc
 ### Quality Tradeoffs
 
 Quantization affects different VLM capabilities differently:
+
 - OCR accuracy can degrade with aggressive quantization
 - Fine-grained visual details may be lost
 - Reasoning over complex diagrams is sensitive
@@ -577,6 +606,7 @@ wget https://huggingface.co/ggml-org/Qwen2.5-VL-7B-Instruct-GGUF/resolve/main/qw
 ```
 
 **Supported models:**
+
 - Gemma 3 (4B, 12B, 27B)
 - Qwen 2 VL (2B, 7B)
 - Qwen 2.5 VL (3B, 7B, 32B, 72B)
@@ -657,6 +687,7 @@ python -m vllm.entrypoints.openai.api_server \
 ```
 
 **Supported models (partial list)**:
+
 - LLaVA 1.5, LLaVA-NeXT
 - Qwen-VL, Qwen2-VL
 - InternVL, InternVL2
@@ -711,6 +742,7 @@ print(response['message']['content'])
 ```
 
 **Available vision models on Ollama:**
+
 - `llava` (7B and 13B variants)
 - `llava-phi3` (3.8B, faster)
 - `bakllava`
