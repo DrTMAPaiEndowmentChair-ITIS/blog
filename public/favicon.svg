@@ -1,7 +1,172 @@
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="32"
+  height="32"
+  viewBox="0 0 32 32"
+  role="img"
+  aria-label="An isometric block resting on a plinth"
+>
+  <!--
+    An isometric block on a plinth, shaded like a soft clay render: one key light
+    from the upper left, so the top faces read lightest, the left faces mid and
+    the right faces darkest, over a studio backdrop with a soft contact shadow.
+
+    Every value comes from `src/styles/global.css`: the backdrop sits in the same
+    range as the surface tints and the block is drawn in the site's ink, so the
+    tab mark belongs to the same monochrome family as the pages. It is swapped by
+    `prefers-color-scheme`, which browsers honour for SVG favicons; the light
+    palette is the default, so any renderer that ignores the query (Safari, and
+    the rasteriser behind `scripts/generate-icons.ts`) still gets a sane icon.
+
+    Geometry is true 30° isometric: a square footprint of half-side `a` projects
+    to a rhombus 2·√3·a wide and 2·a tall. The block's bottom face is concentric
+    with the plinth's top face, so it genuinely rests on it rather than floating.
+
+    Two tiers, not three. A tab renders this at 16px, where a third step is under
+    two pixels tall and the whole stack collapses into a dark lozenge; at two
+    tiers the step survives and the form still reads as solid.
+
+    Corners are rounded by stroking each face with its own gradient at a round
+    linejoin, which reads as a bevel catching the light rather than a hard edge.
+  -->
+  <style>
+    :root {
+      --plate-hi: #f7f7f3;
+      --plate-lo: #e7e7df;
+      --glow: #ffffff;
+      --glow-opacity: 0.55;
+      --shadow: #000000;
+      --shadow-opacity: 0.3;
+      --top-hi: #75756b;
+      --top-lo: #4d4d45;
+      --left-hi: #35352f;
+      --left-lo: #232320;
+      --right-hi: #1c1c19;
+      --right-lo: #0e0e0d;
+      --rim: #9b9b90;
+      --rim-opacity: 0.6;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --plate-hi: #292927;
+        --plate-lo: #171716;
+        --glow: #ffffff;
+        --glow-opacity: 0.07;
+        --shadow: #000000;
+        --shadow-opacity: 0.42;
+        --top-hi: #fbfbf7;
+        --top-lo: #dcdcd2;
+        --left-hi: #c9c9bf;
+        --left-lo: #a3a399;
+        --right-hi: #8d8d84;
+        --right-lo: #6a6a62;
+        --rim: #ffffff;
+        --rim-opacity: 0.7;
+      }
+    }
+  </style>
+
+  <defs>
+    <!-- Backdrop: a studio sweep, brightest behind the block's lit shoulder. -->
+    <linearGradient id="fav-plate" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="var(--plate-hi)" />
+      <stop offset="1" stop-color="var(--plate-lo)" />
+    </linearGradient>
+    <radialGradient id="fav-glow" cx="11" cy="8" r="19" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="var(--glow)" stop-opacity="var(--glow-opacity)" />
+      <stop offset="1" stop-color="var(--glow)" stop-opacity="0" />
+    </radialGradient>
+    <!--
+      Left in object bounding box units on purpose. A user space radial gradient
+      is circular, so against an ellipse this flat it would still be a fifth
+      opaque where the shape ends and leave a hard rim; in box units the falloff
+      squashes with the ellipse and reaches zero exactly at its edge.
+    -->
+    <radialGradient id="fav-shadow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="var(--shadow)" stop-opacity="var(--shadow-opacity)" />
+      <stop offset="0.55" stop-color="var(--shadow)" stop-opacity="0.1" />
+      <stop offset="1" stop-color="var(--shadow)" stop-opacity="0" />
+    </radialGradient>
+
+    <!--
+      One gradient per face orientation, in user space across the whole icon
+      rather than per shape. The falloff is global, so the block sits nearer the
+      light and the plinth darkens on its own: ambient occlusion for free, and
+      six faces off six colours.
+    -->
+    <linearGradient id="fav-top" x1="5" y1="5" x2="27" y2="25" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="var(--top-hi)" />
+      <stop offset="1" stop-color="var(--top-lo)" />
+    </linearGradient>
+    <linearGradient id="fav-left" x1="3" y1="6" x2="16" y2="26" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="var(--left-hi)" />
+      <stop offset="1" stop-color="var(--left-lo)" />
+    </linearGradient>
+    <linearGradient id="fav-right" x1="16" y1="6" x2="29" y2="26" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="var(--right-hi)" />
+      <stop offset="1" stop-color="var(--right-lo)" />
+    </linearGradient>
+  </defs>
+
+  <rect id="favicon-plate" width="32" height="32" rx="7.5" fill="url(#fav-plate)" />
+  <rect width="32" height="32" rx="7.5" fill="url(#fav-glow)" />
+  <!--
+    Centred on the plinth's bottom face, not below the icon's lowest vertex: the
+    block sits on the floor, so the shadow pools around its base and only shows
+    where it spills past the silhouette. Nudged right, away from the key light.
+  -->
+  <ellipse cx="17.5" cy="21.3" rx="13.4" ry="4.6" fill="url(#fav-shadow)" />
+
+  <!--
+    Painter's order, plinth first: each tier is drawn whole and the block above
+    overwrites the part of the plinth's top face it covers, so no hidden-surface
+    bookkeeping is needed. Within a tier the top face lands last, letting its
+    rounded stroke sit over the side faces as the top bevel.
+  -->
+  <g stroke-width="0.9" stroke-linejoin="round">
+    <!-- Plinth: a = 7.0, height 4.0, top face centred at y = 14.3. -->
     <path
-        id="favicon-path"
-        d="M12.3785 2C16.2799 2.0001 15.793 5.9958 15.3053 7.99414C16.7687 6.99515 19.8498 5.92943 21.6451 8.99414C23.1079 11.4917 19.6947 14.3221 17.7437 14.9883C19.2069 15.9875 21.3523 18.5847 18.231 20.9824C15.1095 23.3803 12.7031 20.983 11.8902 19.4844C10.9146 20.983 8.28152 23.3801 5.55039 20.9824C2.81905 18.5846 4.41233 16.3199 5.55039 15.4873C3.76201 14.9878 0.672689 12.0909 2.62363 8.49414C3.85202 6.22947 7.01339 6.66254 7.98886 7.49512C7.6637 5.66344 8.47661 2 12.3785 2ZM12.3121 9.49316C8.42708 9.49327 7.3044 16.1247 12.3121 15.4375C15.6222 14.9833 15.6814 9.49316 12.3121 9.49316Z"
-        fill="#111"
+      d="M3.876 14.3 16 21.3 16 25.3 3.876 18.3Z"
+      fill="url(#fav-left)"
+      stroke="url(#fav-left)"
     />
+    <path
+      d="M16 21.3 28.124 14.3 28.124 18.3 16 25.3Z"
+      fill="url(#fav-right)"
+      stroke="url(#fav-right)"
+    />
+    <path
+      d="M16 7.3 28.124 14.3 16 21.3 3.876 14.3Z"
+      fill="url(#fav-top)"
+      stroke="url(#fav-top)"
+    />
+
+    <!-- Block: a = 4.2, height 4.2, bottom face on the plinth's top face. -->
+    <path
+      d="M8.725 10.1 16 14.3 16 18.5 8.725 14.3Z"
+      fill="url(#fav-left)"
+      stroke="url(#fav-left)"
+    />
+    <path
+      d="M16 14.3 23.275 10.1 23.275 14.3 16 18.5Z"
+      fill="url(#fav-right)"
+      stroke="url(#fav-right)"
+    />
+    <path
+      d="M16 5.9 23.275 10.1 16 14.3 8.725 10.1Z"
+      fill="url(#fav-top)"
+      stroke="url(#fav-top)"
+    />
+  </g>
+
+  <!-- Specular on the block's back-left edge, the one hard highlight. -->
+  <path
+    d="M9 9.94 15.8 6.02"
+    fill="none"
+    stroke="var(--rim)"
+    stroke-opacity="var(--rim-opacity)"
+    stroke-width="0.85"
+    stroke-linecap="round"
+  />
 </svg>

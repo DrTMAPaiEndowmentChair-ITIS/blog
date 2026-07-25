@@ -361,7 +361,7 @@ async function renderPostContent(
  * byte length, so the file is stat-ed and the enclosure dropped when missing.
  */
 function coverArt(slug: string, siteUrl: string) {
-  const relativePath = `og/gen/${slug}.png`
+  const relativePath = `open-graph/${slug}.png`
   try {
     const { size } = statSync(path.resolve('public', relativePath))
     return { url: absoluteUrl(relativePath, siteUrl), type: 'image/png', length: size }

@@ -34,8 +34,10 @@ const VARIANTS: Record<ThumbnailVariant, VariantGeometry> = {
   // crop of the 16:9 card.
   feature: { w: 160, h: 120, density: 1.2, stroke: 1, fade: 1, scaleStroke: false },
   banner: { w: 320, h: 80, density: 1, stroke: 1, fade: 1, scaleStroke: false },
-  // The OG art sits behind a 68px title, so it stays a faint texture.
-  og: { w: 1200, h: 630, density: 1.4, stroke: 2, fade: 0.3, scaleStroke: true }
+  // The social card's masthead strip. Same 4:1-ish proportion as the banner on
+  // the post page itself, drawn at full strength because nothing sits on top of
+  // it — the title lives below the strip, not behind it.
+  og: { w: 1200, h: 168, density: 1, stroke: 1.6, fade: 1, scaleStroke: true }
 }
 
 // ---------------------------------------------------------------------------
@@ -121,9 +123,7 @@ const rect = (
   filled = false
 ) => {
   const geo = `x="${round(x)}" y="${round(y)}" width="${round(Math.max(0, w))}" height="${round(Math.max(0, h))}"`
-  return filled
-    ? `<rect ${geo} ${fillAttrs(ctx, o)}/>`
-    : `<rect ${geo} ${strokeAttrs(ctx, o)}/>`
+  return filled ? `<rect ${geo} ${fillAttrs(ctx, o)}/>` : `<rect ${geo} ${strokeAttrs(ctx, o)}/>`
 }
 
 const dot = (ctx: MarkContext, cx: number, cy: number, r: number, o: number) =>
@@ -162,7 +162,10 @@ const routing: Motif = (rng, geo, ctx) => {
   const expertX = geo.w - padX - expertW
 
   const tokenCount = Math.min(14, Math.max(4, Math.round(rng.int(6, 11) * geo.density)))
-  const expertCount = Math.max(2, Math.min(5, Math.round(rng.int(2, 5) * Math.min(1, geo.density * 1.6))))
+  const expertCount = Math.max(
+    2,
+    Math.min(5, Math.round(rng.int(2, 5) * Math.min(1, geo.density * 1.6)))
+  )
   const focal = rng.int(0, expertCount - 1)
   // Layout knobs, so nine posts in this family don't all draw the same fan.
   const clustered = rng.chance(0.4)
@@ -319,7 +322,15 @@ const circuit: Motif = (rng, geo, ctx) => {
     for (const end of [first, last]) {
       if (!end) continue
       marks.push(
-        rect(ctx, px(end[0]) - padSize / 2, py(end[1]) - padSize / 2, padSize, padSize, isLive ? 0.8 : 0.28, true)
+        rect(
+          ctx,
+          px(end[0]) - padSize / 2,
+          py(end[1]) - padSize / 2,
+          padSize,
+          padSize,
+          isLive ? 0.8 : 0.28,
+          true
+        )
       )
     }
 
@@ -351,7 +362,12 @@ const modules: Motif = (rng, geo, ctx) => {
   const minSide = Math.min(geo.w, geo.h) * 0.16
 
   const split = (x: number, y: number, w: number, h: number, depth: number) => {
-    if (w < minSide || h < minSide || depth >= maxDepth || (depth >= minDepth && rng.chance(0.24))) {
+    if (
+      w < minSide ||
+      h < minSide ||
+      depth >= maxDepth ||
+      (depth >= minDepth && rng.chance(0.24))
+    ) {
       cells.push({ x, y, w, h })
       return
     }
@@ -389,7 +405,14 @@ const modules: Motif = (rng, geo, ctx) => {
     const pad = Math.min(cell.w, cell.h) * 0.22
     if (rng.chance(isAnchor ? 0.9 : 0.28) && cell.w - pad * 2 > 1 && cell.h - pad * 2 > 1) {
       marks.push(
-        rect(ctx, cell.x + pad, cell.y + pad, cell.w - pad * 2, cell.h - pad * 2, isAnchor ? 0.45 : 0.2)
+        rect(
+          ctx,
+          cell.x + pad,
+          cell.y + pad,
+          cell.w - pad * 2,
+          cell.h - pad * 2,
+          isAnchor ? 0.45 : 0.2
+        )
       )
     }
   })
@@ -423,7 +446,15 @@ const attention: Motif = (rng, geo, ctx) => {
       const weight = Math.max(0, 1 - diag * rng.range(1.6, 3.2))
       if (weight < 0.06) continue
       marks.push(
-        rect(ctx, originX + c * cell, inset + r * cell, cell - gap, cell - gap, 0.1 + weight * 0.62, true)
+        rect(
+          ctx,
+          originX + c * cell,
+          inset + r * cell,
+          cell - gap,
+          cell - gap,
+          0.1 + weight * 0.62,
+          true
+        )
       )
     }
   }

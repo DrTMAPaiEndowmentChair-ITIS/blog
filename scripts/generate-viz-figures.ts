@@ -7,7 +7,7 @@
  * a headless browser, screenshots every component block, and writes a manifest
  * that `src/utils/feed.ts` reads at build time.
  *
- * Images are committed (unlike `public/og/gen/`) so the site build never needs a
+ * Images are committed (unlike `public/open-graph/`) so the site build never needs a
  * browser. Re-run `bun run viz-figures` after changing a `viz/*` component; the
  * feed falls back to a captioned link for any block the manifest does not cover,
  * and logs a warning naming it.
@@ -140,8 +140,9 @@ const context = await browser.newContext({
   colorScheme: 'light',
   reducedMotion: 'reduce'
 })
-// The theme manager reads this before first paint; feeds render light.
-await context.addInitScript({ content: "window.localStorage.setItem('theme', 'light')" })
+// The theme manager reads this before first paint; feeds render light. The
+// `colorScheme` above already forces light, this pins it against a stored value.
+await context.addInitScript({ content: "window.localStorage.setItem('itis-theme', 'light')" })
 
 const page = await context.newPage()
 const figures: Figure[] = []
