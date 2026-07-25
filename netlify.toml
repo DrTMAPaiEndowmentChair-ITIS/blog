@@ -1,6 +1,9 @@
 [build]
   publish = "dist"
-  command = "pnpm run build"
+  # Bun, to match `bun.lock` — the only lockfile the project keeps current. It
+  # also runs the `prebuild` step, which renders the icons and the social cards
+  # into `public/`; a package manager that skips pre-scripts ships neither.
+  command = "bun run build"
 
 # Redirects for Astro static assets
 [[redirects]]
