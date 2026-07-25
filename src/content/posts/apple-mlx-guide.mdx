@@ -7,7 +7,7 @@ description: 'Learn how MLX uses unified memory to make model training, fine-tun
 topics: ['MLX', 'Apple Silicon', 'Local AI']
 ---
 
-import UnifiedMemoryDiagram from '../../components/viz/UnifiedMemoryDiagram.astro';
+import UnifiedMemoryDiagram from '../../components/viz/UnifiedMemoryDiagram.astro'
 
 ## Why MLX Matters for Apple Silicon Developers
 
@@ -379,7 +379,7 @@ Quantized models from the mlx-community organization on Hugging Face are ready t
 Approximate memory usage for different quantization levels on a 7B parameter model:
 
 | Precision | Memory Usage |
-|-----------|--------------|
+| --------- | ------------ |
 | float32   | ~28 GB       |
 | float16   | ~14 GB       |
 | 8-bit     | ~7 GB        |
@@ -440,11 +440,11 @@ python -m mlx_lm.lora \
 
 Memory comparison for Llama 7B:
 
-| Method | Memory Usage |
-|--------|--------------|
-| Full fine-tuning | ~28 GB |
-| LoRA (r=8) | ~14 GB |
-| QLoRA (4-bit + LoRA) | ~7 GB |
+| Method               | Memory Usage |
+| -------------------- | ------------ |
+| Full fine-tuning     | ~28 GB       |
+| LoRA (r=8)           | ~14 GB       |
+| QLoRA (4-bit + LoRA) | ~7 GB        |
 
 ### Using Trained Adapters
 
@@ -558,6 +558,7 @@ print(output)
 ```
 
 Supported features:
+
 - Multi-image analysis
 - Video captioning and summarization
 - LoRA and QLoRA fine-tuning for VLMs
@@ -607,6 +608,7 @@ If you are coming from PyTorch with CUDA, this section covers the key difference
 **Hardware**: Any Mac with Apple Silicon (M1, M2, M3, M4, M5 series).
 
 **Software**:
+
 - macOS 14.0 or later (macOS 26.2 for M5 Neural Accelerator support)
 - Python 3.10 or later
 - Native ARM Python (not Rosetta x86 emulation)
@@ -711,6 +713,7 @@ class MLXMLP(nn.Module):
 ```
 
 Key differences:
+
 - Use `__call__` instead of `forward`
 - Use `mx.maximum(x, 0)` instead of `torch.relu(x)` (or `nn.relu(x)`)
 - No `.cuda()` calls needed
@@ -1010,23 +1013,25 @@ print(generate(model, tokenizer, prompt=prompt, max_tokens=50))
 
 Based on benchmarks from late 2025:
 
-| Aspect | MLX | PyTorch + CUDA |
-|--------|-----|----------------|
-| Setup complexity | Simple pip install | CUDA toolkit, drivers |
-| Memory efficiency | Unified, no copies | Explicit transfers |
-| Small batch latency | Lower overhead | Higher kernel launch cost |
-| Large batch throughput | Competitive on M2 Ultra+ | Faster on RTX 4090 |
-| LLM inference | Optimized for local use | More optimized on server GPUs |
-| Training speed | Slower for large models | Faster for production training |
-| Debugging | Straightforward | Mature tooling |
+| Aspect                 | MLX                      | PyTorch + CUDA                 |
+| ---------------------- | ------------------------ | ------------------------------ |
+| Setup complexity       | Simple pip install       | CUDA toolkit, drivers          |
+| Memory efficiency      | Unified, no copies       | Explicit transfers             |
+| Small batch latency    | Lower overhead           | Higher kernel launch cost      |
+| Large batch throughput | Competitive on M2 Ultra+ | Faster on RTX 4090             |
+| LLM inference          | Optimized for local use  | More optimized on server GPUs  |
+| Training speed         | Slower for large models  | Faster for production training |
+| Debugging              | Straightforward          | Mature tooling                 |
 
 MLX is well suited for:
+
 - Local LLM inference and experimentation
 - Development and prototyping on Mac
 - Memory-constrained scenarios (unified 128GB+)
 - Deploying models to Apple devices
 
 PyTorch + CUDA remains better for:
+
 - Large-scale training runs
 - Maximum throughput requirements
 - Production server deployment

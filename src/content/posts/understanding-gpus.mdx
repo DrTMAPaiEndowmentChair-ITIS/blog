@@ -7,7 +7,7 @@ description: 'Build a mental model of GPU architecture, memory, kernels, and par
 topics: ['GPU', 'CUDA', 'Parallel computing']
 ---
 
-import ParallelCompare from '../../components/viz/ParallelCompare.astro';
+import ParallelCompare from '../../components/viz/ParallelCompare.astro'
 
 ## Why this guide
 
@@ -26,12 +26,14 @@ At its most basic level, a computer is a sophisticated machine that transforms e
 This duality is crucial to understand because modern GPU programming requires intimate knowledge of both layers. Unlike traditional CPU programming where hardware details are often abstracted away, GPU programming demands awareness of the underlying architecture to achieve optimal performance.
 
 The hardware layer consists of:
+
 - **Processing units**: CPU cores, GPU cores, specialized accelerators
 - **Memory hierarchy**: Registers, caches, main memory, storage
 - **Interconnects**: Buses, networks, on-chip communication paths
 - **Control systems**: Instruction decoders, schedulers, memory controllers
 
 The software layer encompasses:
+
 - **System software**: Operating systems, drivers, runtime libraries
 - **Development tools**: Compilers, debuggers, profilers
 - **Application software**: Your actual programs and algorithms
@@ -102,11 +104,13 @@ A typical CPU core contains:
 The introduction of multi-core CPUs represented the first major shift toward parallelism in mainstream computing. However, each core still operates on the same serial computing principles; they provide multiple independent serial processors on the same chip.
 
 Multi-core systems excel at:
+
 - **Task-level parallelism**: Running different programs simultaneously
 - **Coarse-grained parallelism**: Dividing work into large, independent chunks
 - **Thread-level parallelism**: Multiple execution contexts with shared memory
 
 However, they face fundamental limitations:
+
 - **Amdahl's Law**: The sequential portions of code limit overall speedup
 - **Memory bandwidth**: Multiple cores competing for the same memory subsystem
 - **Cache coherence**: Overhead of maintaining consistent data across cores
@@ -176,11 +180,7 @@ if __name__ == "__main__":
 
 ---
 
-<ParallelCompare
-  title="CPU vs GPU Architecture Comparison"
-  cpuCores={4}
-  gpuCores={64}
-/>
+<ParallelCompare title="CPU vs GPU Architecture Comparison" cpuCores={4} gpuCores={64} />
 
 ## GPUs and Parallel Computing: The Paradigm Shift
 
@@ -192,13 +192,13 @@ This architectural difference stems from their original purpose: rendering graph
 
 The key philosophical differences between CPU and GPU design:
 
-| Aspect | CPU | GPU |
-|--------|-----|-----|
-| **Design Goal** | Minimize latency for complex tasks | Maximize throughput for simple tasks |
-| **Core Count** | Few (2-64) powerful cores | Thousands of simple cores |
-| **Memory** | Large caches, complex hierarchy | High bandwidth, simpler hierarchy |
-| **Control Logic** | Complex branch prediction, out-of-order | Simple, in-order execution |
-| **Best For** | Sequential code, complex branching | Parallel code, regular patterns |
+| Aspect            | CPU                                     | GPU                                  |
+| ----------------- | --------------------------------------- | ------------------------------------ |
+| **Design Goal**   | Minimize latency for complex tasks      | Maximize throughput for simple tasks |
+| **Core Count**    | Few (2-64) powerful cores               | Thousands of simple cores            |
+| **Memory**        | Large caches, complex hierarchy         | High bandwidth, simpler hierarchy    |
+| **Control Logic** | Complex branch prediction, out-of-order | Simple, in-order execution           |
+| **Best For**      | Sequential code, complex branching      | Parallel code, regular patterns      |
 
 ### SIMD vs SIMT: Two Approaches to Parallelism
 
@@ -290,6 +290,7 @@ Grid (entire kernel launch)
 ```
 
 **Warp Execution Model**:
+
 - **Warp**: Group of 32 threads executed in lockstep
 - **SIMT execution**: All threads in a warp execute the same instruction
 - **Divergence**: When threads take different paths, some become inactive
@@ -358,6 +359,7 @@ int main() {
 The motivation for parallel computing extends far beyond graphics:
 
 **Graphics and Video Processing**:
+
 - **Pixel independence**: Each pixel can be processed without knowledge of others
 - **Regular memory patterns**: Predictable access patterns enable efficient memory usage
 - **High computational density**: Simple operations repeated millions of times
@@ -502,18 +504,21 @@ analyze_system_memory()
 Cache memory provides ultra-fast access to frequently used data through a hierarchy of increasingly smaller but faster storage levels:
 
 **L1 Cache**:
+
 - **Size**: 32-64 KB per core
 - **Latency**: 1-2 CPU cycles
 - **Organization**: Separate instruction and data caches
 - **Bandwidth**: ~1 TB/s per core
 
 **L2 Cache**:
+
 - **Size**: 256KB - 1MB per core
 - **Latency**: 3-10 CPU cycles
 - **Shared**: Often shared between cores
 - **Bandwidth**: ~500 GB/s per core
 
 **L3 Cache**:
+
 - **Size**: 8-64MB total
 - **Latency**: 10-20 CPU cycles
 - **Shared**: Across all cores
@@ -727,6 +732,7 @@ Understanding the historical development of GPUs provides crucial context for th
 The early 1990s marked the beginning of consumer 3D graphics acceleration. Before this era, all graphics rendering was performed by the CPU, limiting the complexity and realism of computer graphics.
 
 **Key developments**:
+
 - **Software rendering**: Early 3D games like Wolfenstein 3D used clever CPU-based techniques
 - **Fixed-function pipelines**: Early 3D accelerators implemented fixed graphics operations in hardware
 - **Limited programmability**: Graphics cards could only perform predefined operations
@@ -736,6 +742,7 @@ The early 1990s marked the beginning of consumer 3D graphics acceleration. Befor
 The 3DFX Voodoo Graphics card revolutionized PC gaming by providing hardware acceleration for 3D graphics operations:
 
 **Technical specifications**:
+
 - **Dedicated 3D acceleration**: Separate card just for 3D rendering
 - **Texture mapping**: Hardware support for applying textures to 3D surfaces
 - **Z-buffering**: Hardware depth testing for proper 3D object ordering
@@ -767,11 +774,13 @@ void render_triangle() {
 This period saw the integration of 2D and 3D graphics capabilities:
 
 **NVIDIA RIVA 128**:
+
 - **Unified architecture**: Combined 2D GUI acceleration with 3D rendering
 - **AGP interface**: Faster connection to system memory than PCI
 - **Hardware transform**: Basic 3D coordinate transformation in hardware
 
 **ATI Rage Pro**:
+
 - **Video acceleration**: Hardware support for video decoding and playback
 - **Dual-head support**: Multiple monitor outputs
 - **Improved memory bandwidth**: Better utilization of available memory
@@ -781,6 +790,7 @@ This period saw the integration of 2D and 3D graphics capabilities:
 Forward-thinking researchers recognized that graphics hardware could be useful for non-graphics computations:
 
 **Early GPGPU techniques**:
+
 - **Texture-based computing**: Encoding data as textures and using pixel shaders for computation
 - **Fragment shader programming**: Using graphics shaders for general-purpose calculations
 - **Render-to-texture**: Computing results and storing them in textures for further processing
@@ -817,6 +827,7 @@ void main() {
 NVIDIA's introduction of CUDA (Compute Unified Device Architecture) marked the true beginning of mainstream GPGPU computing. For the first time, developers could write GPU code using familiar C/C++ syntax instead of graphics shaders.
 
 **CUDA's revolutionary features**:
+
 - **C/C++ programming model**: No need to encode computation as graphics operations
 - **Explicit memory management**: Direct control over GPU memory allocation and transfers
 - **Thread hierarchy**: Organized parallel execution through grids, blocks, and threads
@@ -893,6 +904,7 @@ int main() {
 The Khronos Group introduced OpenCL (Open Computing Language) to provide vendor-neutral parallel computing across different hardware platforms.
 
 **OpenCL advantages**:
+
 - **Cross-platform**: Works on NVIDIA, AMD, Intel GPUs, and CPUs
 - **Heterogeneous computing**: Can coordinate CPU and GPU execution
 - **Fine-grained control**: Explicit management of compute devices and memory
@@ -962,6 +974,7 @@ int main() {
 As deep learning gained momentum, NVIDIA recognized the need for highly optimized library implementations of common operations.
 
 **cuBLAS (CUDA Basic Linear Algebra Subprograms)**:
+
 - **Optimized BLAS**: Hardware-specific implementations of linear algebra operations
 - **Multiple precision**: Support for FP64, FP32, FP16, and mixed-precision
 - **Batched operations**: Efficient processing of multiple small matrices
@@ -1011,6 +1024,7 @@ void optimized_matrix_multiply() {
 </details>
 
 **cuDNN (CUDA Deep Neural Network library)**:
+
 - **Convolution operations**: Highly optimized 2D and 3D convolutions
 - **Activation functions**: Hardware-accelerated ReLU, sigmoid, tanh
 - **Normalization**: Batch normalization, layer normalization
@@ -1076,6 +1090,7 @@ void optimized_convolution() {
 The current era of GPU computing is characterized by:
 
 **Advanced Data Types and Precision**:
+
 - **FP8 (8-bit floating point)**: Extreme compression for inference
 - **BF16 (Brain Float 16)**: Better numerical stability than FP16
 - **TF32**: Tensor Float 32 for automatic mixed precision
@@ -1162,6 +1177,7 @@ def flash_attention_concept(Q, K, V):
 <summary><strong>Code Example: Triton GPU Kernel Programming</strong></summary>
 
 **Triton**: Python-based GPU kernel programming
+
 ```python
 import triton
 import triton.language as tl
@@ -1198,6 +1214,7 @@ def vector_add(x, y):
 ```
 
 **CUDA Graphs**: Reduce kernel launch overhead
+
 ```python
 import torch
 
@@ -1271,21 +1288,25 @@ GPU Device
 Understanding the GPU thread hierarchy is crucial for writing efficient parallel code:
 
 **1. Thread**: The smallest unit of execution
+
 - Each thread has its own program counter and register space
 - Executes the same kernel function with different data
 - Can have unique thread ID for data indexing
 
 **2. Warp**: Group of 32 threads executed in lockstep
+
 - All threads in a warp execute the same instruction simultaneously
 - Hardware scheduling unit - warps are scheduled for execution
 - Divergence occurs when threads take different code paths
 
 **3. Block**: Collection of threads (up to 1024) that can cooperate
+
 - Threads within a block can synchronize using `__syncthreads()`
 - Share fast on-chip shared memory
 - Entire block is assigned to one SM
 
 **4. Grid**: Collection of blocks that compose the entire kernel launch
+
 - Blocks are independent and can execute in any order
 - Grid dimensions define the problem size
 
@@ -1448,6 +1469,7 @@ __global__ void cooperative_reduction(float* input, float* output, int n) {
 **High Bandwidth Memory (HBM)** or **VRAM** serves as the main memory for GPU computations:
 
 **Characteristics**:
+
 - **Capacity**: 40-80GB on modern data center GPUs (A100, H100)
 - **Bandwidth**: 1.5-3.0 TB/s peak throughput
 - **Latency**: 200-800 cycles (relatively high)
@@ -1525,12 +1547,14 @@ demonstrate_memory_coalescing()
 Modern GPUs implement a sophisticated cache hierarchy to reduce memory latency:
 
 **L2 Cache**:
+
 - **Size**: 40-50MB on A100/H100
 - **Shared**: Across all SMs on the GPU
 - **Management**: Hardware-managed, transparent to programmer
 - **Purpose**: Reduce Global Memory access latency
 
 **L1 Cache/Texture Cache**:
+
 - **Size**: 128KB per SM
 - **Management**: Hardware-managed with some programmer control
 - **Configurable**: Can be partitioned with shared memory
@@ -1562,6 +1586,7 @@ __global__ void cache_friendly_stencil(float* input, float* output, int width, i
 **Shared Memory** is the programmer's primary tool for optimizing memory access patterns:
 
 **Characteristics**:
+
 - **Size**: 48-164KB per SM (configurable)
 - **Speed**: ~19 TB/s per SM (much faster than global memory)
 - **Scope**: Shared among threads in the same block
@@ -1624,6 +1649,7 @@ __global__ void tiled_matrix_multiply(float* A, float* B, float* C, int N) {
 **Registers** provide the fastest memory access but are limited in quantity:
 
 **Characteristics**:
+
 - **Size**: 256KB per SM (65,536 32-bit registers)
 - **Distribution**: Divided among active threads
 - **Speed**: Single-cycle access
@@ -1662,11 +1688,13 @@ __global__ void register_usage_example(float* data, int n) {
 Understanding whether your kernel is **memory-bound** or **compute-bound** is crucial for optimization:
 
 **Memory-Bound Kernels**:
+
 - Runtime dominated by data transfer between Global Memory and SMs
 - Low arithmetic intensity (few operations per byte transferred)
 - Examples: Simple element-wise operations, reductions, transposes
 
 **Compute-Bound Kernels**:
+
 - Runtime dominated by actual computation (ALU or Tensor Core operations)
 - High arithmetic intensity (many operations per byte transferred)
 - Examples: Dense matrix multiplication, complex mathematical functions
@@ -2401,6 +2429,7 @@ Modern research computing relies heavily on **High-Performance Computing (HPC)**
                                                   │  └───────────┘ │
                                                   └─────────────────┘
 ```
+
 ### Advanced GPU Architectures for Research
 
 Understanding modern GPU architectures is fundamental for researchers working with high-performance computing. The evolution from graphics-focused processors to general-purpose parallel computing engines has created unprecedented opportunities for scientific discovery and computational research.
@@ -2428,6 +2457,7 @@ The A100's memory architecture reflects a deep understanding of modern workload 
 **Multi-Instance GPU (MIG) Technology:**
 
 One of the A100's most innovative features is MIG, which allows a single GPU to be partitioned into up to seven independent instances. This is particularly valuable for research environments where:
+
 - Multiple researchers need guaranteed GPU resources
 - Different experiments have varying resource requirements
 - Cost efficiency requires maximizing utilization across diverse workloads
@@ -2518,76 +2548,78 @@ The H100 represents the latest evolution in GPU architecture, incorporating less
 **Key Architectural Innovations:**
 
 **Transformer Engine:** The H100 introduces hardware specifically designed for transformer architectures, the foundation of modern large language models. This includes:
+
 - **Attention-specific acceleration:** Hardware units optimized for the attention mechanism
 - **Dynamic precision management:** Automatic adjustment of numerical precision based on training stability
 - **Sparsity acceleration:** Hardware support for structured sparsity patterns common in modern neural networks
 
 **Advanced Memory Architecture:**
+
 - **HBM3 Integration:** Next-generation memory providing higher bandwidth and capacity
 - **Memory Deduplication:** Hardware-level optimization for memory-efficient model serving
 - **Confidential Computing:** Hardware-level security features for sensitive research data
-**GPU Generation Evolution for Research Computing:**
+  **GPU Generation Evolution for Research Computing:**
 
 This comparison illustrates the exponential improvement in research computing capabilities across three major GPU generations:
 
 #### NVIDIA V100 (Volta, 2017) - Foundation of Modern AI
 
-| Specification | Value |
-|--------------|-------|
-| **Memory** | 32 GB |
-| **Memory Bandwidth** | 900 GB/s |
-| **FP32 Performance** | 15.7 TFLOPS |
-| **Tensor FP16 Performance** | 125 TFLOPS |
-| **Architecture** | Volta (1st gen Tensor Cores) |
-| **Process Node** | 12nm TSMC |
-| **Key Innovation** | First Tensor Cores - mixed-precision training |
-| **Research Impact** | Enabled modern deep learning research |
+| Specification               | Value                                         |
+| --------------------------- | --------------------------------------------- |
+| **Memory**                  | 32 GB                                         |
+| **Memory Bandwidth**        | 900 GB/s                                      |
+| **FP32 Performance**        | 15.7 TFLOPS                                   |
+| **Tensor FP16 Performance** | 125 TFLOPS                                    |
+| **Architecture**            | Volta (1st gen Tensor Cores)                  |
+| **Process Node**            | 12nm TSMC                                     |
+| **Key Innovation**          | First Tensor Cores - mixed-precision training |
+| **Research Impact**         | Enabled modern deep learning research         |
 
 #### NVIDIA A100 (Ampere, 2020) - Large-Scale AI Training
 
-| Specification | Value |
-|--------------|-------|
-| **Memory** | 80 GB (max variant) |
-| **Memory Bandwidth** | 2,039 GB/s |
-| **FP32 Performance** | 19.5 TFLOPS |
-| **Tensor FP16 Performance** | 312 TFLOPS |
-| **Architecture** | Ampere (2nd gen with sparsity) |
-| **Process Node** | 7nm |
-| **Tensor Cores** | Gen 3 - more data types |
-| **Key Innovation** | MIG + 2:4 structured sparsity |
-| **Research Impact** | Large-scale language model training |
+| Specification               | Value                               |
+| --------------------------- | ----------------------------------- |
+| **Memory**                  | 80 GB (max variant)                 |
+| **Memory Bandwidth**        | 2,039 GB/s                          |
+| **FP32 Performance**        | 19.5 TFLOPS                         |
+| **Tensor FP16 Performance** | 312 TFLOPS                          |
+| **Architecture**            | Ampere (2nd gen with sparsity)      |
+| **Process Node**            | 7nm                                 |
+| **Tensor Cores**            | Gen 3 - more data types             |
+| **Key Innovation**          | MIG + 2:4 structured sparsity       |
+| **Research Impact**         | Large-scale language model training |
 
 #### NVIDIA H100 (Hopper, 2022) - Trillion-Parameter Research
 
-| Specification | Value |
-|--------------|-------|
-| **Memory** | 80 GB |
-| **Memory Bandwidth** | 3,350 GB/s |
-| **FP32 Performance** | 67 TFLOPS (with sparsity) |
-| **Tensor FP16 Performance** | 1,979 TFLOPS (with sparsity) |
-| **Architecture** | Hopper (4th gen with transformer engine) |
-| **Process Node** | 4nm |
-| **Tensor Cores** | Gen 4 - transformer-optimized |
-| **Key Innovation** | Transformer Engine, FP8 support, confidential computing |
-| **Research Impact** | Trillion-parameter model research |
+| Specification               | Value                                                   |
+| --------------------------- | ------------------------------------------------------- |
+| **Memory**                  | 80 GB                                                   |
+| **Memory Bandwidth**        | 3,350 GB/s                                              |
+| **FP32 Performance**        | 67 TFLOPS (with sparsity)                               |
+| **Tensor FP16 Performance** | 1,979 TFLOPS (with sparsity)                            |
+| **Architecture**            | Hopper (4th gen with transformer engine)                |
+| **Process Node**            | 4nm                                                     |
+| **Tensor Cores**            | Gen 4 - transformer-optimized                           |
+| **Key Innovation**          | Transformer Engine, FP8 support, confidential computing |
+| **Research Impact**         | Trillion-parameter model research                       |
 
 #### Performance Evolution (baseline: V100)
 
-| Metric | A100 vs V100 | H100 vs V100 |
-|--------|--------------|--------------|
-| **Memory Capacity** | 2.5x | 2.5x |
-| **Memory Bandwidth** | 2.3x | 3.7x |
-| **Tensor Compute** | 2.5x | 15.8x |
-| **Research Capability** | ~5.7x | ~9.3x |
-| **Training Efficiency** | ~5.7x | ~58.5x |
+| Metric                  | A100 vs V100 | H100 vs V100 |
+| ----------------------- | ------------ | ------------ |
+| **Memory Capacity**     | 2.5x         | 2.5x         |
+| **Memory Bandwidth**    | 2.3x         | 3.7x         |
+| **Tensor Compute**      | 2.5x         | 15.8x        |
+| **Research Capability** | ~5.7x        | ~9.3x        |
+| **Training Efficiency** | ~5.7x        | ~58.5x       |
 
 #### Research Milestones by Generation
 
-| V100 (2017) | A100 (2020) | H100 (2022) |
-|-------------|-------------|-------------|
-| BERT | GPT-3 | GPT-4 class models |
-| GPT-1 | PaLM | Multi-modal transformers |
-| ResNet at scale | Stable Diffusion | Real-time inference |
+| V100 (2017)     | A100 (2020)      | H100 (2022)              |
+| --------------- | ---------------- | ------------------------ |
+| BERT            | GPT-3            | GPT-4 class models       |
+| GPT-1           | PaLM             | Multi-modal transformers |
+| ResNet at scale | Stable Diffusion | Real-time inference      |
 
 ### Framework and Library Ecosystem
 
@@ -2602,6 +2634,7 @@ The choice of deep learning framework fundamentally affects research productivit
 PyTorch's success in research environments stems from its **eager execution model**, which means operations are executed immediately as they are encountered in Python code. This design philosophy prioritizes developer experience and debugging ease over execution efficiency.
 
 **Key Research Advantages:**
+
 - **Dynamic Computation Graphs:** The computational graph is built on-the-fly, enabling easy implementation of dynamic architectures like recursive neural networks, attention mechanisms with variable sequence lengths, and reinforcement learning algorithms where the computation depends on runtime decisions.
 
 - **Pythonic Interface:** PyTorch feels like native Python, making it intuitive for researchers who are primarily domain experts rather than systems programmers. This reduces the cognitive overhead of implementing complex algorithms.
@@ -2615,6 +2648,7 @@ PyTorch's success in research environments stems from its **eager execution mode
 JAX represents a different approach, emphasizing **functional programming** and **mathematical composability**. It's designed around the principle that research code should be mathematically clear and amenable to automatic optimization.
 
 **Key Research Advantages:**
+
 - **Automatic Differentiation:** JAX can automatically compute derivatives of arbitrary Python functions, including higher-order derivatives, which is crucial for certain research areas like meta-learning and physics-informed neural networks.
 
 - **Transformation System:** JAX provides composable transformations (jit, grad, vmap, pmap) that can be combined to automatically parallelize, vectorize, and optimize research code without manual kernel writing.
@@ -2628,6 +2662,7 @@ JAX represents a different approach, emphasizing **functional programming** and 
 While less popular in pure research settings, TensorFlow remains important for research that needs to scale to production or requires specific ecosystem features.
 
 **Key Capabilities:**
+
 - **TensorBoard Integration:** Sophisticated visualization and monitoring tools
 - **Serving Infrastructure:** Built-in support for model deployment and serving
 - **Mobile/Edge Deployment:** TensorFlow Lite for edge device research
@@ -2635,40 +2670,40 @@ While less popular in pure research settings, TensorFlow remains important for r
 
 #### Deep Learning Framework Comparison
 
-| Aspect | PyTorch | JAX | TensorFlow |
-|--------|---------|-----|------------|
-| **Execution Model** | Eager with dynamic graphs | Functional with transformations | Graph with eager option |
-| **Research Suitability** | Excellent | Excellent | Moderate |
-| **Debugging** | Excellent | Good | Moderate |
-| **Performance** | Good | Excellent | Excellent |
-| **Learning Curve** | Moderate | Steep | Moderate-High |
-| **Auto-optimization** | Limited | Excellent (XLA) | Good |
-| **Community** | Academic research | Scientific computing | Industry/production |
+| Aspect                   | PyTorch                   | JAX                             | TensorFlow              |
+| ------------------------ | ------------------------- | ------------------------------- | ----------------------- |
+| **Execution Model**      | Eager with dynamic graphs | Functional with transformations | Graph with eager option |
+| **Research Suitability** | Excellent                 | Excellent                       | Moderate                |
+| **Debugging**            | Excellent                 | Good                            | Moderate                |
+| **Performance**          | Good                      | Excellent                       | Excellent               |
+| **Learning Curve**       | Moderate                  | Steep                           | Moderate-High           |
+| **Auto-optimization**    | Limited                   | Excellent (XLA)                 | Good                    |
+| **Community**            | Academic research         | Scientific computing            | Industry/production     |
 
 **Primary Use Cases:**
 
-| Framework | Best For |
-|-----------|----------|
-| **PyTorch** | Novel architectures, rapid prototyping, CV, NLP, RL, generative models |
-| **JAX** | Scientific ML, physics-informed NNs, Bayesian DL, meta-learning, optimization |
-| **TensorFlow** | Production systems, distributed training, federated learning, mobile/edge AI |
+| Framework      | Best For                                                                      |
+| -------------- | ----------------------------------------------------------------------------- |
+| **PyTorch**    | Novel architectures, rapid prototyping, CV, NLP, RL, generative models        |
+| **JAX**        | Scientific ML, physics-informed NNs, Bayesian DL, meta-learning, optimization |
+| **TensorFlow** | Production systems, distributed training, federated learning, mobile/edge AI  |
 
 **Framework Selection Quick Reference:**
 
-| Research Area | Recommended Framework |
-|--------------|----------------------|
-| Novel Architecture Development | PyTorch |
-| High-Performance Scientific Computing | JAX |
-| Large-Scale Production Research | TensorFlow |
-| Rapid Prototyping | PyTorch |
-| Mathematical/Physics-Informed ML | JAX |
-| Distributed Training Research | PyTorch or TensorFlow |
-| Edge/Mobile AI Research | TensorFlow |
-| Optimization Algorithm Development | JAX |
-| Computer Vision Research | PyTorch |
-| Natural Language Processing | PyTorch |
-| Federated Learning | TensorFlow |
-| Bayesian Deep Learning | JAX |
+| Research Area                         | Recommended Framework |
+| ------------------------------------- | --------------------- |
+| Novel Architecture Development        | PyTorch               |
+| High-Performance Scientific Computing | JAX                   |
+| Large-Scale Production Research       | TensorFlow            |
+| Rapid Prototyping                     | PyTorch               |
+| Mathematical/Physics-Informed ML      | JAX                   |
+| Distributed Training Research         | PyTorch or TensorFlow |
+| Edge/Mobile AI Research               | TensorFlow            |
+| Optimization Algorithm Development    | JAX                   |
+| Computer Vision Research              | PyTorch               |
+| Natural Language Processing           | PyTorch               |
+| Federated Learning                    | TensorFlow            |
+| Bayesian Deep Learning                | JAX                   |
 
 **Performance-Optimized Libraries - The Hidden Performance Multipliers:**
 
@@ -2685,24 +2720,26 @@ Modern research computing benefits enormously from libraries specifically design
 
 #### Performance-Optimized Library Ecosystem
 
-| Domain | Standard | Optimized | Speedup | Memory Improvement |
-|--------|----------|-----------|---------|-------------------|
-| **Data Processing** | pandas | polars | 5-50x | 2-10x less |
-| **Numerical Computing** | numpy | numba | 10-100x | Near C-level |
-| **Deep Learning** | PyTorch (eager) | JAX + XLA | 2-10x | Better fusion |
-| **Visualization** | matplotlib | bokeh + datashader | 3-20x | Streaming reduces needs |
-| **Machine Learning** | scikit-learn | rapids-cuml | 10-50x | GPU utilization |
+| Domain                  | Standard        | Optimized          | Speedup | Memory Improvement      |
+| ----------------------- | --------------- | ------------------ | ------- | ----------------------- |
+| **Data Processing**     | pandas          | polars             | 5-50x   | 2-10x less              |
+| **Numerical Computing** | numpy           | numba              | 10-100x | Near C-level            |
+| **Deep Learning**       | PyTorch (eager) | JAX + XLA          | 2-10x   | Better fusion           |
+| **Visualization**       | matplotlib      | bokeh + datashader | 3-20x   | Streaming reduces needs |
+| **Machine Learning**    | scikit-learn    | rapids-cuml        | 10-50x  | GPU utilization         |
 
 <details>
 <summary><strong>Data Processing: pandas → polars</strong></summary>
 
 **Key Technical Innovations:**
+
 - Lazy evaluation with query optimization
 - Parallel processing across multiple cores
 - Apache Arrow memory format
 - Rust-based implementation for zero-cost abstractions
 
 **Research Applications:**
+
 - Large-scale dataset preprocessing
 - Time-series analysis for financial research
 - Genomics data processing
@@ -2716,12 +2753,14 @@ Modern research computing benefits enormously from libraries specifically design
 <summary><strong>Numerical Computing: numpy → numba</strong></summary>
 
 **Key Technical Innovations:**
+
 - Just-In-Time (JIT) compilation to machine code
 - Automatic parallelization of loops
 - GPU acceleration via CUDA
 - Type specialization for optimal performance
 
 **Research Applications:**
+
 - Monte Carlo simulations
 - Numerical optimization algorithms
 - Signal processing research
@@ -2735,12 +2774,14 @@ Modern research computing benefits enormously from libraries specifically design
 <summary><strong>Deep Learning: PyTorch → JAX + XLA</strong></summary>
 
 **Key Technical Innovations:**
+
 - XLA compiler for graph optimization
 - Automatic operator fusion
 - Advanced memory layout optimization
 - Cross-device optimization
 
 **Research Applications:**
+
 - Large-scale transformer training
 - Scientific machine learning
 - High-throughput inference research
@@ -2754,12 +2795,14 @@ Modern research computing benefits enormously from libraries specifically design
 <summary><strong>Visualization: matplotlib → bokeh + datashader</strong></summary>
 
 **Key Technical Innovations:**
+
 - Web-based rendering with GPU acceleration
 - Automatic data aggregation for large datasets
 - Interactive exploration without memory limits
 - Streaming data visualization
 
 **Research Applications:**
+
 - Large-scale data exploration
 - Real-time training monitoring
 - Interactive research presentations
@@ -2773,12 +2816,14 @@ Modern research computing benefits enormously from libraries specifically design
 <summary><strong>Machine Learning: scikit-learn → rapids-cuml</strong></summary>
 
 **Key Technical Innovations:**
+
 - GPU-accelerated implementations of ML algorithms
 - CUDA-native data structures
 - Automatic CPU-GPU memory management
 - Scikit-learn compatible API
 
 **Research Applications:**
+
 - Large-scale clustering analysis
 - High-dimensional data preprocessing
 - Ensemble method research
@@ -2790,12 +2835,12 @@ Modern research computing benefits enormously from libraries specifically design
 
 #### Library Migration Guide
 
-| Migration | Difficulty | Time | API Compatibility | Tip |
-|-----------|------------|------|-------------------|-----|
-| pandas → polars | Easy | 1-2 hrs | High | Start with `.lazy()` operations |
-| numpy → numba | Moderate | 4-8 hrs | Medium | Add `@numba.jit` to heavy functions |
-| matplotlib → bokeh | Moderate | 6-10 hrs | Low | Start simple, add interactivity |
-| scikit-learn → rapids | Easy | 2-4 hrs | High | Ensure CUDA compatibility first |
+| Migration             | Difficulty | Time     | API Compatibility | Tip                                 |
+| --------------------- | ---------- | -------- | ----------------- | ----------------------------------- |
+| pandas → polars       | Easy       | 1-2 hrs  | High              | Start with `.lazy()` operations     |
+| numpy → numba         | Moderate   | 4-8 hrs  | Medium            | Add `@numba.jit` to heavy functions |
+| matplotlib → bokeh    | Moderate   | 6-10 hrs | Low               | Start simple, add interactivity     |
+| scikit-learn → rapids | Easy       | 2-4 hrs  | High              | Ensure CUDA compatibility first     |
 
 ---
 
@@ -2805,14 +2850,14 @@ This comprehensive guide explores the evolution of computing from traditional CP
 
 ### Key Topics Covered
 
-| Section | Topics |
-|---------|--------|
-| **Fundamental Concepts** | Hardware-software duality, CPU architecture, parallel computing paradigm shift |
-| **GPU Architecture** | SIMD vs SIMT, thread hierarchy, memory architecture |
-| **Performance Analysis** | Arithmetic intensity, memory-bound vs compute-bound kernels, A100 modeling |
-| **Optimization Strategies** | Operator fusion, tiling techniques, hierarchical optimization |
-| **Research Hardware** | V100 → A100 → H100 evolution, HPC infrastructure, MIG |
-| **Software Ecosystem** | PyTorch/JAX/TensorFlow comparison, performance libraries, migration strategies |
+| Section                     | Topics                                                                         |
+| --------------------------- | ------------------------------------------------------------------------------ |
+| **Fundamental Concepts**    | Hardware-software duality, CPU architecture, parallel computing paradigm shift |
+| **GPU Architecture**        | SIMD vs SIMT, thread hierarchy, memory architecture                            |
+| **Performance Analysis**    | Arithmetic intensity, memory-bound vs compute-bound kernels, A100 modeling     |
+| **Optimization Strategies** | Operator fusion, tiling techniques, hierarchical optimization                  |
+| **Research Hardware**       | V100 → A100 → H100 evolution, HPC infrastructure, MIG                          |
+| **Software Ecosystem**      | PyTorch/JAX/TensorFlow comparison, performance libraries, migration strategies |
 
 ### Research Impact
 

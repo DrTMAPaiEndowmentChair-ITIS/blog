@@ -7,7 +7,7 @@ description: 'Navigate the Hub, Transformers, Datasets, Accelerate, PEFT, model 
 topics: ['Hugging Face', 'Transformers', 'Open source']
 ---
 
-import ModelFormatCompare from '@/components/viz/ModelFormatCompare.astro';
+import ModelFormatCompare from '@/components/viz/ModelFormatCompare.astro'
 
 ## What is Hugging Face
 
@@ -94,14 +94,14 @@ The format targets llama.cpp and tools built on it like Ollama, LM Studio, and k
 
 Quantization options range from 8-bit down to 1.5-bit:
 
-| Type | Description | Size Reduction |
-|------|-------------|----------------|
-| Q8_0 | 8-bit, block size 32 | ~2x |
-| Q6_K | 6-bit K-Quant | ~2.5x |
-| Q5_K_M | 5-bit K-Quant medium | ~2.8x |
-| Q4_K_M | 4-bit K-Quant medium | ~3.3x |
-| Q4_0 | 4-bit basic | ~4x |
-| Q2_K | 2-bit K-Quant | ~6x |
+| Type   | Description          | Size Reduction |
+| ------ | -------------------- | -------------- |
+| Q8_0   | 8-bit, block size 32 | ~2x            |
+| Q6_K   | 6-bit K-Quant        | ~2.5x          |
+| Q5_K_M | 5-bit K-Quant medium | ~2.8x          |
+| Q4_K_M | 4-bit K-Quant medium | ~3.3x          |
+| Q4_0   | 4-bit basic          | ~4x            |
+| Q2_K   | 2-bit K-Quant        | ~6x            |
 
 Q4_K_M hits the sweet spot for most users. A 13.5GB FP16 model shrinks to 4GB while maintaining acceptable quality. K-Quant variants use different bit allocations per layer based on importance, preserving quality better than uniform quantization.
 
@@ -215,14 +215,14 @@ outputs = llm.generate(prompts, sampling_params)
 
 ### Choosing the Right Format
 
-| Use Case | Format |
-|----------|--------|
-| Local CPU/GPU inference, consumer hardware | GGUF |
-| Production GPU serving, max throughput | TensorRT-LLM |
-| Cross-platform deployment | ONNX |
-| Fine-tuning with limited VRAM | bitsandbytes |
-| Pre-quantized GPU inference | AWQ or GPTQ |
-| Standard Transformers usage | safetensors |
+| Use Case                                   | Format       |
+| ------------------------------------------ | ------------ |
+| Local CPU/GPU inference, consumer hardware | GGUF         |
+| Production GPU serving, max throughput     | TensorRT-LLM |
+| Cross-platform deployment                  | ONNX         |
+| Fine-tuning with limited VRAM              | bitsandbytes |
+| Pre-quantized GPU inference                | AWQ or GPTQ  |
+| Standard Transformers usage                | safetensors  |
 
 ---
 
@@ -453,7 +453,7 @@ For custom models hosted on the Hub, the `config.json` can include an `auto_map`
 
 This requires `trust_remote_code=True` when loading, since it executes code from the repository. The [Auto Classes documentation](https://huggingface.co/docs/transformers/en/model_doc/auto) covers registration in detail.
 
-### The modeling_*.py Architecture Pattern
+### The modeling\_\*.py Architecture Pattern
 
 Each model architecture follows a consistent file structure:
 
@@ -499,19 +499,23 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
 Every model inherits from `PreTrainedModel`, which provides core functionality according to the [Models documentation](https://huggingface.co/docs/transformers/main_classes/model):
 
 **Loading and saving:**
+
 - `from_pretrained()`: Load weights from Hub or local directory
 - `save_pretrained()`: Save model and config to directory
 - `push_to_hub()`: Upload to the Hub
 
 **Weight initialization:**
+
 - `_init_weights()`: Initialize a module's weights (called recursively)
 - The `_is_hf_initialized` flag prevents re-initializing tied parameters
 
 **Memory management:**
+
 - `gradient_checkpointing_enable()`: Trade compute for memory
 - `resize_token_embeddings()`: Adjust embedding size for new tokens
 
 **Device handling:**
+
 - `to()`: Move model to device
 - `half()`, `bfloat16()`, `float()`: Change precision
 
@@ -816,7 +820,7 @@ During loading, Transformers:
 3. Copies relevant tensors to the model
 4. Discards the shard before loading the next
 
-This keeps peak memory at (model size) + (largest shard size) rather than (model size) * 2.
+This keeps peak memory at (model size) + (largest shard size) rather than (model size) \* 2.
 
 ### device_map="auto" and Layer Distribution
 
@@ -1117,11 +1121,13 @@ Historically, Hub repositories used Git LFS (Large File Storage) for files over 
 As of May 2025, new repositories default to Xet storage, which offers chunk-level deduplication. When you modify a file, only changed chunks upload, not the entire file. This matters for iterative checkpoint uploads during training.
 
 **File size limits:**
+
 - Pre-receive hook rejects commits with files > 10MB not tracked by LFS/Xet
 - Individual files capped at 50GB
 - Recommended: split large files into ~20GB chunks
 
 **Repository limits:**
+
 - < 100k files total recommended
 - < 10k files per directory
 - For large datasets, use Parquet or WebDataset formats
@@ -1187,13 +1193,13 @@ model-index:
             type: accuracy
             value: 0.72
 ---
-
 # My Model
 
 Model description here...
 ```
 
 The Hub parses this YAML to:
+
 - Enable filtering by language, license, task
 - Display the inference widget based on `pipeline_tag`
 - Show benchmark results on the model page
@@ -1293,6 +1299,7 @@ With `num_proc > 1`:
 4. Results concatenate into final dataset
 
 Requirements for parallelization:
+
 - Function must be picklable (top-level functions work; lambdas and closures may not)
 - Workers don't share state
 - Each worker loads its shard independently via memory mapping
@@ -1309,6 +1316,7 @@ for example in dataset:
 ```
 
 Streaming datasets:
+
 - Don't download the full dataset
 - Fetch data on-demand as you iterate
 - Support transformations (map, filter) that apply lazily
@@ -1649,6 +1657,7 @@ model = ORTModelForSequenceClassification.from_pretrained("onnx_model_dir")
 ```
 
 Optimum integrates with:
+
 - Intel Gaudi accelerators via optimum-habana
 - AWS Trainium via optimum-neuron
 - Intel CPUs via optimum-intel
