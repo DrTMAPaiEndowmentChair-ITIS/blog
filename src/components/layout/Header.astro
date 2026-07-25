@@ -1,12 +1,16 @@
 ---
 import { themeConfig } from '@/config'
+import FeedLink from '@/components/ui/FeedLink.astro'
 import ThemeToggle from '@/components/ui/ThemeToggle.astro'
 ---
 
 <header>
   <nav>
     <a href="/">{themeConfig.site.title}</a>
-    <ThemeToggle />
+    <div class="nav-actions">
+      <FeedLink />
+      <ThemeToggle />
+    </div>
   </nav>
 </header>
 <style>
@@ -16,6 +20,10 @@ import ThemeToggle from '@/components/ui/ThemeToggle.astro'
   nav {
     display: flex;
     justify-content: space-between;
+    align-items: center;
+  }
+  .nav-actions {
+    display: flex;
     align-items: center;
   }
   header a {

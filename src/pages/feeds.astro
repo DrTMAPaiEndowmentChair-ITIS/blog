@@ -1,0 +1,258 @@
+---
+import IndexLayout from '@/layouts/IndexLayout.astro'
+import { themeConfig } from '@/config'
+
+const site = Astro.site ?? new URL(themeConfig.site.website)
+const feeds = [
+  {
+    name: 'RSS',
+    format: 'RSS 2.0',
+    href: new URL('rss.xml', site).toString(),
+    note: 'The one to pick if you are unsure.'
+  },
+  {
+    name: 'Atom',
+    format: 'Atom 1.0',
+    href: new URL('atom.xml', site).toString(),
+    note: 'Same posts, stricter format.'
+  },
+  {
+    name: 'JSON',
+    format: 'JSON Feed 1.0',
+    href: new URL('feed.json', site).toString(),
+    note: 'For scripts and newer readers.'
+  }
+]
+
+const readers = [
+  { name: 'NetNewsWire', href: 'https://netnewswire.com', note: 'free, open source, Mac and iOS' },
+  { name: 'Reeder', href: 'https://reederapp.com', note: 'paid, Apple platforms' },
+  { name: 'Feedly', href: 'https://feedly.com', note: 'in the browser, free tier' },
+  { name: 'Inoreader', href: 'https://www.inoreader.com', note: 'in the browser, free tier' },
+  { name: 'FreshRSS', href: 'https://freshrss.org', note: 'self-hosted' },
+  { name: 'Thunderbird', href: 'https://www.thunderbird.net', note: 'desktop mail client' }
+]
+---
+
+<IndexLayout title="Feeds" description="Subscribe to every post over RSS, Atom, or JSON Feed.">
+  <div class="prose">
+    <div class="title">
+      <h1>Feeds</h1>
+    </div>
+
+    <p>
+      Every article here is published to a feed in full — diagrams, mathematics, footnotes and all.
+      Subscribe once and new writing arrives in an app you already use. There is no account to
+      create, no address to hand over, and nothing decides the order for you.
+    </p>
+
+    <h2>Subscribe</h2>
+
+    <ul class="feed-list">
+      {
+        feeds.map((feed) => (
+          <li class="feed">
+            <div class="feed-text">
+              <a class="feed-name" href={feed.href}>
+                {feed.format}
+              </a>
+              <span class="feed-note">{feed.note}</span>
+            </div>
+            <button
+              class="copy"
+              type="button"
+              data-copy={feed.href}
+              aria-label={`Copy the ${feed.name} feed address`}
+            >
+              <span class="copy-label">Copy</span>
+            </button>
+          </li>
+        ))
+      }
+    </ul>
+
+    <p>
+      Any one of the three works — they carry the same posts, and your reader will prefer whichever
+      it knows. Most readers also accept the plain address of this site, <code>{site.host}</code>,
+      and find the feed on their own.
+    </p>
+
+    <h2>If you have not used a feed before</h2>
+
+    <p>
+      A feed is a plain file this site keeps up to date. A feed reader checks it for you and
+      collects whatever is new, the way a mail client collects mail. Nothing is sent to us when you
+      subscribe, and nothing tracks what you read.
+    </p>
+
+    <ol class="steps">
+      <li>Install a reader — a few are listed below.</li>
+      <li>
+        Choose <em>add feed</em> or <em>subscribe</em>, then paste one of the addresses above.
+      </li>
+      <li>That is all. New posts turn up by themselves.</li>
+    </ol>
+
+    <h2>Readers</h2>
+
+    <ul class="readers">
+      {
+        readers.map((reader) => (
+          <li>
+            <a href={reader.href} rel="noreferrer">
+              {reader.name}
+            </a>
+            <span class="reader-note">{reader.note}</span>
+          </li>
+        ))
+      }
+    </ul>
+
+    <p class="closing">
+      Not an endorsement of any one of them — they simply all work with the feeds above.
+    </p>
+  </div>
+</IndexLayout>
+
+<script is:inline>
+  function bindFeedCopyButtons() {
+    for (const button of document.querySelectorAll('.copy')) {
+      if (button.dataset.bound) continue
+      button.dataset.bound = 'true'
+
+      button.addEventListener('click', async () => {
+        const label = button.querySelector('.copy-label')
+        try {
+          await navigator.clipboard.writeText(button.dataset.copy)
+          label.textContent = 'Copied'
+        } catch {
+          label.textContent = 'Press ⌘C'
+        }
+        button.dataset.copied = 'true'
+
+        clearTimeout(button.resetTimer)
+        button.resetTimer = setTimeout(() => {
+          label.textContent = 'Copy'
+          delete button.dataset.copied
+        }, 1600)
+      })
+    }
+  }
+
+  window.addEventListener('DOMContentLoaded', bindFeedCopyButtons)
+  document.addEventListener('astro:page-load', bindFeedCopyButtons)
+</script>
+
+<style>
+  .title {
+    margin-top: 2rem;
+  }
+
+  /* Bordered rows, so the prose bullet would sit oddly above each one. */
+  .feed-list {
+    margin-left: 0;
+  }
+
+  .feed-list li::before {
+    content: none;
+  }
+
+  .feed {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .feed:first-child {
+    border-top: 1px solid var(--border);
+  }
+
+  .feed-text {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+
+  .feed-name {
+    font-family: var(--mono);
+    letter-spacing: var(--spacing-mono);
+    text-decoration: none;
+    color: var(--text-primary);
+  }
+
+  .feed-name:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .feed-note,
+  .reader-note {
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+  }
+
+  .copy {
+    flex-shrink: 0;
+    min-width: 4.5rem;
+    padding: 0.3rem 0.6rem;
+    font-family: var(--mono);
+    font-size: var(--font-size-s);
+    color: var(--text-secondary);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition:
+      color 160ms cubic-bezier(0.23, 1, 0.32, 1),
+      border-color 160ms cubic-bezier(0.23, 1, 0.32, 1),
+      background-color 160ms cubic-bezier(0.23, 1, 0.32, 1),
+      transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .copy:hover {
+    color: var(--text-primary);
+    background-color: var(--surface-hover);
+  }
+
+  .copy:active {
+    transform: scale(0.96);
+  }
+
+  .copy:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
+  }
+
+  .copy[data-copied] {
+    color: var(--text-primary);
+    border-color: var(--accent);
+  }
+
+  .readers li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+
+  .closing {
+    color: var(--text-secondary);
+    font-size: var(--font-size-s);
+  }
+
+  @media (max-width: 480px) {
+    .feed {
+      align-items: flex-start;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .copy {
+      transition: none;
+    }
+  }
+</style>
