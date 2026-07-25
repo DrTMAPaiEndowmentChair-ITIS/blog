@@ -1,9 +1,8 @@
 ---
-import { themeConfig } from '@/config'
 import IndexLayout from '@/layouts/IndexLayout.astro'
 ---
 
-<IndexLayout title={`404 - ${themeConfig.site.title}`} description="Not Found">
+<IndexLayout title="404" description="This page does not exist." noindex>
   <style>
     .error-container {
       color: var(--text-secondary);

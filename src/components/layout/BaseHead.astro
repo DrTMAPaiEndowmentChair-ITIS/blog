@@ -5,15 +5,80 @@ import { themeConfig } from '@/config'
 import type { BaseHeadProps } from '@/types/component.types'
 import 'katex/dist/katex.min.css'
 
-const canonicalURL = new URL(Astro.url.pathname, Astro.site)
+const {
+  title,
+  description,
+  ogImage,
+  ogImageAlt,
+  type = 'website',
+  pubDate,
+  author,
+  category,
+  topics = [],
+  noindex = false
+} = Astro.props as BaseHeadProps
 
-const { title, description, ogImage } = Astro.props as BaseHeadProps
-const imageUrl = ogImage ? new URL(ogImage, Astro.url) : new URL('/og/og-bg.png', Astro.url)
+const site = themeConfig.site
+// Everything social resolves against the configured domain rather than the
+// request host, so a Netlify preview or a proxied request can never leak a
+// deploy URL into a shared link.
+const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? site.website)
+// Cards are pre-rendered to `public/open-graph/` by `scripts/generate-og-images.ts`.
+const imageURL = new URL(ogImage ?? '/open-graph/_site.png', canonicalURL)
+
+const isHome = canonicalURL.pathname === '/'
+const documentTitle = isHome ? site.title : `${title} · ${site.title}`
+// `og:site_name` already carries the site, so the card headline stays the bare
+// page title instead of repeating it.
+const socialTitle = title || site.title
+const imageAlt =
+  ogImageAlt ?? (socialTitle === site.title ? site.title : `${socialTitle} — ${site.title}`)
+const byline = author || site.author
+
+const isArticle = type === 'article'
+// A page kept out of the index has nothing to describe to a crawler.
+const schema = noindex
+  ? undefined
+  : isArticle
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'BlogPosting',
+        headline: socialTitle,
+        description,
+        image: imageURL.href,
+        datePublished: pubDate?.toISOString(),
+        author: { '@type': 'Person', name: byline },
+        publisher: {
+          '@type': 'Organization',
+          name: site.title,
+          url: new URL('/', canonicalURL).href
+        },
+        mainEntityOfPage: canonicalURL.href,
+        ...(category && { articleSection: category }),
+        ...(topics.length && { keywords: topics.join(', ') }),
+        inLanguage: site.language
+      }
+    : {
+        '@context': 'https://schema.org',
+        '@type': 'WebSite',
+        '@id': new URL('/', canonicalURL).href,
+        name: site.title,
+        description: isHome ? description : site.description,
+        url: new URL('/', canonicalURL).href,
+        inLanguage: site.language
+      }
 ---
 
 <!-- Global Metadata -->
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
+<!--
+  The PNG comes first so browsers without SVG icon support stop at something
+  they can draw; anything modern reads on and prefers the vector, which also
+  carries a dark-scheme palette the raster copies can't. Both PNGs are rendered
+  from `favicon.svg` by `scripts/generate-icons.ts` in `prebuild`.
+-->
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="preload" href="/fonts/Inter.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
@@ -28,19 +93,19 @@ const imageUrl = ogImage ? new URL(ogImage, Astro.url) : new URL('/og/og-bg.png'
 <link
   rel="alternate"
   type="application/rss+xml"
-  title={`${themeConfig.site.title} · RSS`}
+  title={`${site.title} · RSS`}
   href={new URL('rss.xml', Astro.site)}
 />
 <link
   rel="alternate"
   type="application/atom+xml"
-  title={`${themeConfig.site.title} · Atom`}
+  title={`${site.title} · Atom`}
   href={new URL('atom.xml', Astro.site)}
 />
 <link
   rel="alternate"
   type="application/feed+json"
-  title={`${themeConfig.site.title} · JSON Feed`}
+  title={`${site.title} · JSON Feed`}
   href={new URL('feed.json', Astro.site)}
 />
 <meta name="generator" content={Astro.generator} />
@@ -49,24 +114,52 @@ const imageUrl = ogImage ? new URL(ogImage, Astro.url) : new URL('/og/og-bg.png'
 <link rel="canonical" href={canonicalURL} />
 
 <!-- Primary Meta Tags -->
-<title>
-  {title || themeConfig.site.title}
-</title>
-<meta name="title" content={title} />
+<title>{documentTitle}</title>
 <meta name="description" content={description} />
+<meta name="author" content={byline} />
+<meta
+  name="robots"
+  content={noindex ? 'noindex, follow' : 'index, follow, max-image-preview:large'}
+/>
 
-<!-- Open Graph / Facebook -->
-<meta property="og:type" content="website" />
-<meta property="og:url" content={Astro.url} />
-<meta property="og:title" content={title} />
+<!-- Open Graph -->
+<meta property="og:type" content={type} />
+<meta property="og:site_name" content={site.title} />
+<meta property="og:locale" content={site.language.replace('-', '_')} />
+<meta property="og:url" content={canonicalURL} />
+<meta property="og:title" content={socialTitle} />
 <meta property="og:description" content={description} />
-<meta property="og:image" content={imageUrl} />
+<meta property="og:image" content={imageURL} />
+<meta property="og:image:secure_url" content={imageURL} />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content={imageAlt} />
+{
+  isArticle && (
+    <>
+      {pubDate && <meta property="article:published_time" content={pubDate.toISOString()} />}
+      <meta property="article:author" content={byline} />
+      {category && <meta property="article:section" content={category} />}
+      {topics.map((topic) => (
+        <meta property="article:tag" content={topic} />
+      ))}
+    </>
+  )
+}
 
 <!-- Twitter -->
-<meta property="twitter:card" content="summary_large_image" />
-<meta property="twitter:url" content={Astro.url} />
-<meta property="twitter:title" content={title} />
-<meta property="twitter:description" content={description} />
-<meta property="twitter:image" content={imageUrl} />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:url" content={canonicalURL} />
+<meta name="twitter:title" content={socialTitle} />
+<meta name="twitter:description" content={description} />
+<meta name="twitter:image" content={imageURL} />
+<meta name="twitter:image:alt" content={imageAlt} />
+{isArticle && <meta name="twitter:label1" content="Written by" />}
+{isArticle && <meta name="twitter:data1" content={byline} />}
+{isArticle && category && <meta name="twitter:label2" content="Filed under" />}
+{isArticle && category && <meta name="twitter:data2" content={category} />}
+
+{schema && <script type="application/ld+json" set:html={JSON.stringify(schema)} is:inline />}
 
 <script defer src="https://stat.ecitis.org/script.js"></script>

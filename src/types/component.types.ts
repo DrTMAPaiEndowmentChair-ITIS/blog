@@ -29,9 +29,19 @@ export interface LayoutProps extends TransitionProps {
 
 // BaseHead component props interface
 export interface BaseHeadProps {
+  /** Bare page title. The site name is appended for `<title>` and carried by `og:site_name`. */
   title: string
   description: string
+  /** Path to the pre-rendered social card. Defaults to the site-wide card. */
   ogImage?: string
+  ogImageAlt?: string
+  type?: 'website' | 'article'
+  /** Articles only — drives `article:published_time` and the JSON-LD. */
+  pubDate?: Date
+  author?: string
+  category?: string
+  topics?: string[]
+  noindex?: boolean
 }
 
 // ImageOptimizer component props interface

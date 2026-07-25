@@ -30,14 +30,21 @@ const { title, pubDate, description, readingTime, toc, category, topics, author 
   }
 
 const postSlug = Astro.url.pathname.split('/').filter(Boolean).pop() || ''
+// Pre-rendered by `scripts/generate-og-images.ts` during `prebuild`.
 const ogImage = `/open-graph/${postSlug}.png`
 ---
 
-<BaseLayout title={`${title} · ${themeConfig.site.title}`} description={description} type="post">
+<BaseLayout title={title} description={description} type="post">
   <BaseHead
-    title={`${title} · ${themeConfig.site.title}`}
+    title={title}
     description={description}
     ogImage={ogImage}
+    ogImageAlt={`${title} — ${category ?? themeConfig.site.title}`}
+    type="article"
+    pubDate={pubDate}
+    author={author}
+    category={category}
+    topics={topics}
     slot="head"
   />
   <div class="post-container">
