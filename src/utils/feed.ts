@@ -1,4 +1,5 @@
-import { statSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { getContainerRenderer as mdxContainerRenderer } from '@astrojs/mdx/container-renderer'
 import type { APIContext } from 'astro'
@@ -57,7 +58,13 @@ const MATHML_TAGS = [
 ]
 
 const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
-  allowedTags: [...sanitizeHtml.defaults.allowedTags, 'img', 'figure', 'figcaption', ...MATHML_TAGS],
+  allowedTags: [
+    ...sanitizeHtml.defaults.allowedTags,
+    'img',
+    'figure',
+    'figcaption',
+    ...MATHML_TAGS
+  ],
   allowedAttributes: {
     ...sanitizeHtml.defaults.allowedAttributes,
     '*': ['class', 'id', 'dir', 'lang'],
@@ -154,14 +161,18 @@ function rewriteMath(root: HTMLElement) {
 }
 
 /**
- * The `viz/*` components are CSS-grid diagrams and interactive widgets. Without
- * the page stylesheet they collapse into a wall of disconnected labels, so each
- * one becomes a captioned pointer back to the post. Data tables survive the
- * trip intact and are kept.
+ * The `viz/*` components are CSS-grid diagrams and interactive widgets, so they
+ * are shipped as images pre-rendered by `scripts/generate-viz-figures.ts`. Data
+ * tables read better as markup and are kept inline. Anything the manifest does
+ * not cover — a new or edited component — degrades to a captioned link.
  */
-function rewriteInteractiveBlocks(root: HTMLElement, postUrl: string) {
+function rewriteInteractiveBlocks(
+  root: HTMLElement,
+  { slug, postUrl, siteUrl }: { slug: string; postUrl: string; siteUrl: string }
+) {
   const isScoped = (element: HTMLElement | null | undefined) =>
-    !!element?.attributes && Object.keys(element.attributes).some((name) => SCOPE_ATTRIBUTE.test(name))
+    !!element?.attributes &&
+    Object.keys(element.attributes).some((name) => SCOPE_ATTRIBUTE.test(name))
 
   // Only the outermost element of each component gets replaced.
   const blocks = root.querySelectorAll('*').filter((element) => {
@@ -172,15 +183,30 @@ function rewriteInteractiveBlocks(root: HTMLElement, postUrl: string) {
     return true
   })
 
-  for (const element of blocks) {
+  blocks.forEach((element, index) => {
     const caption = findCaption(element)
     const tables = element.querySelectorAll('table')
 
     if (tables.length) {
-      // Tabular data reads perfectly well without the page stylesheet.
+      // Tabular data reads better as markup: selectable, and it reflows.
       const markup = tables.map((table) => table.toString()).join('\n')
       element.replaceWith(caption ? wrapWithCaption(caption, markup) : markup)
-      continue
+      return
+    }
+
+    const figure = findFigure(slug, index, element)
+    if (figure) {
+      const src = absoluteUrl(`feeds/figures/${figure.file}`, siteUrl)
+      // Prefer the caption; fall back to the diagram's own labels so the image
+      // is not opaque to a screen reader.
+      const alt = caption.replace(/<[^>]+>/g, '').trim() || truncate(textOf(element), 300)
+      element.replaceWith(
+        wrapWithCaption(
+          caption || '<strong>Figure</strong>',
+          `<img src="${src}" width="${figure.width}" height="${figure.height}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" />`
+        )
+      )
+      return
     }
 
     element.replaceWith(
@@ -189,7 +215,62 @@ function rewriteInteractiveBlocks(root: HTMLElement, postUrl: string) {
         `<p><a href="${postUrl}">View this figure on the site &#8594;</a></p>`
       )
     )
+  })
+}
+
+/**
+ * Looks up the pre-rendered image for a block. The text hash guards against a
+ * component being edited without `bun run viz-figures` being re-run — a stale
+ * picture is worse than a link, so a mismatch falls back and says so.
+ */
+function findFigure(slug: string, index: number, element: HTMLElement) {
+  const figure = figureManifest().get(`${slug}:${index}`)
+  if (!figure) {
+    warnOnce(`[feed] No pre-rendered figure for ${slug} #${index}; linking instead.`)
+    return undefined
   }
+
+  const textHash = createHash('sha256').update(textOf(element)).digest('hex').slice(0, 16)
+  if (textHash !== figure.textHash) {
+    warnOnce(`[feed] Figure ${figure.file} is out of date; run \`bun run viz-figures\`.`)
+    return undefined
+  }
+
+  return figure
+}
+
+const warned = new Set<string>()
+
+function warnOnce(message: string) {
+  if (warned.has(message)) return
+  warned.add(message)
+  console.warn(message)
+}
+
+type FigureRecord = {
+  slug: string
+  index: number
+  file: string
+  textHash: string
+  width: number
+  height: number
+}
+
+let manifest: Map<string, FigureRecord> | null = null
+
+function figureManifest() {
+  if (!manifest) {
+    manifest = new Map()
+    try {
+      const raw = readFileSync(path.resolve('src/data/viz-figures.json'), 'utf8')
+      for (const figure of JSON.parse(raw).figures as FigureRecord[]) {
+        manifest.set(`${figure.slug}:${figure.index}`, figure)
+      }
+    } catch {
+      warnOnce('[feed] No figure manifest found; run `bun run viz-figures` to render diagrams.')
+    }
+  }
+  return manifest
 }
 
 function wrapWithCaption(caption: string, body: string) {
@@ -254,7 +335,10 @@ function absolutizeUrls(root: HTMLElement, siteUrl: string, postUrl: string) {
   }
 }
 
-async function renderPostContent(post: CollectionEntry<'posts'>, siteUrl: string, postUrl: string) {
+async function renderPostContent(
+  post: CollectionEntry<'posts'>,
+  { slug, siteUrl, postUrl }: { slug: string; siteUrl: string; postUrl: string }
+) {
   const { Content } = await render(post)
   const container = await getContainer()
   const html = await container.renderToString(Content, { request: new Request(postUrl) })
@@ -266,7 +350,7 @@ async function renderPostContent(post: CollectionEntry<'posts'>, siteUrl: string
   }
 
   rewriteMath(root)
-  rewriteInteractiveBlocks(root, postUrl)
+  rewriteInteractiveBlocks(root, { slug, postUrl, siteUrl })
   absolutizeUrls(root, siteUrl, postUrl)
 
   return sanitizeHtml(root.toString(), SANITIZE_OPTIONS).trim()
@@ -306,7 +390,7 @@ async function buildItems(siteUrl: string) {
 
     let content: string
     try {
-      content = await renderPostContent(post, siteUrl, postUrl)
+      content = await renderPostContent(post, { slug, siteUrl, postUrl })
     } catch (error) {
       console.error(`[feed] Failed to render "${post.id}", falling back to its description.`, error)
       content = `<p>${escapeHtml(post.data.description)}</p>`

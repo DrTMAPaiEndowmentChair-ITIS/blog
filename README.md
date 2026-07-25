@@ -4,7 +4,7 @@
 ![screenshot-dark](public/screenshots/screenshot-dark.png)
 
 Official website for Dr. TMA Pai Endowment Chair - ITIS, built with [Astro](https://astro.build).
-.
+
 ## Features
 
 - [x] Build with Astro
@@ -14,7 +14,7 @@ Official website for Dr. TMA Pai Endowment Chair - ITIS, built with [Astro](http
 - [x] KaTeX
 - [x] Sitemap
 - [x] OpenGraph
-- [x] RSS
+- [x] RSS, Atom, and JSON Feed
 - [ ] Pagination
 
 ## Getting Started
@@ -49,27 +49,38 @@ Choose one category from `Models & Training`, `Inference & Deployment`, `Hardwar
 `Ecosystems & Tooling`. Keep topics specific and use two or three per post. Set `featured: true` on
 the single article that should lead the newspaper-style front page.
 
-5. You need to set adapter as follows before deploying to Netlify, Vercel, or other platforms, but you can set `linkCard` to `false` in `src/config.ts` to skip this step:
-   - **Netlify**: `pnpm add @astrojs/netlify` and add `adapter: netlify()` in `astro.config.ts`.
-   - **Vercel**: `pnpm add @astrojs/vercel` and add `adapter: vercel()` in `astro.config.ts`.
-   - **Cloudflare Pages**: `pnpm add @astrojs/cloudflare` and add `adapter: cloudflare()` in `astro.config.ts`.
-   - **Static (e.g. GitHub Pages)**: `pnpm add @astrojs/static` and add `adapter: static()` in `astro.config.ts`.
-   - Refer to [Astro Deployment Guides](https://docs.astro.build/en/guides/deploy/) for more details.
+### Feeds
 
-&emsp;[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start) [![Deploy to Vercel](https://vercel.com/button)](https://vercel.com/new) [![Deploy to Cloudflare Pages](https://deploy.workers.cloudflare.com/button)](https://pages.cloudflare.com/start)
+Every published post is syndicated in full text at three endpoints, all generated from
+`src/utils/feed.ts` and pre-rendered at build time:
+
+| Path         | Format        |
+| ------------ | ------------- |
+| `/rss.xml`   | RSS 2.0       |
+| `/atom.xml`  | Atom 1.0      |
+| `/feed.json` | JSON Feed 1.0 |
+
+`/feed`, `/feed.xml`, `/rss`, and `/index.xml` redirect to `/rss.xml`; `/atom` redirects to
+`/atom.xml`. All three are advertised for autodiscovery in `<head>`.
+
+Entries carry the rendered post — not the Markdown source — so KaTeX math ships as MathML, footnotes
+and headings link back to the canonical URL, and every asset reference is absolute.
+
+The `viz/*` diagram components draw with CSS grid and custom properties, which a feed reader never
+receives. They are rasterised to WebP by `bun run viz-figures`, which renders each post in headless
+Chromium, screenshots every diagram into `public/feeds/figures/`, and records them in
+`src/data/viz-figures.json`. Those images
+are committed, so the site build never needs a browser — but **re-run `bun run viz-figures` after
+changing a `viz/*` component**. The feed hashes each diagram's text against the manifest and falls
+back to a captioned link, warning during the build, whenever an image is missing or stale. Data
+tables are kept as inline markup rather than pictures.
 
 ## Commands
 
 - `pnpm new <title>` - Create a new post (use `_title` for drafts)
+- `pnpm viz-figures` - Re-render the feed images for `viz/*` diagrams
 - `pnpm dev` - Start development server
 - `pnpm build` - Build for production
-
-## References
-
-- https://paco.me/
-- https://benji.org/
-- https://shud.in/
-- https://retypeset.radishzz.cc/
 
 ## License
 

@@ -73,6 +73,12 @@
     Cache-Control = "public, max-age=3600, s-maxage=86400"
     Vary = "Accept-Encoding"
 
+[[headers]]
+  for = "/feeds/figures/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+    Vary = "Accept-Encoding"
+
 # Static assets
 [[headers]]
   for = "/fonts/*"

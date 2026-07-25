@@ -1,0 +1,676 @@
+{
+  "figures": [
+    {
+      "slug": "ai-cluster-networking",
+      "index": 0,
+      "file": "ai-cluster-networking-0.webp",
+      "textHash": "2b7edf99aef15f33",
+      "width": 512,
+      "height": 453
+    },
+    {
+      "slug": "ai-hardware-landscape",
+      "index": 0,
+      "file": "ai-hardware-landscape-0.webp",
+      "textHash": "be514cb94d4d8f6a",
+      "width": 512,
+      "height": 769
+    },
+    {
+      "slug": "ai-safety-systems",
+      "index": 0,
+      "file": "ai-safety-systems-0.webp",
+      "textHash": "cc9b6b59f76cae4e",
+      "width": 512,
+      "height": 410
+    },
+    {
+      "slug": "ai-safety-systems",
+      "index": 1,
+      "file": "ai-safety-systems-1.webp",
+      "textHash": "46fe8ecb57b6f013",
+      "width": 512,
+      "height": 286
+    },
+    {
+      "slug": "amd-rocm-ml",
+      "index": 0,
+      "file": "amd-rocm-ml-0.webp",
+      "textHash": "7639adc4976e283c",
+      "width": 512,
+      "height": 692
+    },
+    {
+      "slug": "amd-rocm-ml",
+      "index": 1,
+      "file": "amd-rocm-ml-1.webp",
+      "textHash": "c2e3f2e2a6a2b61c",
+      "width": 512,
+      "height": 344
+    },
+    {
+      "slug": "apple-metal-ml-ecosystem",
+      "index": 0,
+      "file": "apple-metal-ml-ecosystem-0.webp",
+      "textHash": "484359fcd6297e25",
+      "width": 512,
+      "height": 970
+    },
+    {
+      "slug": "apple-mlx-guide",
+      "index": 0,
+      "file": "apple-mlx-guide-0.webp",
+      "textHash": "c91e634c320954a6",
+      "width": 512,
+      "height": 658
+    },
+    {
+      "slug": "coding-agents-explained",
+      "index": 0,
+      "file": "coding-agents-explained-0.webp",
+      "textHash": "4a68520c7d54003a",
+      "width": 512,
+      "height": 708
+    },
+    {
+      "slug": "coding-agents-explained",
+      "index": 1,
+      "file": "coding-agents-explained-1.webp",
+      "textHash": "a1e8f4e6c154b27c",
+      "width": 512,
+      "height": 802
+    },
+    {
+      "slug": "diffusion-flow-matching",
+      "index": 0,
+      "file": "diffusion-flow-matching-0.webp",
+      "textHash": "f0fe824cb5157be6",
+      "width": 512,
+      "height": 289
+    },
+    {
+      "slug": "diffusion-flow-matching",
+      "index": 1,
+      "file": "diffusion-flow-matching-1.webp",
+      "textHash": "f464649a8dba6048",
+      "width": 512,
+      "height": 344
+    },
+    {
+      "slug": "disaggregated-llm-serving",
+      "index": 0,
+      "file": "disaggregated-llm-serving-0.webp",
+      "textHash": "8f46f46aeabf2ec7",
+      "width": 512,
+      "height": 382
+    },
+    {
+      "slug": "distributed-llm-training",
+      "index": 0,
+      "file": "distributed-llm-training-0.webp",
+      "textHash": "9b8bf4b24ee0ccac",
+      "width": 512,
+      "height": 428
+    },
+    {
+      "slug": "distributed-llm-training",
+      "index": 1,
+      "file": "distributed-llm-training-1.webp",
+      "textHash": "c9f37bb3f2f9fa2c",
+      "width": 512,
+      "height": 279
+    },
+    {
+      "slug": "edge-ai-deployment",
+      "index": 0,
+      "file": "edge-ai-deployment-0.webp",
+      "textHash": "0427176ffbb35617",
+      "width": 512,
+      "height": 770
+    },
+    {
+      "slug": "edge-ai-deployment",
+      "index": 1,
+      "file": "edge-ai-deployment-1.webp",
+      "textHash": "fe3d02b393a97802",
+      "width": 512,
+      "height": 681
+    },
+    {
+      "slug": "frontier-mechanistic-interpretability",
+      "index": 0,
+      "file": "frontier-mechanistic-interpretability-0.webp",
+      "textHash": "28a676eb623568b2",
+      "width": 512,
+      "height": 1188
+    },
+    {
+      "slug": "frontier-mechanistic-interpretability",
+      "index": 1,
+      "file": "frontier-mechanistic-interpretability-1.webp",
+      "textHash": "d60edd79a6f3d3d4",
+      "width": 512,
+      "height": 665
+    },
+    {
+      "slug": "generative-ai-guide",
+      "index": 0,
+      "file": "generative-ai-guide-0.webp",
+      "textHash": "85a11b8de7d6d845",
+      "width": 512,
+      "height": 712
+    },
+    {
+      "slug": "groq-cerebras-accelerators",
+      "index": 0,
+      "file": "groq-cerebras-accelerators-0.webp",
+      "textHash": "07677eab9e9328fd",
+      "width": 512,
+      "height": 477
+    },
+    {
+      "slug": "hpc-guide",
+      "index": 0,
+      "file": "hpc-guide-0.webp",
+      "textHash": "9ebfdf5f35e0a764",
+      "width": 512,
+      "height": 989
+    },
+    {
+      "slug": "huggingface-ecosystem-guide",
+      "index": 0,
+      "file": "huggingface-ecosystem-guide-0.webp",
+      "textHash": "1aa24d1c891566eb",
+      "width": 512,
+      "height": 439
+    },
+    {
+      "slug": "j-space-global-workspace",
+      "index": 0,
+      "file": "j-space-global-workspace-0.webp",
+      "textHash": "1a9f5b196d84ab80",
+      "width": 512,
+      "height": 647
+    },
+    {
+      "slug": "j-space-global-workspace",
+      "index": 1,
+      "file": "j-space-global-workspace-1.webp",
+      "textHash": "15d2612a23dfd5f7",
+      "width": 512,
+      "height": 747
+    },
+    {
+      "slug": "kv-cache-memory-systems",
+      "index": 0,
+      "file": "kv-cache-memory-systems-0.webp",
+      "textHash": "6fa93c94e628482d",
+      "width": 512,
+      "height": 391
+    },
+    {
+      "slug": "llm-evaluation",
+      "index": 0,
+      "file": "llm-evaluation-0.webp",
+      "textHash": "fd8cc2a7dc267921",
+      "width": 512,
+      "height": 641
+    },
+    {
+      "slug": "llm-evaluation",
+      "index": 1,
+      "file": "llm-evaluation-1.webp",
+      "textHash": "ddcfdf24b58e8fef",
+      "width": 512,
+      "height": 311
+    },
+    {
+      "slug": "llm-finetuning-guide",
+      "index": 0,
+      "file": "llm-finetuning-guide-0.webp",
+      "textHash": "1e18b591e57ffc3c",
+      "width": 512,
+      "height": 572
+    },
+    {
+      "slug": "llm-training-optimizers",
+      "index": 0,
+      "file": "llm-training-optimizers-0.webp",
+      "textHash": "67bb027a133c87ab",
+      "width": 512,
+      "height": 386
+    },
+    {
+      "slug": "llm-training-optimizers",
+      "index": 1,
+      "file": "llm-training-optimizers-1.webp",
+      "textHash": "362b86f12418fe97",
+      "width": 512,
+      "height": 468
+    },
+    {
+      "slug": "local-ai-inferencing-techniques",
+      "index": 0,
+      "file": "local-ai-inferencing-techniques-0.webp",
+      "textHash": "699883c325c6f10a",
+      "width": 512,
+      "height": 960
+    },
+    {
+      "slug": "local-ai-inferencing-techniques",
+      "index": 1,
+      "file": "local-ai-inferencing-techniques-1.webp",
+      "textHash": "d600065ce72e90f0",
+      "width": 512,
+      "height": 562
+    },
+    {
+      "slug": "local-ai-inferencing-techniques",
+      "index": 2,
+      "file": "local-ai-inferencing-techniques-2.webp",
+      "textHash": "06c7d6074818ca85",
+      "width": 512,
+      "height": 663
+    },
+    {
+      "slug": "long-context-models",
+      "index": 0,
+      "file": "long-context-models-0.webp",
+      "textHash": "fa9c3b0b6e220c16",
+      "width": 512,
+      "height": 431
+    },
+    {
+      "slug": "mcp-first-principles",
+      "index": 0,
+      "file": "mcp-first-principles-0.webp",
+      "textHash": "d291706a14ce8eaa",
+      "width": 512,
+      "height": 679
+    },
+    {
+      "slug": "mixture-of-experts",
+      "index": 0,
+      "file": "mixture-of-experts-0.webp",
+      "textHash": "a5299c056f848edc",
+      "width": 512,
+      "height": 386
+    },
+    {
+      "slug": "mixture-of-experts",
+      "index": 1,
+      "file": "mixture-of-experts-1.webp",
+      "textHash": "77400ff5c694a951",
+      "width": 512,
+      "height": 487
+    },
+    {
+      "slug": "model-alignment-control-loop",
+      "index": 0,
+      "file": "model-alignment-control-loop-0.webp",
+      "textHash": "3b238ccd69ef92fe",
+      "width": 512,
+      "height": 866
+    },
+    {
+      "slug": "model-alignment-control-loop",
+      "index": 1,
+      "file": "model-alignment-control-loop-1.webp",
+      "textHash": "f947a4279f54bf0b",
+      "width": 512,
+      "height": 804
+    },
+    {
+      "slug": "model-compression-techniques",
+      "index": 0,
+      "file": "model-compression-techniques-0.webp",
+      "textHash": "4fc7f408d2ca1cb6",
+      "width": 512,
+      "height": 396
+    },
+    {
+      "slug": "modern-attention-kernels",
+      "index": 0,
+      "file": "modern-attention-kernels-0.webp",
+      "textHash": "fafa3462413f54f1",
+      "width": 512,
+      "height": 390
+    },
+    {
+      "slug": "multi-token-prediction",
+      "index": 0,
+      "file": "multi-token-prediction-0.webp",
+      "textHash": "9b6fb182114f93f5",
+      "width": 512,
+      "height": 333
+    },
+    {
+      "slug": "on-device-multimodal-ai",
+      "index": 0,
+      "file": "on-device-multimodal-ai-0.webp",
+      "textHash": "480439068d57278d",
+      "width": 512,
+      "height": 394
+    },
+    {
+      "slug": "retrieval-systems",
+      "index": 0,
+      "file": "retrieval-systems-0.webp",
+      "textHash": "c5dedf5df745a4fe",
+      "width": 512,
+      "height": 373
+    },
+    {
+      "slug": "retrieval-systems",
+      "index": 1,
+      "file": "retrieval-systems-1.webp",
+      "textHash": "e641280585707615",
+      "width": 512,
+      "height": 286
+    },
+    {
+      "slug": "rlhf-preference-tuning",
+      "index": 0,
+      "file": "rlhf-preference-tuning-0.webp",
+      "textHash": "f60a6c3dddd9358e",
+      "width": 512,
+      "height": 478
+    },
+    {
+      "slug": "rlhf-preference-tuning",
+      "index": 1,
+      "file": "rlhf-preference-tuning-1.webp",
+      "textHash": "d113223a99ce2a24",
+      "width": 512,
+      "height": 792
+    },
+    {
+      "slug": "scaling-laws-regimes",
+      "index": 0,
+      "file": "scaling-laws-regimes-0.webp",
+      "textHash": "366bb6f8838d0340",
+      "width": 512,
+      "height": 686
+    },
+    {
+      "slug": "scaling-laws-regimes",
+      "index": 1,
+      "file": "scaling-laws-regimes-1.webp",
+      "textHash": "16cac5e8e9911455",
+      "width": 512,
+      "height": 704
+    },
+    {
+      "slug": "small-language-models",
+      "index": 0,
+      "file": "small-language-models-0.webp",
+      "textHash": "9196f885d7f95234",
+      "width": 512,
+      "height": 937
+    },
+    {
+      "slug": "small-language-models",
+      "index": 1,
+      "file": "small-language-models-1.webp",
+      "textHash": "cdb3727960dff972",
+      "width": 512,
+      "height": 836
+    },
+    {
+      "slug": "speculative-decoding",
+      "index": 0,
+      "file": "speculative-decoding-0.webp",
+      "textHash": "4b59081ef8d82a6f",
+      "width": 512,
+      "height": 297
+    },
+    {
+      "slug": "structured-generation",
+      "index": 0,
+      "file": "structured-generation-0.webp",
+      "textHash": "9b4b20ec4457c59d",
+      "width": 512,
+      "height": 273
+    },
+    {
+      "slug": "synthetic-data-pipelines",
+      "index": 0,
+      "file": "synthetic-data-pipelines-0.webp",
+      "textHash": "74178652f3290f60",
+      "width": 512,
+      "height": 703
+    },
+    {
+      "slug": "tensorrt-triton-inference",
+      "index": 0,
+      "file": "tensorrt-triton-inference-0.webp",
+      "textHash": "52ff561d94920d00",
+      "width": 512,
+      "height": 1109
+    },
+    {
+      "slug": "tensorrt-triton-inference",
+      "index": 1,
+      "file": "tensorrt-triton-inference-1.webp",
+      "textHash": "50a815a335204075",
+      "width": 512,
+      "height": 442
+    },
+    {
+      "slug": "test-time-compute",
+      "index": 0,
+      "file": "test-time-compute-0.webp",
+      "textHash": "991b4cd29ded71ca",
+      "width": 512,
+      "height": 636
+    },
+    {
+      "slug": "test-time-compute",
+      "index": 1,
+      "file": "test-time-compute-1.webp",
+      "textHash": "ae7e6cf160ad4986",
+      "width": 512,
+      "height": 711
+    },
+    {
+      "slug": "torch-compile-internals",
+      "index": 0,
+      "file": "torch-compile-internals-0.webp",
+      "textHash": "95af00a433d21ffa",
+      "width": 512,
+      "height": 672
+    },
+    {
+      "slug": "understanding-gpus",
+      "index": 0,
+      "file": "understanding-gpus-0.webp",
+      "textHash": "71b16e9f81cc9043",
+      "width": 512,
+      "height": 468
+    },
+    {
+      "slug": "vision-language-models",
+      "index": 0,
+      "file": "vision-language-models-0.webp",
+      "textHash": "f402e6da78f033d0",
+      "width": 512,
+      "height": 302
+    },
+    {
+      "slug": "voice-audio-models",
+      "index": 0,
+      "file": "voice-audio-models-0.webp",
+      "textHash": "71420f6921c95a96",
+      "width": 512,
+      "height": 291
+    },
+    {
+      "slug": "voice-audio-models",
+      "index": 1,
+      "file": "voice-audio-models-1.webp",
+      "textHash": "88180dc95a9ade4a",
+      "width": 512,
+      "height": 718
+    },
+    {
+      "slug": "voice-audio-models",
+      "index": 2,
+      "file": "voice-audio-models-2.webp",
+      "textHash": "4dbc179abf5ab811",
+      "width": 512,
+      "height": 197
+    },
+    {
+      "slug": "voice-audio-models",
+      "index": 3,
+      "file": "voice-audio-models-3.webp",
+      "textHash": "5cc51bb7dabef455",
+      "width": 512,
+      "height": 279
+    },
+    {
+      "slug": "voice-audio-models",
+      "index": 4,
+      "file": "voice-audio-models-4.webp",
+      "textHash": "601f316e74953de4",
+      "width": 512,
+      "height": 576
+    },
+    {
+      "slug": "voice-audio-models",
+      "index": 5,
+      "file": "voice-audio-models-5.webp",
+      "textHash": "1c2d128472915e83",
+      "width": 512,
+      "height": 886
+    },
+    {
+      "slug": "voice-audio-models",
+      "index": 6,
+      "file": "voice-audio-models-6.webp",
+      "textHash": "15b6530389c863bf",
+      "width": 512,
+      "height": 628
+    },
+    {
+      "slug": "voice-audio-models",
+      "index": 7,
+      "file": "voice-audio-models-7.webp",
+      "textHash": "4a0022f72e014041",
+      "width": 512,
+      "height": 502
+    },
+    {
+      "slug": "voice-audio-models",
+      "index": 8,
+      "file": "voice-audio-models-8.webp",
+      "textHash": "915e658309ed7715",
+      "width": 512,
+      "height": 489
+    },
+    {
+      "slug": "voice-audio-models",
+      "index": 9,
+      "file": "voice-audio-models-9.webp",
+      "textHash": "fe96287f85363e19",
+      "width": 512,
+      "height": 449
+    },
+    {
+      "slug": "voice-audio-models",
+      "index": 10,
+      "file": "voice-audio-models-10.webp",
+      "textHash": "9483107cfe20a415",
+      "width": 512,
+      "height": 578
+    },
+    {
+      "slug": "voice-audio-models",
+      "index": 11,
+      "file": "voice-audio-models-11.webp",
+      "textHash": "dc7d65138bbb1719",
+      "width": 512,
+      "height": 370
+    },
+    {
+      "slug": "voice-audio-models",
+      "index": 12,
+      "file": "voice-audio-models-12.webp",
+      "textHash": "f82f8cecba8846d1",
+      "width": 512,
+      "height": 449
+    },
+    {
+      "slug": "voice-audio-models",
+      "index": 13,
+      "file": "voice-audio-models-13.webp",
+      "textHash": "6166d9641d61c1fe",
+      "width": 512,
+      "height": 288
+    },
+    {
+      "slug": "voice-audio-models",
+      "index": 14,
+      "file": "voice-audio-models-14.webp",
+      "textHash": "83191c73fff42f59",
+      "width": 512,
+      "height": 393
+    },
+    {
+      "slug": "which-model-can-run-on-your-device",
+      "index": 0,
+      "file": "which-model-can-run-on-your-device-0.webp",
+      "textHash": "f41301d7c2e3f7c3",
+      "width": 512,
+      "height": 656
+    },
+    {
+      "slug": "which-model-can-run-on-your-device",
+      "index": 1,
+      "file": "which-model-can-run-on-your-device-1.webp",
+      "textHash": "a350a1cbd4ad48e2",
+      "width": 512,
+      "height": 599
+    },
+    {
+      "slug": "which-model-can-run-on-your-device",
+      "index": 2,
+      "file": "which-model-can-run-on-your-device-2.webp",
+      "textHash": "48a05d3d4cd85876",
+      "width": 512,
+      "height": 650
+    },
+    {
+      "slug": "which-model-can-run-on-your-device",
+      "index": 3,
+      "file": "which-model-can-run-on-your-device-3.webp",
+      "textHash": "d600065ce72e90f0",
+      "width": 512,
+      "height": 562
+    },
+    {
+      "slug": "which-model-can-run-on-your-device",
+      "index": 4,
+      "file": "which-model-can-run-on-your-device-4.webp",
+      "textHash": "7c36fb6a5adc7ad5",
+      "width": 512,
+      "height": 752
+    },
+    {
+      "slug": "which-model-can-run-on-your-device",
+      "index": 5,
+      "file": "which-model-can-run-on-your-device-5.webp",
+      "textHash": "06c7d6074818ca85",
+      "width": 512,
+      "height": 664
+    },
+    {
+      "slug": "which-model-can-run-on-your-device",
+      "index": 6,
+      "file": "which-model-can-run-on-your-device-6.webp",
+      "textHash": "3f0329929fa8ba08",
+      "width": 512,
+      "height": 703
+    }
+  ]
+}
