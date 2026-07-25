@@ -180,7 +180,6 @@ body {
   letter-spacing: var(--spacing-m);
   padding: 6rem 1.5rem 1.5rem 1.5rem;
   overscroll-behavior-y: contain;
-  transition: background-color 0.2s ease-out;
 }
 
 @media (max-width: 768px) {

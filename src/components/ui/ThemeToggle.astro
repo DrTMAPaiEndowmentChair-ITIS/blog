@@ -59,11 +59,51 @@ import { themeConfig } from '@/config'
       newToggle.addEventListener('click', function (e) {
         e.preventDefault()
         e.stopPropagation()
-        window.ThemeManager.toggle()
+        window.ThemeManager.toggle(newToggle)
         syncThemeToggle(newToggle)
       })
     }
   }
+
+  /*
+    While the wipe is running the document is captured into the transition
+    snapshot, which makes every element non-hit-testable — a click on the
+    toggle lands on <html> and its own handler never fires, so the button
+    feels dead for the length of the animation. The event still reaches the
+    document, so re-target it by coordinate while the wipe is in flight.
+  */
+  function bindWipeClickFallback() {
+    if (window.__themeWipeFallbackBound) return
+    window.__themeWipeFallbackBound = true
+
+    document.addEventListener(
+      'click',
+      function (e) {
+        if (!document.documentElement.classList.contains('theme-wipe')) return
+        // Keyboard activation still hits the button directly; don't double-fire.
+        if (e.target && e.target.closest && e.target.closest('#theme-toggle')) return
+
+        const themeToggle = document.getElementById('theme-toggle')
+        if (!themeToggle || !window.ThemeManager) return
+
+        const rect = themeToggle.getBoundingClientRect()
+        const inside =
+          e.clientX >= rect.left &&
+          e.clientX <= rect.right &&
+          e.clientY >= rect.top &&
+          e.clientY <= rect.bottom
+        if (!inside) return
+
+        e.preventDefault()
+        e.stopPropagation()
+        window.ThemeManager.toggle(themeToggle)
+        syncThemeToggle(themeToggle)
+      },
+      true
+    )
+  }
+
+  bindWipeClickFallback()
 
   // Bind on initial load
   window.addEventListener('DOMContentLoaded', bindThemeToggle)
@@ -92,7 +132,7 @@ import { themeConfig } from '@/config'
   }
 
   .theme-toggle:hover {
-    background-color: var(--bg-secondary);
+    background-color: var(--surface-hover);
     opacity: 1;
   }
 
@@ -110,8 +150,8 @@ import { themeConfig } from '@/config'
     width: 1.125rem;
     height: 1.125rem;
     transition:
-      opacity 180ms cubic-bezier(0.23, 1, 0.32, 1),
-      transform 180ms cubic-bezier(0.23, 1, 0.32, 1);
+      opacity 260ms cubic-bezier(0.32, 0.94, 0.6, 1),
+      transform 260ms cubic-bezier(0.32, 0.94, 0.6, 1);
   }
 
   .sun-icon {
