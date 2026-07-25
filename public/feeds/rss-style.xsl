@@ -17,7 +17,8 @@
           font-size: 0.9375rem;
           line-height: 1.45;
           color: rgba(0, 0, 0, 0.85);
-          max-width: 22.5rem;
+          max-width: 32rem;
+          padding: 0 1.25rem;
           }
           .header {
           display: flex;
@@ -48,6 +49,24 @@
           font-size: 0.8125rem;
           opacity: 0.475;
           }
+          .item {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          gap: 1.5em;
+          padding: 0.4em 0;
+          color: inherit;
+          text-decoration: none;
+          }
+          .item:hover .item-title {
+          text-decoration: underline;
+          }
+          .item-date {
+          font-size: 0.8125rem;
+          opacity: 0.475;
+          font-variant-numeric: tabular-nums;
+          white-space: nowrap;
+          }
           @media (prefers-color-scheme: dark) {
           body {
           background-color: #1c1c1c;
@@ -76,32 +95,54 @@
 
           <div class="footer">
             <span>Last Updated: </span>
-            <xsl:variable name="dateStr" select="/rss/channel/lastBuildDate" />
-            <xsl:variable name="year" select="substring($dateStr, 13, 4)" />
-            <xsl:variable name="month" select="substring($dateStr, 9, 3)" />
-            <xsl:variable name="day" select="substring($dateStr, 6, 2)" />
-            <xsl:variable name="monthNum">
-              <xsl:choose>
-                <xsl:when test="$month='Jan'">01</xsl:when>
-                <xsl:when test="$month='Feb'">02</xsl:when>
-                <xsl:when test="$month='Mar'">03</xsl:when>
-                <xsl:when test="$month='Apr'">04</xsl:when>
-                <xsl:when test="$month='May'">05</xsl:when>
-                <xsl:when test="$month='Jun'">06</xsl:when>
-                <xsl:when test="$month='Jul'">07</xsl:when>
-                <xsl:when test="$month='Aug'">08</xsl:when>
-                <xsl:when test="$month='Sep'">09</xsl:when>
-                <xsl:when test="$month='Oct'">10</xsl:when>
-                <xsl:when test="$month='Nov'">11</xsl:when>
-                <xsl:when test="$month='Dec'">12</xsl:when>
-              </xsl:choose>
-            </xsl:variable>
-            <xsl:value-of select="concat($year, '.', $monthNum, '.', $day)" />
+            <xsl:call-template name="rfc822-date">
+              <xsl:with-param name="dateStr" select="/rss/channel/lastBuildDate" />
+            </xsl:call-template>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="items">
+            <xsl:for-each select="/rss/channel/item">
+              <a class="item">
+                <xsl:attribute name="href"><xsl:value-of select="link" /></xsl:attribute>
+                <span class="item-title"><xsl:value-of select="title" /></span>
+                <span class="item-date">
+                  <xsl:call-template name="rfc822-date">
+                    <xsl:with-param name="dateStr" select="pubDate" />
+                  </xsl:call-template>
+                </span>
+              </a>
+            </xsl:for-each>
           </div>
 
         </div>
 
       </body>
     </html>
+  </xsl:template>
+
+  <!-- "Sun, 19 Jul 2026 00:00:00 GMT" -> "2026.07.19" -->
+  <xsl:template name="rfc822-date">
+    <xsl:param name="dateStr" />
+    <xsl:variable name="month" select="substring($dateStr, 9, 3)" />
+    <xsl:variable name="monthNum">
+      <xsl:choose>
+        <xsl:when test="$month='Jan'">01</xsl:when>
+        <xsl:when test="$month='Feb'">02</xsl:when>
+        <xsl:when test="$month='Mar'">03</xsl:when>
+        <xsl:when test="$month='Apr'">04</xsl:when>
+        <xsl:when test="$month='May'">05</xsl:when>
+        <xsl:when test="$month='Jun'">06</xsl:when>
+        <xsl:when test="$month='Jul'">07</xsl:when>
+        <xsl:when test="$month='Aug'">08</xsl:when>
+        <xsl:when test="$month='Sep'">09</xsl:when>
+        <xsl:when test="$month='Oct'">10</xsl:when>
+        <xsl:when test="$month='Nov'">11</xsl:when>
+        <xsl:when test="$month='Dec'">12</xsl:when>
+      </xsl:choose>
+    </xsl:variable>
+    <xsl:value-of
+      select="concat(substring($dateStr, 13, 4), '.', $monthNum, '.', substring($dateStr, 6, 2))" />
   </xsl:template>
 </xsl:stylesheet>

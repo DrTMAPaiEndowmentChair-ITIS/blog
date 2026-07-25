@@ -25,6 +25,14 @@ export default defineConfig({
       config: imageConfig
     }
   },
+  // Conventional feed paths readers probe for, pointing at the real endpoints.
+  redirects: {
+    '/feed': '/rss.xml',
+    '/feed.xml': '/rss.xml',
+    '/rss': '/rss.xml',
+    '/index.xml': '/rss.xml',
+    '/atom': '/atom.xml'
+  },
   markdown: {
     shikiConfig: {
       theme: 'css-variables',
@@ -49,5 +57,10 @@ export default defineConfig({
   },
   devToolbar: {
     enabled: false
+  },
+  server: {
+    // Bind all interfaces so the dev server is reachable over the network and
+    // from tooling that can't resolve Astro's default IPv6-only localhost.
+    host: true
   }
 })

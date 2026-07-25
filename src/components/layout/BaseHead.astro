@@ -28,8 +28,20 @@ const imageUrl = ogImage ? new URL(ogImage, Astro.url) : new URL('/og/og-bg.png'
 <link
   rel="alternate"
   type="application/rss+xml"
-  title={themeConfig.site.title}
+  title={`${themeConfig.site.title} · RSS`}
   href={new URL('rss.xml', Astro.site)}
+/>
+<link
+  rel="alternate"
+  type="application/atom+xml"
+  title={`${themeConfig.site.title} · Atom`}
+  href={new URL('atom.xml', Astro.site)}
+/>
+<link
+  rel="alternate"
+  type="application/feed+json"
+  title={`${themeConfig.site.title} · JSON Feed`}
+  href={new URL('feed.json', Astro.site)}
 />
 <meta name="generator" content={Astro.generator} />
 

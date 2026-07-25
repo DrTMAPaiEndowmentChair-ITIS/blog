@@ -51,6 +51,28 @@
     Cache-Control = "public, max-age=1800, s-maxage=3600"
     Vary = "Accept-Encoding"
 
+# Feeds
+[[headers]]
+  for = "/rss.xml"
+  [headers.values]
+    Content-Type = "application/rss+xml; charset=utf-8"
+    Cache-Control = "public, max-age=3600, s-maxage=86400"
+    Vary = "Accept-Encoding"
+
+[[headers]]
+  for = "/atom.xml"
+  [headers.values]
+    Content-Type = "application/atom+xml; charset=utf-8"
+    Cache-Control = "public, max-age=3600, s-maxage=86400"
+    Vary = "Accept-Encoding"
+
+[[headers]]
+  for = "/feed.json"
+  [headers.values]
+    Content-Type = "application/feed+json; charset=utf-8"
+    Cache-Control = "public, max-age=3600, s-maxage=86400"
+    Vary = "Accept-Encoding"
+
 # Static assets
 [[headers]]
   for = "/fonts/*"

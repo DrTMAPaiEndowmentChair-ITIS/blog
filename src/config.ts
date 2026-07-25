@@ -3,7 +3,7 @@ import type { ThemeConfig } from './types'
 export const themeConfig: ThemeConfig = {
   // SITE INFO ///////////////////////////////////////////////////////////////////////////////////////////
   site: {
-    website: 'https://astro-chiri.netlify.app/', // Site domain
+    website: 'https://ecitis.org/', // Site domain
     title: 'Dr. TMA Pai Endowment Chair - ITIS', // Site title
     author: 'Dr. TMA Pai Endowment Chair - ITIS', // Author name
     description: 'Official website for Dr. TMA Pai Endowment Chair - ITIS', // Site description

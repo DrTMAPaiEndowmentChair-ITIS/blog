@@ -13,6 +13,8 @@ const today = new Date()
       {themeConfig.site.author}
     </div>
     <div class="powered-by">
+      <a href="/rss.xml" title="Subscribe via RSS">RSS</a>
+      <span class="separator">·</span>
       Powered by{' '}
       <a href="https://astro.build">Astro</a>
     </div>
@@ -44,6 +46,11 @@ const today = new Date()
 
   .copyright .date {
     opacity: 1;
+  }
+
+  .powered-by .separator {
+    margin: 0 0.35rem;
+    opacity: 0.5;
   }
 
   footer a {
