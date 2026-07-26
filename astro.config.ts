@@ -57,7 +57,22 @@ export default defineConfig({
   },
   integrations: [
     playformInline({
-      Exclude: [(file) => file.toLowerCase().includes('katex')]
+      Exclude: [(file) => file.toLowerCase().includes('katex')],
+      Beasties: {
+        /*
+          Inlining decides per page which rules are needed above the fold, but
+          it defaults to deleting whatever it inlines from the shared
+          stylesheet. Anything it judges non-critical for one page is then gone
+          for that page — `.prose table` survived on 33 posts and vanished from
+          the one long enough to push its first table below the fold, which
+          took the table's own horizontal scrolling with it and let the page
+          widen past the viewport.
+
+          Keep the stylesheet whole. The inlined copy still buys the faster
+          first paint; it just stops being the only copy.
+        */
+        pruneSource: false
+      }
     }),
     mdx(),
     sitemap()
