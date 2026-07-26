@@ -98,23 +98,37 @@
 }
 
 /* Tables */
+
+/*
+  The frame and the scrolling live on the wrapper (see rehype-table-wrap), not
+  on the table. A table that scrolls itself has to be `display: block`, and a
+  block box shrinks to its content — which is how the header background used to
+  stop short of the right border on tables narrower than the column.
+*/
+.prose .table-wrap {
+  margin: 1.75em 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.prose .table-wrap:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+  Auto layout treats `width: 100%` as a floor: the table fills the wrapper when
+  it fits, and grows past it — leaving the wrapper to scroll — when the columns
+  genuinely need the room, instead of squeezing text or widening the page.
+*/
 .prose table {
-  table-layout: fixed;
+  table-layout: auto;
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  margin: 1.75em 0;
   font-size: var(--font-size-m);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-/* Wide technical tables should scroll locally instead of squeezing text or widening the page. */
-.prose table {
-  display: block;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
 }
 
 /* Table cells */

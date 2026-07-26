@@ -11,6 +11,7 @@ import rehypeCleanup from './src/plugins/rehype-cleanup.mjs'
 import rehypeImageProcessor from './src/plugins/rehype-image-processor.mjs'
 import rehypeCopyCode from './src/plugins/rehype-copy-code.mjs'
 import rehypeReferenceLinks from './src/plugins/rehype-reference-links.mjs'
+import rehypeTableWrap from './src/plugins/rehype-table-wrap.mjs'
 import remarkTOC from './src/plugins/remark-toc.mjs'
 import { themeConfig } from './src/config'
 import { imageConfig } from './src/utils/image-config'
@@ -59,7 +60,8 @@ export default defineConfig({
       rehypeCleanup,
       rehypeImageProcessor,
       rehypeCopyCode,
-      rehypeReferenceLinks
+      rehypeReferenceLinks,
+      rehypeTableWrap
     ]
   },
   integrations: [
