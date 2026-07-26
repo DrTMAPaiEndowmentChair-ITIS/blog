@@ -36,7 +36,15 @@ const today = new Date()
     justify-content: space-between;
     align-items: center;
     flex-direction: row;
-    flex-wrap: nowrap;
+    /*
+      Both halves refuse to break mid-phrase, so a row that cannot wrap has a
+      minimum width of the two of them side by side — which the author name
+      pushes past the viewport on a phone, scrolling the whole page sideways.
+      Wrapping lets the second half drop to its own line at exactly the width
+      it stops fitting, with no breakpoint to keep in sync with the content.
+    */
+    flex-wrap: wrap;
+    gap: 0.15rem 1.5rem;
     width: 100%;
   }
 
