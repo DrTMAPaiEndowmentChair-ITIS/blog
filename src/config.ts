@@ -3,7 +3,11 @@ import type { ThemeConfig } from './types'
 export const themeConfig: ThemeConfig = {
   // SITE INFO ///////////////////////////////////////////////////////////////////////////////////////////
   site: {
-    website: 'https://ecitis.org/', // Site domain
+    // The host that actually serves this build. Every absolute URL the site
+    // emits — canonical, og:url, og:image, feed enclosures, the sitemap —
+    // resolves against it, so pointing it at the institutional apex domain
+    // sends scrapers to a site that does not host these files.
+    website: 'https://blog.ecitis.org/', // Site domain
     title: 'Dr. TMA Pai Endowment Chair - ITIS', // Site title
     author: 'Dr. TMA Pai Endowment Chair - ITIS', // Author name
     description: 'Official website for Dr. TMA Pai Endowment Chair - ITIS', // Site description
