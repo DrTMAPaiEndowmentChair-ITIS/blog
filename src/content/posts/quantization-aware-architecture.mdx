@@ -9,9 +9,9 @@ topics: ['Quantization', 'Architecture', 'Training']
 
 import PrecisionFormatLadder from '../../components/viz/PrecisionFormatLadder.astro'
 
-Quantization is usually applied after the fact: train in BF16, compress, measure the damage. That framing treats low precision as a lossy postprocessing step and leaves out the model's own structure, which decides how much damage there is.
+Quantization is often applied after the fact: train in BF16, compress, measure what changed. Treating numeric format as an architectural property instead opens up considerably more. Design decisions made long before any calibration set determine how well a model quantizes, and the techniques that exploit this are mature.
 
-The more useful framing is that numeric format is an architectural constraint. Some design decisions make a model quantize well and some make it resist, and those decisions are made long before anyone runs a calibration set.
+SmoothQuant made W8A8 practical by migrating quantization difficulty from activations into weights, at no run-time cost once the rescaling is folded into the preceding layer norm. DeepSeek-V3 trained at frontier scale directly in FP8. Low precision is now something to design for rather than something to survive.
 
 <PrecisionFormatLadder />
 
@@ -41,7 +41,7 @@ With one scale per tensor, a single large value forces $s$ upward and quantizes 
 
 ## Outliers
 
-Transformer activations are not well conditioned for uniform quantization. Past roughly 6B parameters, systematic outlier features emerge: a small number of hidden dimensions carry values 10 to 100 times larger than the rest, consistently across tokens and layers.[^1]
+Transformer activations carry systematic outlier features past roughly 6B parameters: a small number of hidden dimensions hold values 10 to 100 times larger than the rest, consistently across tokens and layers. That consistency is what makes them tractable.[^1]
 
 Consistency is the key property. These are not random spikes; they occupy specific channels, and those channels do disproportionate work: zeroing them collapses model quality, so they cannot simply be clipped.
 
@@ -73,9 +73,9 @@ Microscaling formats standardize this. MXFP4 pairs 32 FP4 values with a shared 8
 
 The general point: at 4 bits and below, the metadata is a first-class part of the format. Comparing quantization schemes by nominal bit width is comparing the wrong number.
 
-## Not all layers are equal
+## Assigning precision by layer sensitivity
 
-Sensitivity varies systematically, and the pattern is stable enough to design around.
+Sensitivity varies by layer, and the pattern is stable enough across models to design around directly.
 
 **Embeddings and the output head.** Large, and the head directly produces logits. Quantization error here maps to distribution error with no intervening layers to absorb it. Usually kept at higher precision; when weights are tied, quantizing one quantizes both.
 
@@ -136,7 +136,7 @@ What to measure:
 5. **Behavior under sampling at temperature**, for the same reason.
 6. **Actual throughput.** A format the kernels do not support natively will be dequantized to something they do, and the memory saving will not become a speed gain.
 
-That last point is the most common disappointment. A 4-bit model that halves memory and delivers no speedup is running a dequantize-then-BF16-GEMM path. The saving is real for capacity and absent for latency, and knowing which one you needed determines whether the quantization was worth it.
+That last point is worth settling early, because it decides which win you collect. A 4-bit model on a dequantize-then-BF16-GEMM path halves memory and leaves latency unchanged, which is exactly what you want when concurrency is the constraint. Pair the format with kernels that consume it natively and the same weights deliver the latency gain as well.
 
 ## References
 

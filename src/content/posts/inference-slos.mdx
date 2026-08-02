@@ -9,7 +9,9 @@ topics: ['Latency', 'Benchmarking', 'LLM serving']
 
 import LatencyThroughputFrontier from '../../components/viz/LatencyThroughputFrontier.astro'
 
-"Tokens per second" is reported for a deployment as if it were a single quantity. It is at least three: how fast a single stream produces tokens, how many tokens the replica produces across all streams, and how many tokens reach a user within an acceptable time. Optimizing the second at the expense of the third is the most common mistake in inference capacity planning, and it is easy to make because the second number is the one benchmarks print.
+"Tokens per second" is usually reported as one number. It is at least three, and separating them is what turns capacity planning into something you can do precisely: how fast a single stream produces tokens, how many tokens a replica produces across all streams, and how many reach a user within an acceptable time.
+
+The third is goodput, and it is the one worth optimizing. It maps directly to delivered value, it has a clear peak, and a single benchmark sweep locates that peak for a given model and SLO.
 
 <LatencyThroughputFrontier />
 
@@ -109,9 +111,9 @@ Details that decide whether the numbers transfer to production:
 
 **Report tokenizer-consistent counts.** Tokens per second is meaningless across models with different vocabularies. Characters or words per second is more comparable when comparing model families; tokens per second is fine within one.
 
-## Where the tail actually comes from
+## Sources of tail latency, and their signatures
 
-When p99 TTFT is far above p50, the cause is usually one of a short list:
+When p99 TTFT sits well above p50, the cause is usually one of a short list, and each leaves a distinct signature:
 
 **Long-prompt convoys.** One large prefill stalls every stream on the replica. Fixed by chunked prefill; visible as a step-time spike correlated with prompt length.
 
@@ -135,4 +137,4 @@ That formulation gives an error budget: 1% of requests may miss. The budget make
 
 It also disciplines the reporting. A single p99 over an arbitrary window can be gamed by window choice; attainment over a fixed window cannot.
 
-Peak throughput remains a useful number, since it bounds what is possible. But nothing in a deployment should be tuned to it, because it is achieved at an operating point where a large fraction of requests are already failing their objective.
+Peak throughput remains a useful number, since it bounds what is possible. Goodput is the one to tune against, because it identifies the operating point where the hardware is working hardest on requests that will actually arrive in time. Finding it is a single sweep, and it holds until the model or the SLO changes.

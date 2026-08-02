@@ -9,9 +9,9 @@ topics: ['Attention', 'Architecture', 'KV cache']
 
 import KVBudgetLadder from '../../components/viz/KVBudgetLadder.astro'
 
-Attention variants are usually presented as a quality question: how much accuracy does sharing key-value heads cost? In practice the causality runs the other way. A serving target implies a KV cache budget per token, the budget implies a key-value head count, and quality is what gets measured afterwards to confirm the choice was survivable.
+Attention variants are usually presented as a quality question: how much accuracy does sharing key-value heads cost? The more productive reading is that they are a capacity lever with a closed-form price. A serving target implies a KV cache budget per token, that budget implies a key-value head count, and the arithmetic is simple enough to run in a few lines of code.
 
-Understanding the arithmetic makes several otherwise arbitrary-looking architecture decisions legible.
+The returns are large. At eight groups, a 70B-class model carries one eighth the cache per token, which multiplies the concurrency a single device can hold, and the GQA paper reports recovering near-MHA quality by uptraining an existing checkpoint on roughly 5% of the original compute.
 
 <KVBudgetLadder />
 
@@ -47,9 +47,9 @@ The GQA paper's central practical finding is that an existing MHA checkpoint can
 
 $G = 8$ is the common landing point across model families. It gives an 8x cache reduction at $H_q = 64$ with quality loss that is small on most benchmarks.
 
-## What sharing actually costs
+## Where the quality budget goes
 
-The naive intuition, that fewer key-value heads means less capacity, is roughly right but misplaced in where the damage appears.
+The naive intuition, that fewer key-value heads means less capacity, is roughly right, and knowing exactly where the effect shows up is what makes the trade easy to manage.
 
 Aggregate benchmark scores move very little between MHA and GQA at $G = 8$. What degrades measurably is long-context retrieval: tasks requiring exact recall of a specific span from far back in the context. Each query head under MQA attends to the same key space, so heads lose the ability to specialize their retrieval patterns independently. Induction-style heads that copy from earlier positions are exactly the mechanism this constrains.
 
@@ -128,7 +128,7 @@ The protocol that catches what benchmarks miss:
 4. **Realized concurrency.** Measured, not computed: fragmentation and workspace mean the theoretical number is optimistic.
 5. **Goodput at the SLO.** The number that translates the architecture choice into cost.
 
-The last one is the point of the exercise. A 5% relative drop on a retrieval benchmark that buys 8x concurrency is usually the right trade, Stating it that way, rather than as a quality regression to be avoided, is how the decision should be framed.
+The last one is the point of the exercise. A 5% relative drop on a retrieval benchmark that buys 8x concurrency is usually a clear win, and stating it that way, as capacity bought at a known price, is what makes the decision straightforward.
 
 ## References
 

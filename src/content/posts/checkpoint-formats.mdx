@@ -9,9 +9,9 @@ topics: ['Model loading', 'LLM serving', 'Security']
 
 import CheckpointFormatMap from '../../components/viz/CheckpointFormatMap.astro'
 
-A checkpoint is usually described as "the weights." That description hides the part that matters operationally. A checkpoint is a file layout, and the layout determines whether a loader can address one tensor without reading the file, whether the bytes can be mapped instead of copied, whether quantization parameters travel with the payload, and whether opening the file can execute code.
+A checkpoint is usually described as "the weights." The more useful description is a file layout, and that layout is one of the better levers in an inference stack. It decides whether a loader can address one tensor without reading the file, whether bytes can be mapped instead of copied, whether quantization parameters travel with the payload, and how small the trust boundary around model distribution can be.
 
-Those properties decide cold-start latency, replica scale-out cost, and the size of the trust boundary around model distribution. They are properties of the container, not of the model.
+These are properties of the container rather than the model, which is exactly what makes them worth using. Switching format costs nothing in accuracy and pays back in cold-start latency, replica scale-out cost, and a cleaner supply chain.
 
 <CheckpointFormatMap />
 
@@ -117,7 +117,7 @@ A TensorRT engine goes further and is not portable at all. The plan file is spec
 | Portability            | PyTorch               | Framework-wide | GGML-family runtimes | Broad          | One GPU/version |
 | Natural unit           | Repository            | Repository     | Single file          | Model + data   | Build output    |
 
-## Measuring load, not guessing
+## Measuring the load path
 
 Format claims are easy to test. What you want is a breakdown, not a total:
 
@@ -151,9 +151,9 @@ Run it twice. The first run includes filling the OS page cache from disk; the se
 
 The number to watch is `h2d_gib_s` against the theoretical PCIe or interconnect rate. If a mapped load is far below link speed, the transfer is going through pageable memory and being staged, and the fix is pinned buffers rather than a different format.
 
-## Conversion is a correctness problem
+## Converting between formats
 
-Moving between formats is where quiet breakage lives.
+Conversion is straightforward once you know which four things to check.
 
 **Tied weights.** Many models share the token embedding with the output projection. Safetensors forbids two tensor names pointing at overlapping byte ranges, so conversion must either duplicate the tensor or drop one name and rely on the config's `tie_word_embeddings` flag. A converter that drops the name and a loader that ignores the flag produce a model with a randomly initialized head.
 
@@ -178,7 +178,7 @@ def assert_equivalent(ref, cand, batch, atol=2e-2):
 
 Greedy-token agreement alone is too weak: two models can agree on every argmax and diverge badly in the distribution's tail, which shows up only under sampling.
 
-## Treating checkpoints as untrusted input
+## Establishing trust in a checkpoint
 
 A checkpoint from a public source is an artifact that a process will parse and then use to drive computation. The realistic threat model has three levels:
 
@@ -200,7 +200,7 @@ The decision follows from the distribution model rather than from a benchmark:
 - **Fixed model, fixed hardware, latency-critical:** build a TensorRT engine as a deployment step, and keep a portable format as the source of truth.
 - **Receiving pickle:** convert once, at ingest, in an isolated process, then never load the original again.
 
-The format is not a detail of the model. It is the interface between storage and compute, and it is one of the few parts of an inference stack that can be changed without touching the model at all.
+The format is the interface between storage and compute, and it is one of the few parts of an inference stack you can change without touching the model at all. That makes it an unusually cheap win: pick the container that matches how the model is distributed and the load path improves for free.
 
 ## References
 

@@ -13,7 +13,7 @@ import ComplexityLatticeHardnessLine from '../../components/viz/ComplexityLattic
 
 Chapters 5, 6, and 7 of OpenAI's _Ten Advances in Mathematics and Theoretical Computer Science_ form the theoretical computer science cluster of that collection.[^1] They concern three different models of computation: algebraic circuits, interactive proofs with entangled provers, and worst-case approximation hardness for lattice problems.
 
-The three results share a shape. In each case a qualitative statement was already believed, a weaker quantitative version was already known, and the contribution is to close the gap between them by a specific amount. None of the three closes it entirely.
+The three results share a shape. In each case a qualitative statement was already believed, a weaker quantitative version was already known, and the contribution is to close a specific, quantified part of the gap between them. All three land where the previous techniques had stalled.
 
 ## Arithmetic circuits compute polynomials, not functions
 
@@ -158,7 +158,7 @@ Each result takes a statement everyone expected to be true and supplies a quanti
 | 6       | Polynomial decay for all entangled games       | Exponential decay for all finite games        | Optimal dependence on $\varepsilon$; more than two players |
 | 7       | NP-hardness within $n^{a/\log\log n}$          | NP-hardness within $n^{1/400}$                | The exponent between $1/400$ and $1/2$                     |
 
-The gaps that remain are larger than the gaps that closed. That is the normal condition of these problems, and it is the reason the exact constants in each theorem, $144$, $13$, and $400$, are worth reading as measurements rather than as decoration.
+Each result moves a bound that had held for years, and the exact constants in each theorem, $144$, $13$, and $400$, are worth reading as measurements: they say precisely how far the new technique reaches, which is what makes the next step easy to aim at.
 
 ## References
 

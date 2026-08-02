@@ -9,11 +9,13 @@ topics: ['Scheduling', 'LLM serving', 'Latency']
 
 import BatchSchedulerTimeline from '../../components/viz/BatchSchedulerTimeline.astro'
 
-Kernel work gets most of the attention in inference optimization, and it is where the peak numbers come from. But between a request arriving and a token being emitted sits a scheduler that decides which requests run this iteration, how much prompt to process, what to do when memory runs out, and when to give up on a request. That component determines how much of the peak a deployment actually reaches, and it is where most of the gap between benchmark and production lives.
+Kernel work gets most of the attention in inference optimization, and it produces the peak numbers. The scheduler is where a deployment collects them. Between a request arriving and a token being emitted, it decides which requests run this iteration, how much prompt to process, how to reclaim memory, and when to shed load.
+
+That makes it one of the best returns available in a serving stack. Continuous batching, chunked prefill, and prefix-aware admission are model-independent and hardware-independent, and together they routinely separate two deployments of the same model on the same hardware by several times in serving cost.
 
 <BatchSchedulerTimeline />
 
-## Why static batching fails on generation
+## What continuous batching improves on
 
 Batching amortizes weight reads. During decode, the model reads all its weights to produce one token per sequence, so a batch of $n$ costs roughly the same memory traffic as a batch of one. Throughput scales close to linearly until the matrix units saturate.
 
@@ -151,7 +153,7 @@ The metrics that make scheduler behavior legible:
 
 Averages hide the failures. Step time in particular should be a histogram. A mean of 25 ms with a p99 of 400 ms is a chunked-prefill misconfiguration, and the mean will never show it.
 
-## Failure modes
+## Patterns worth instrumenting
 
 **Convoy from a single long prompt.** Without chunked prefill, one 128k prompt stalls every stream on the replica. Visible as a step-time spike correlated with prompt length.
 
@@ -163,7 +165,7 @@ Averages hide the failures. Step time in particular should be a histogram. A mea
 
 **Unbounded queues.** Accepting everything under overload maximizes timeouts and wastes every unit of prefill compute spent on requests nobody is waiting for anymore.
 
-The scheduler is where model-independent throughput comes from. Two deployments of the same model on the same hardware can differ by several times in serving cost, and the difference is usually here rather than in the kernels.
+The scheduler is where model-independent throughput comes from, which is what makes it such a rewarding place to invest. Two deployments of the same model on the same hardware can differ by several times in serving cost, and the difference is usually here rather than in the kernels, where it is reachable without touching the model at all.
 
 ## References
 

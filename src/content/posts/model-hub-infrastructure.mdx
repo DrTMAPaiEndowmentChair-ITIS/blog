@@ -9,9 +9,9 @@ topics: ['Hugging Face', 'Security', 'Model loading']
 
 import HubTransferPath from '../../components/viz/HubTransferPath.astro'
 
-Most teams meet a model hub as a convenience function: one call, weights appear. That framing works until the download is 300 GB, the fleet is 200 nodes, the CI job needs to be reproducible next quarter, and someone asks who signed off on the bytes.
+Most teams meet a model hub as a convenience function: one call, weights appear. The useful discovery is what sits underneath. A hub is a content-addressed distribution system, and once the download is 300 GB across a 200-node fleet, those are exactly the primitives you want.
 
-At that point the hub stops being a convenience and becomes part of the deployment path, with the same properties you would demand of a package registry: content addressing, deduplication, pinning, verification, and an offline mode.
+Content addressing, chunk-level deduplication, resumable transfer, and commit-pinned revisions give you reproducibility, fast scale-out, and an auditable supply chain. Everything below is about using them deliberately.
 
 <HubTransferPath />
 
@@ -150,7 +150,7 @@ Putting it together, the path from public hub to production is a pipeline with a
 
 Each stage is cheap. The pipeline exists so that the expensive stages run once per model version rather than once per replica, and so that the answer to "where did these bytes come from" is a lookup rather than an investigation.
 
-The hub is good infrastructure: content addressing, chunk dedup, and resumable transfer are the right primitives. The mistake is treating it as a filesystem that happens to be remote instead of as a registry that happens to be public.
+The hub is good infrastructure, and the primitives are the right ones: content addressing, chunk dedup, resumable transfer, and pinned revisions. Treating it as a registry rather than as a remote filesystem is what unlocks them.
 
 ## References
 

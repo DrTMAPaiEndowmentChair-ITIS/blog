@@ -9,9 +9,9 @@ topics: ['Fine-tuning', 'Multi-tenancy', 'LLM serving']
 
 import AdapterMultiplexing from '../../components/viz/AdapterMultiplexing.astro'
 
-Fine-tuning produces adapters far more often than it produces full models. A LoRA adapter for a 70B model is often under 200 MB against 140 GB of base weights. The economics of that ratio only materialize if one replica can serve many adapters at once. If each adapter requires its own replica, a 700x size advantage becomes a 1x cost advantage.
+Fine-tuning produces adapters far more often than it produces full models, and the size ratio is striking: a LoRA adapter for a 70B model is often under 200 MB against 140 GB of base weights. One replica can turn that ratio into real economics by serving many adapters at once, and the published systems show how far it goes. S-LoRA reports serving thousands of concurrent adapters on a single GPU.
 
-Getting from one to the other is a scheduling and kernel problem, not a training one.
+Getting there is a scheduling and kernel problem rather than a training one, which puts it entirely within a serving team's control.
 
 <AdapterMultiplexing />
 
@@ -140,7 +140,7 @@ Aggregate throughput hides everything that matters in a multi-tenant deployment.
 - **Adapter overhead fraction**: step time with adapters minus estimated base-only step time.
 - **Pool occupancy** in bytes and in adapter count, plus eviction rate.
 
-The headline claim for these systems is throughput at high adapter counts. The number that predicts whether a deployment is actually viable is the p99 TTFT of the least-popular tenant on the replica, because that is the one whose adapter is never resident and whose requests are never the locality-preferred choice.
+Throughput at high adapter counts is the headline, and it holds up. The metric that confirms the design is working end to end is the p99 TTFT of the least-popular tenant on the replica: the one whose adapter is least likely to be resident and least likely to win on locality. Keep that number healthy and every tenant above it is comfortable.
 
 ## References
 

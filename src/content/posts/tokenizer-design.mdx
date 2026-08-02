@@ -9,9 +9,9 @@ topics: ['Tokenization', 'Architecture', 'Training']
 
 import VocabCostCurve from '../../components/viz/VocabCostCurve.astro'
 
-The tokenizer is chosen early, rarely revisited, and impossible to change afterwards without retraining. It determines the sequence length for every document the model will ever see, the size of two of its largest matrices, how much non-English users pay per request, and a specific family of reasoning failures that look like model deficiencies but are not.
+The tokenizer is chosen early and cannot be changed afterwards without retraining, which makes it one of the highest-leverage decisions available at the start of a project. It sets the sequence length for every document the model will ever see, the size of two of its largest matrices, and how much users writing in any given language pay per request.
 
-For a component with those properties, it receives little design attention.
+It also offers unusually tractable wins. Splitting numbers consistently improves arithmetic, dedicated indentation tokens cut Python sequence length, and upsampling low-resource languages when fitting the vocabulary lowers their fertility directly. Each is a decision, not a research problem.
 
 <VocabCostCurve />
 
@@ -60,7 +60,7 @@ Empirical work on vocabulary scaling finds that optimal vocabulary size grows wi
 
 The pre-tokenization regex matters as much as the algorithm. It decides where merges may not cross, typically at whitespace and punctuation boundaries, with special handling for digits and contractions. Two tokenizers with the same algorithm and vocabulary size but different pre-tokenization patterns produce meaningfully different vocabularies.
 
-## Failure modes that look like model failures
+## Tokenizer fixes for apparent model limitations
 
 **Arithmetic.** If numbers tokenize inconsistently, with `1234` as one token and `1235` as two, the model must learn arithmetic over a representation where digit position is not consistently exposed. Splitting numbers into individual digits, or into fixed groups of three, measurably improves arithmetic. This is a pure tokenizer fix for what is invariably reported as a reasoning limitation.
 
@@ -127,7 +127,7 @@ The decision sequence:
 6. **Train tokenizer and model on the same corpus** to avoid glitch tokens.
 7. **Measure fertility across the deployment mix before committing.** This is the last cheap moment to change it.
 
-The tokenizer is the only architectural component that cannot be changed after training without starting over. It deserves the same scrutiny as depth and width, and it usually receives a fraction of it.
+The tokenizer is the only architectural component that cannot be changed after training without starting over, which is precisely why an afternoon spent on it pays back across the model's entire life. Give it the same scrutiny as depth and width and the wins are available before a single training step runs.
 
 ## References
 

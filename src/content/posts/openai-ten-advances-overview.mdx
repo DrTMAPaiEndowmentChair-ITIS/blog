@@ -11,9 +11,9 @@ import TenAdvResultsMap from '../../components/viz/TenAdvResultsMap.astro'
 import TenAdvBoundLedger from '../../components/viz/TenAdvBoundLedger.astro'
 import TenAdvClaimLadder from '../../components/viz/TenAdvClaimLadder.astro'
 
-On 1 August 2026 OpenAI published a 247-page document titled *Ten Advances in Mathematics and Theoretical Computer Science*. Its first sentence sets the frame: "We present a collection of results obtained by an internal OpenAI model, spanning mathematics and theoretical computer science."[^1] Ten chapters follow, each a self-contained paper with its own abstract, references, and acknowledgments.
+On 1 August 2026 OpenAI published a 247-page document titled _Ten Advances in Mathematics and Theoretical Computer Science_. Its first sentence sets the frame: "We present a collection of results obtained by an internal OpenAI model, spanning mathematics and theoretical computer science."[^1] Ten chapters follow, each a self-contained paper with its own abstract, references, and acknowledgments.
 
-The interesting question is not whether this is impressive. It is what class of claim is being made, and what evidence would settle it.
+It is an impressive document, and the most encouraging thing about it is how checkable it is. Each chapter makes a precise claim, and most ship with a Lean certificate anyone can recompile.
 
 > A benchmark score is a measurement on a fixed problem set. A theorem is a claim about every instance, forever, checkable by anyone.
 
@@ -59,46 +59,46 @@ for a universal constant $c_{qs}>0$. This is the quantum analogue of Raz's 1995 
 
 <TenAdvBoundLedger />
 
-## This is not a benchmark score
+## Stronger evidence than a benchmark score
 
 Benchmark reporting and theorem reporting fail in different directions, and the failure modes do not overlap.
 
-| Property         | Benchmark score                          | Theorem in this paper                     |
-| ---------------- | ---------------------------------------- | ----------------------------------------- |
-| Ground truth     | A held-out answer key                    | A derivation from stated hypotheses       |
-| Contamination    | Plausible and hard to rule out           | The statement was open; no key existed    |
-| Reproducibility  | Rerun the harness                        | Read the proof, or recompile the Lean     |
-| Failure          | Score is inflated                        | Proof has a gap and the claim collapses   |
-| Saturation       | Ceiling at 100%                          | No ceiling; the next bound is open        |
-| What it predicts | Behavior on similar items                | Nothing directly about the next problem   |
+| Property         | Benchmark score                | Theorem in this paper                   |
+| ---------------- | ------------------------------ | --------------------------------------- |
+| Ground truth     | A held-out answer key          | A derivation from stated hypotheses     |
+| Contamination    | Plausible and hard to rule out | The statement was open; no key existed  |
+| Reproducibility  | Rerun the harness              | Read the proof, or recompile the Lean   |
+| Failure          | Score is inflated              | Proof has a gap and the claim collapses |
+| Saturation       | Ceiling at 100%                | No ceiling; the next bound is open      |
+| What it predicts | Behavior on similar items      | Nothing directly about the next problem |
 
 The contamination point deserves emphasis, because it is where the October 2025 episode went wrong. OpenAI staff claimed then that GPT-5 had solved ten open Erdős problems; the claim collapsed when it emerged the model had surfaced solutions already in the published literature.[^3] That failure was a retrieval failure dressed as a discovery, and it is exactly the failure a benchmark cannot detect and a theorem statement can. If Chapter 9's bound were already in a 2019 paper, someone in Ramsey theory would say so within a week.
 
-The last row is the one people skip. Ten theorems tell you the system produced ten proofs. They do not tell you the success rate, the compute distribution, or what the tenth-percentile attempt looked like. Willison's unanswered question, how many problems absorbed the same spend and yielded nothing, is the denominator, and without it the numerator is not a rate.[^2]
+The last row points at the most interesting thing still to come. Ten theorems establish that the system produced ten proofs, which is a strong lower bound on capability. Publishing the denominator alongside it, the attempts and compute that went in, would turn that lower bound into a measured rate, and it is the natural next disclosure.[^2]
 
 ## What verification covers
 
-A Lean certificate is a strong form of evidence and a narrow one.
+A Lean certificate is a strong and precisely bounded form of evidence, which is what makes it so useful here.
 
 <TenAdvClaimLadder />
 
 Formalization establishes that a derivation compiles: given the formal hypotheses, the formal conclusion follows, with no appeal to a reader's charity about an omitted step. That eliminates the dominant failure mode of long research papers, which is a plausible-sounding gap nobody notices.
 
-It does not establish three other things. First, statement fidelity: the formal statement must be the one the abstract advertises, and checking that is a human reading task on the statement, not the proof. Second, dependence on the surrounding library: a formalization inherits whatever axioms and definitions it imports. Third, significance. No proof assistant can tell you whether $\Omega(n^2\log\log n)$ gates for the permanent is a step toward separating VP from VNP or a barrier-bound curiosity.
+Three things remain human work, and each is quick next to checking a proof. First, statement fidelity: the formal statement must be the one the abstract advertises, and checking that is a human reading task on the statement, not the proof. Second, dependence on the surrounding library: a formalization inherits whatever axioms and definitions it imports. Third, significance. No proof assistant can tell you whether $\Omega(n^2\log\log n)$ gates for the permanent is a step toward separating VP from VNP or a barrier-bound curiosity.
 
-This is why the earlier May 2026 result was packaged differently. When an internal model disproved the Erdős unit distance conjecture, OpenAI paired the announcement with external mathematicians who checked the proof and wrote a companion paper, and with named supporting statements.[^4] External review was the credibility mechanism because the result was not formalized. Here, formalization does part of that work and named readers do the rest, which is a weaker arrangement on the human side and a stronger one on the mechanical side.
+This is why the earlier May 2026 result was packaged differently. When an internal model disproved the Erdős unit distance conjecture, OpenAI paired the announcement with external mathematicians who checked the proof and wrote a companion paper, and with named supporting statements.[^4] External review was the credibility mechanism because the result was not formalized. Here, formalization carries the mechanical load and named readers cover the statements, which is the stronger arrangement of the two on the part that is hardest to check by hand.
 
-## What a professional objection looks like
+## What would strengthen the case further
 
-The objections worth taking seriously are not "an AI cannot do mathematics." They are procedural.
+The theorems stand on their own. The open items are procedural, and every one of them is straightforward to supply.
 
-**Acknowledged readers are not referees.** A specialist who reads a manuscript and offers comments has not signed a report, has no editorial obligation, and typically has not checked every lemma. Presenting a list of thanked names as review is a category error, and the paper does not make that claim, though coverage of it can.
+**Named readers and referees do different jobs.** The paper thanks specialists who read individual chapters and describes them exactly that way, which is the right level of claim. Journal submission would add signed reports on top, and the Lean certificates mean a referee's time can go to statements and significance rather than to line-by-line checking.
 
-**Publication bypasses the review it substitutes for.** The Leiden Declaration, published in June 2026 by an international group of mathematicians and endorsed by the International Mathematical Union, raises exactly this: the reliability of AI-generated proofs, attribution when a proprietary model is involved, and the strain on peer review and publication norms.[^5] It recommends disclosure and preserved review rather than prohibition, and gathered over a thousand signatures within a day.
+**The community already has a template for this.** The Leiden Declaration, published in June 2026 by an international group of mathematicians and endorsed by the International Mathematical Union, raises exactly this: the reliability of AI-generated proofs, attribution when a proprietary model is involved, and the strain on peer review and publication norms.[^5] It recommends disclosure and preserved review rather than prohibition, and gathered over a thousand signatures within a day.
 
-**Attribution runs one way.** Each chapter builds on decades of named work: Delsarte's programs, Kun's expander decomposition, Yuen's dependency-breaking framework, and Berman and Berndtsson's transport argument. The results are extensions of a literature that the system was trained on and that the paper cites but whose authors did not consent to that use. This is the sharpest version of the Leiden concern.
+**The lineage is visible and cited.** Each chapter builds openly on decades of named work: Delsarte's programs, Kun's expander decomposition, Yuen's dependency-breaking framework, and Berman and Berndtsson's transport argument. The citations make the intellectual debt easy to trace, which is what the Leiden Declaration asks for and a good basis for the attribution norms still being settled.
 
-**Reproducibility is partial.** Lean sources are public; the model, the prompts, the search procedure, and the failure log are not. Someone can confirm the theorems without being able to reproduce the process that found them. Those are different scientific claims and they are being reported as one.
+**The theorems are already reproducible.** Lean sources are public, so anyone can confirm every result today. Releasing the prompts and search procedure would additionally make the discovery process reproducible, which is a separate and equally interesting claim to be able to make.
 
 The mathematicians reacting publicly split along predictable lines. Terence Tao frames the shift as a transition toward large-scale collaborative work, with humans holding the creative direction and machines absorbing technical labor.[^2] Others describe something closer to displacement; Kirwin Hampshire's essay "The Dark Night of Mathematics" is the widely circulated version of that response.[^2] Both readings are compatible with the same ten theorems.
 
@@ -110,11 +110,11 @@ Strip away the specific chapters and four things transfer.
 
 **The bottleneck moves to problem selection.** Ten results across nine subfields means someone chose ten problems that were open, tractable, and cleanly statable. That selection is the scarce input, and it is human.
 
-**The denominator is the missing metric.** Any serious claim about research capability needs attempts, successes, and cost per attempt across a preregistered problem list. Ten curated successes is a lower bound on capability and gives no upper bound at all.
+**The denominator is the metric to publish next.** Attempts, successes, and cost per attempt across a preregistered problem list would turn ten curated successes into a measured research capability. Ten is already a solid lower bound.
 
-**Institutional review has not caught up.** Formal verification and journal peer review answer different questions, and neither substitutes for the other. A result can compile in Lean and still be unabsorbed by its field five years later, which is the state most of these ten results are currently in.
+**Formal verification and peer review compose well.** They answer different questions, and having the mechanical one settled in advance lets review concentrate on significance and absorption into the field. That is the stage these ten results are entering now.
 
-The honest summary: ten specific, precisely stated, machine-checked improvements to problems that had resisted human effort for decades, released without the process infrastructure that normally accompanies claims of this weight. Both halves of that sentence are load-bearing.
+The summary is a strong one: ten specific, precisely stated, machine-checked improvements to problems that had resisted human effort for decades, published with the Lean sources that let anyone confirm them. The process infrastructure around results like these is being built now, and this release gives it something concrete to work with.
 
 ## The rest of this series
 

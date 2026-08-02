@@ -9,9 +9,9 @@ topics: ['State space models', 'Architecture', 'Attention']
 
 import SequenceMixerCompare from '../../components/viz/SequenceMixerCompare.astro'
 
-Attention's cost profile is well known: quadratic in sequence length during prefill, and linear in context during decode because every past key and value must be read. The second is the one that binds in serving, since it means per-token cost grows with how much has already been generated.
+Attention's cost profile is well understood: quadratic in sequence length during prefill, and linear in context during decode because every past key and value must be read. A recurrent layer with fixed-size state has neither property, and Mamba reports roughly 5x higher decode throughput than a comparable Transformer as a result.
 
-A recurrent layer with fixed-size state has neither property. The question is what it gives up, and the answer turned out to be specific enough that the field's response was not to replace attention but to interleave with it.
+What followed is one of the more satisfying results in recent architecture work. Rather than one family replacing the other, hybrids keep a small proportion of attention layers and get both properties at once: exact recall where it is needed, and decode cost that stops growing with context.
 
 <SequenceMixerCompare />
 
@@ -45,9 +45,9 @@ The reported results are what made this a live option: Transformer-quality langu
 
 Mamba-2 then reframed the selective SSM and attention as instances of a common structured-matrix formulation, which allowed the scan to be expressed in terms of matrix multiplications and thus to use tensor cores.[^3] That made the layer substantially faster in practice and clarified that these are not opposing families so much as different points in one design space.
 
-## What fixed-size state cannot do
+## Where attention earns its cost
 
-The limitation is information-theoretic and not a training artifact. A state of $d_{\text{state}}$ values compresses the entire history. Attention keeps every token addressable and pays for it.
+The division of labour here is clean and information-theoretic rather than a training artifact. A state of $d_{\text{state}}$ values compresses the entire history, which is what makes it cheap. Attention keeps every token addressable, which is what makes it worth including.
 
 The tasks that separate them are exactly the ones requiring exact recall of arbitrary content:
 
@@ -107,7 +107,7 @@ Perplexity will not tell you what you need. The protocol that will:
 4. **Many-shot in-context learning**, measuring whether accuracy still improves as demonstrations are added. A pure SSM often plateaus early.
 5. **Decode throughput versus context length.** The whole point is that this curve is flat; verify it on the actual implementation rather than assuming it.
 
-Hybrids are currently the pragmatic answer: keep enough attention to preserve exact recall, replace the rest with layers whose decode cost does not grow. That the field converged on interleaving rather than replacement is informative about how specific attention's advantage actually is.
+Hybrids are the strong answer available today: keep enough attention to preserve exact recall, replace the rest with layers whose decode cost does not grow. Jamba fits a 256k context on a single 80 GiB GPU on exactly this basis, with a KV cache reported at roughly an eighth of a comparable pure Transformer's. Long-context serving economics improve substantially as a result.
 
 ## References
 

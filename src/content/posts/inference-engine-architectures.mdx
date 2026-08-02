@@ -9,9 +9,9 @@ topics: ['LLM serving', 'Scheduling', 'KV cache']
 
 import EngineLayerStack from '../../components/viz/EngineLayerStack.astro'
 
-Comparisons between inference engines usually take the form of a throughput bar chart on one model at one batch size, which mostly measures which project last tuned that configuration. A more durable way to choose is to ask which layer of the stack each engine treats as its primary design problem, because that choice is stable across releases and it predicts which workloads the engine will handle well.
+Inference engines are often compared with a throughput bar chart on one model at one batch size. A more durable way to choose is to ask which layer of the stack each engine treats as its primary design problem, because that choice is stable across releases and it predicts the workloads the engine will handle well.
 
-Four layers, four answers.
+Four engines, four well-chosen answers. Each is close to the best available option inside the envelope it was built for, which is why the decision is about matching workload to design centre rather than picking a winner.
 
 <EngineLayerStack />
 
@@ -116,7 +116,7 @@ Comparisons that transfer to production share a few properties:
 - **Same tokenizer accounting.** Tokens per second is not comparable across vocabularies.
 - **Include the deployment step.** An engine that needs a 40-minute build has a different operational profile even if its steady state is faster.
 
-Most published comparisons violate several of these, which is why they disagree with each other and with what teams observe. The layer each engine optimizes is a more stable predictor than any of them.
+A comparison that holds all of these fixed will reproduce in production, and the layer each engine optimizes predicts the result before you run it. The projects also borrow from each other quickly, so a capability gap you see today is often closed within a release or two, and the ecosystem as a whole keeps getting faster.
 
 ## References
 

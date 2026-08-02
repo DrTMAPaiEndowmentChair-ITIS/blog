@@ -9,9 +9,9 @@ topics: ['Model loading', 'LLM serving', 'Memory']
 
 import WeightLoadPath from '../../components/viz/WeightLoadPath.astro'
 
-Serving benchmarks report tokens per second on a warm replica. Autoscaling behavior is decided by a different number: how long a replica takes to go from scheduled to serving. For a large model that number is dominated by moving tens or hundreds of gigabytes through a chain of increasingly fast, increasingly small memories.
+Serving benchmarks report tokens per second on a warm replica. Autoscaling behaviour is decided by a different number, and a very improvable one: how long a replica takes to go from scheduled to serving.
 
-Cold start is a bandwidth problem with a scheduling problem layered on top. Both are measurable, and most deployments are slow for reasons that have nothing to do with the model.
+Cold start is a bandwidth problem with a scheduling problem layered on top, and every stage of it is measurable. That is what makes it satisfying to work on. The dominant costs sit in the path rather than in the model, so they respond to ordinary engineering: pinned staging buffers, overlapped stages, a node-local cache, and snapshot restore each move the number on their own.
 
 <WeightLoadPath />
 
@@ -33,9 +33,9 @@ $$
 T_{\text{cold}} \geq \frac{S}{B_{\text{net}}} + \frac{S}{B_{\text{h2d}}}
 $$
 
-For a 140 GiB checkpoint at 3 GiB/s network and 20 GiB/s effective host-to-device, that is roughly 47 + 7 = 54 seconds. Deployments routinely see three to five times that, and the gap is almost always one of a small number of causes.
+For a 140 GiB checkpoint at 3 GiB/s network and 20 GiB/s effective host-to-device, that is roughly 47 + 7 = 54 seconds. Most deployments start well above that floor, and the gap is almost always one of five causes, each with a known fix.
 
-## Where the time actually goes
+## Five levers that move the number
 
 **Pageable transfers.** `tensor.to("cuda")` from ordinary heap memory cannot DMA directly. The driver copies into an internal pinned staging buffer first, so every byte is copied twice and the transfer runs at a fraction of link rate. The fix is pinned staging buffers you control, reused across chunks rather than allocated per tensor.
 
@@ -140,4 +140,4 @@ The practical responses:
 
 **Bound the blast radius of a bad checkpoint.** A checkpoint that fails to load after a 60-second fetch produces a crash loop that hammers object storage. Cache the failure, not just the success.
 
-Cold start is not a fixed property of a model. It is a property of the path, and every hop in that path is something you chose.
+Cold start is not a fixed property of a model. It is a property of the path, and every hop in that path is one you chose, which means every hop is one you can improve.
