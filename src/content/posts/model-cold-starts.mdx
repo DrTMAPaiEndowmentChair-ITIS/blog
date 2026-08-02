@@ -2,9 +2,9 @@
 title: 'Cold Starts: Getting Model Weights from Storage into HBM'
 pubDate: 2026-07-05
 author: 'Aadit Agrawal'
-category: 'Inference & Deployment'
+category: 'Serving & Runtime'
 description: 'Break down the cold-start path for large models across object storage, page cache, PCIe, and snapshot restore, then measure each stage.'
-topics: ['Cold start', 'Weight loading', 'Autoscaling']
+topics: ['Model loading', 'LLM serving', 'Memory']
 ---
 
 import WeightLoadPath from '../../components/viz/WeightLoadPath.astro'
@@ -15,7 +15,7 @@ Cold start is a bandwidth problem with a scheduling problem layered on top. Both
 
 <WeightLoadPath />
 
-## The chain and its rates
+## Transfer rates by hop
 
 A checkpoint that lives in object storage and must end up in HBM crosses several boundaries, each with its own achievable rate:
 
@@ -39,7 +39,7 @@ For a 140 GiB checkpoint at 3 GiB/s network and 20 GiB/s effective host-to-devic
 
 **Pageable transfers.** `tensor.to("cuda")` from ordinary heap memory cannot DMA directly. The driver copies into an internal pinned staging buffer first, so every byte is copied twice and the transfer runs at a fraction of link rate. The fix is pinned staging buffers you control, reused across chunks rather than allocated per tensor.
 
-**Serialized stages.** Fetch, then copy, then transfer, with nothing overlapping. The stages use different resources — NIC, CPU, PCIe — and should be pipelined. Overlapping the network fetch of chunk `n+1` with the device transfer of chunk `n` brings the total close to `S / min(B_net, B_h2d)` rather than the sum.
+**Serialized stages.** Fetch, then copy, then transfer, with nothing overlapping. The stages use different resources: NIC, CPU, and PCIe. They should be pipelined. Overlapping the network fetch of chunk `n+1` with the device transfer of chunk `n` brings the total close to `S / min(B_net, B_h2d)` rather than the sum.
 
 **Per-tensor overhead.** A large model has thousands of tensors. If each one triggers a separate allocation, a separate transfer, and a separate synchronize, launch and synchronization overhead can dominate the actual bytes. Batch small tensors into a single staged buffer.
 
@@ -49,11 +49,11 @@ For a 140 GiB checkpoint at 3 GiB/s network and 20 GiB/s effective host-to-devic
 
 ## Memory mapping and the page cache
 
-`mmap` maps file pages into the process address space without an eager read. Pages fault in on access. This is why a mapped load looks nearly instantaneous the second time — the pages are already in the page cache, and the "load" is address-space bookkeeping.
+`mmap` maps file pages into the process address space without an eager read. Pages fault in on access. This is why a mapped load looks nearly instantaneous the second time: the pages are already in the page cache, and the "load" is address-space bookkeeping.
 
 Two implications:
 
-**A warm benchmark measures nothing about cold start.** Drop caches, or measure on a genuinely fresh node, or the result is a page-table exercise.
+**A warm benchmark measures nothing about cold start.** Drop caches, or measure on a node that has never held the file, or the result is a page-table exercise.
 
 **A mapped tensor is not resident memory.** Sizing a container's memory limit from RSS after a mapped load will under-provision, because page-cache pages are reclaimable and may not be counted the way you expect. Under memory pressure the kernel evicts them, and the next access re-reads from disk mid-request.
 
@@ -71,7 +71,7 @@ $$
 
 which reduces to "keep what is most likely to be needed again," because refetch time is proportional to size and so cancels. The useful refinement is per-model network cost, since not all checkpoints come from the same tier of storage.
 
-For clusters that support it, GPUDirect Storage moves data from NVMe to HBM over PCIe without a bounce through host memory, removing one full copy. It requires a supported filesystem and driver stack, and it interacts badly with anything that wants to transform bytes on the way through — another argument for a format whose on-disk layout is the in-memory layout.
+For clusters that support it, GPUDirect Storage moves data from NVMe to HBM over PCIe without a bounce through host memory, removing one full copy. It requires a supported filesystem and driver stack, and it interacts badly with anything that wants to transform bytes on the way through. That is a further argument for a format whose on-disk layout is the in-memory layout.
 
 ## Snapshot and restore
 
@@ -91,7 +91,7 @@ Snapshot restore is worth building when the model set is small and stable and th
 
 Weights are needed in layer order. A forward pass through layer 0 cannot start before layer 0's weights are resident, but it does not need layer 40's.
 
-That allows a genuine pipeline: begin prefill as soon as the early layers land, and continue streaming later layers while early layers compute. The gain is bounded by the ratio of compute time to transfer time, which for a single prefill is usually unfavorable — the transfer is much slower — so this mostly helps the first request rather than the replica's readiness overall.
+That allows a genuine pipeline: begin prefill as soon as the early layers land, and continue streaming later layers while early layers compute. The gain is bounded by the ratio of compute time to transfer time, which for a single prefill is usually unfavorable, since the transfer is much slower, so this mostly helps the first request rather than the replica's readiness overall.
 
 The more valuable version is admission control that understands partial readiness. A replica that reports healthy the moment its process starts will receive traffic it cannot serve, and the load balancer will record timeouts. A replica that reports readiness only after a successful synthetic forward pass will not.
 
@@ -122,7 +122,7 @@ def report(spans, size_gib):
     print(f"{'total':<12} {total:7.2f}s")
 ```
 
-Run it in three configurations: cold node, warm page cache, and warm local cache. The three profiles answer three different questions — what a scale-out event costs, what a process restart costs, and whether the local cache is doing its job.
+Run it in three configurations: cold node, warm page cache, and warm local cache. The three profiles answer three different questions: what a scale-out event costs, what a process restart costs, and whether the local cache is doing its job.
 
 Track these as fleet metrics, not one-off measurements. Cold-start time drifts when checkpoint size grows, when a storage tier changes, or when a library update alters the load path. The drift is invisible until an autoscaling event exposes it during a traffic spike.
 

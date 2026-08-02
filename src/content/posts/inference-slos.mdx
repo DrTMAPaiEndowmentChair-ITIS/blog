@@ -2,9 +2,9 @@
 title: 'Inference SLOs: TTFT, TPOT, and Why Throughput Is the Wrong Target'
 pubDate: 2026-07-17
 author: 'Aadit Agrawal'
-category: 'Inference & Deployment'
+category: 'Serving & Runtime'
 description: 'Define latency objectives for streaming generation, model the queueing behind them, and benchmark goodput instead of peak tokens per second.'
-topics: ['SLO', 'Latency', 'Benchmarking']
+topics: ['Latency', 'Benchmarking', 'LLM serving']
 ---
 
 import LatencyThroughputFrontier from '../../components/viz/LatencyThroughputFrontier.astro'
@@ -13,11 +13,11 @@ import LatencyThroughputFrontier from '../../components/viz/LatencyThroughputFro
 
 <LatencyThroughputFrontier />
 
-## The quantities
+## Four latency quantities
 
-**TTFT — time to first token.** Queue wait plus prefill. What a user perceives as responsiveness. Scales with prompt length and with load.
+**TTFT, time to first token.** Queue wait plus prefill. What a user perceives as responsiveness. Scales with prompt length and with load.
 
-**TPOT — time per output token.** Steady-state inter-token latency during decode. Determines whether streaming text feels smooth. Roughly constant per replica configuration, degrading with batch size.
+**TPOT, time per output token.** Steady-state inter-token latency during decode. Determines whether streaming text feels smooth. Roughly constant per replica configuration, degrading with batch size.
 
 **End-to-end latency.** $\text{TTFT} + \text{TPOT} \times (\ell - 1)$ for an $\ell$-token response.
 
@@ -25,7 +25,7 @@ import LatencyThroughputFrontier from '../../components/viz/LatencyThroughputFro
 
 **Goodput.** Throughput counting only requests that met their SLO. This is the number that maps to delivered value, and it is the one nobody reports by default.
 
-The distinction between the last two is the whole argument. Throughput rises monotonically with load until saturation. Goodput rises, peaks, and then falls — because past a point, additional load pushes requests past their deadline, and a request that misses its deadline consumed resources and delivered nothing.
+The distinction between the last two is the whole argument. Throughput rises monotonically with load until saturation. Goodput rises, peaks, and then falls, because past a point additional load pushes requests past their deadline, and a request that misses its deadline consumed resources and delivered nothing.
 
 ## Setting the numbers from the interaction
 
@@ -39,7 +39,7 @@ SLOs should come from what the response is for, not from what the hardware happe
 | Batch summarization     | Minutes     | Irrelevant  | Only end-to-end throughput matters          |
 | Voice, real-time        | < 300 ms    | < 25 ms     | Must outrun speech synthesis                |
 
-Two observations. For non-streamed workloads TPOT is not a user-facing quantity at all, and enforcing a TPOT SLO there simply lowers throughput for no benefit. And for agentic workloads, the meaningful latency is the sum over the whole trajectory — a ten-step agent with a one-second per-step budget is a ten-second interaction, so per-step SLOs must be derived from the trajectory budget rather than set independently.
+Two observations. For non-streamed workloads TPOT is not a user-facing quantity at all, and enforcing a TPOT SLO there simply lowers throughput for no benefit. And for agentic workloads, the meaningful latency is the sum over the whole trajectory. A ten-step agent with a one-second per-step budget is a ten-second interaction, so per-step SLOs must be derived from the trajectory budget rather than set independently.
 
 This is why one deployment cannot serve every workload well. A replica pool tuned for interactive chat runs at a batch size that leaves throughput on the table; the same pool tuned for batch work has interactive TPOT far outside target. Separate pools with separate configurations is usually cheaper than one compromise pool.
 
@@ -51,7 +51,7 @@ $$
 T_{\text{step}}(n) \approx \underbrace{\frac{W}{B_{\text{mem}}}}_{\text{weights, constant in } n} + \underbrace{n \cdot \frac{K}{B_{\text{mem}}}}_{\text{KV reads}} + \underbrace{f_{\text{compute}}(n)}_{\text{negligible until saturation}}
 $$
 
-Throughput is $n / T_{\text{step}}(n)$ and TPOT is $T_{\text{step}}(n)$. At small $n$ the constant weight term dominates, so doubling $n$ nearly doubles throughput at nearly unchanged TPOT — this is free money and the reason batching exists. As $n$ grows, the KV term and then compute saturation make $T_{\text{step}}$ grow linearly, and throughput flattens while TPOT keeps climbing.
+Throughput is $n / T_{\text{step}}(n)$ and TPOT is $T_{\text{step}}(n)$. At small $n$ the constant weight term dominates, so doubling $n$ nearly doubles throughput at nearly unchanged TPOT, which is the reason batching exists. As $n$ grows, the KV term and then compute saturation make $T_{\text{step}}$ grow linearly, and throughput flattens while TPOT keeps climbing.
 
 The KV term is why attention architecture shows up in a latency budget. A model with GQA at 8 groups has one eighth the per-sequence KV read of full multi-head attention, which moves the knee to a much larger batch size. Memory-efficient attention is a latency feature, not only a capacity feature.
 
@@ -63,7 +63,7 @@ $$
 W = \frac{\rho}{1 - \rho} \cdot \frac{1}{\mu}
 $$
 
-At $\rho = 0.5$, wait is one service time. At $\rho = 0.9$, nine. At $\rho = 0.95$, nineteen. LLM serving is not M/M/1 — service times are heavy-tailed because output lengths are — but the shape holds and is worse: high service-time variance amplifies the tail further.
+At $\rho = 0.5$, wait is one service time. At $\rho = 0.9$, nine. At $\rho = 0.95$, nineteen. LLM serving is not M/M/1, since service times are heavy-tailed because output lengths are, but the shape holds and is worse: high service-time variance amplifies the tail further.
 
 Two practical consequences.
 
@@ -135,4 +135,4 @@ That formulation gives an error budget: 1% of requests may miss. The budget make
 
 It also disciplines the reporting. A single p99 over an arbitrary window can be gamed by window choice; attainment over a fixed window cannot.
 
-Peak throughput remains a useful number — it bounds what is possible. But nothing in a deployment should be tuned to it, because it is achieved at an operating point where a large fraction of requests are already failing their objective.
+Peak throughput remains a useful number, since it bounds what is possible. But nothing in a deployment should be tuned to it, because it is achieved at an operating point where a large fraction of requests are already failing their objective.

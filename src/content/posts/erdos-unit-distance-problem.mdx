@@ -2,9 +2,9 @@
 title: 'The Unit Distance Problem: What a Model Actually Proved'
 pubDate: 2026-08-07
 author: 'Aadit Agrawal'
-category: 'Models & Training'
+category: 'Theory & Mathematics'
 description: 'A reasoning model disproved a 1946 Erdős conjecture in May 2026. Separating the mathematical content from the claims made about it.'
-topics: ['Reasoning', 'Mathematics', 'Verification', 'Evaluation']
+topics: ['Reasoning', 'Mathematics', 'Formal verification', 'Evaluation']
 ---
 
 import UnitDistanceGrid from '../../components/viz/UnitDistanceGrid.astro'
@@ -60,7 +60,7 @@ The construction does not come from discrete geometry. It comes from algebraic n
 
 The route, as reconstructed by the mathematicians who read it, is to build number fields of large degree with small discriminant and many primes of small norm, and to extract a point configuration from the resulting lattice. The tool for producing such fields is the Golod–Shafarevich criterion, which guarantees that certain class field towers are infinite. The nine-author companion note attributes the essential ideas, in retrospect, to Golod–Shafarevich, to Hajir–Maire–Ramakrishna, and to Ellenberg–Venkatesh.[^4]
 
-This is the interesting part of the story. Golod–Shafarevich towers were developed in the 1960s to answer a question about class field towers that has nothing to do with points in a plane. Using them to build unit-distance configurations requires knowing both bodies of work well enough to see that one supplies what the other needs — and then being willing to grind through a long calculation whose payoff is uncertain.
+This is the interesting part of the story. Golod–Shafarevich towers were developed in the 1960s to answer a question about class field towers that has nothing to do with points in a plane. Using them to build unit-distance configurations requires knowing both bodies of work well enough to see that one supplies what the other needs, and then being willing to grind through a long calculation whose payoff is uncertain.
 
 Jacob Tsimerman, one of the verifiers, has said publicly that he had considered a strategy of this shape and abandoned it, because such techniques consume a great deal of time and frequently do not work.[^5] That is a precise description of where the model had an advantage: not insight, but breadth of recall plus indifference to sunk cost.
 
@@ -74,7 +74,7 @@ The verification chain is unusually well documented, and worth walking through b
 
 Four things happened, in order.
 
-The nine-author note — Alon, Bloom, Gowers, Litt, Sawin, Shankar, Tsimerman, Wang and Matchett Wood — appeared the same day, presenting "a short, digested, human-verified version" of the argument along with reflections on it.[^4] That is an extraordinarily strong referee panel assembled in under a day.
+The nine-author note by Alon, Bloom, Gowers, Litt, Sawin, Shankar, Tsimerman, Wang and Matchett Wood appeared the same day, presenting "a short, digested, human-verified version" of the argument along with reflections on it.[^4] That is a nine-person panel of specialists assembled in under a day.
 
 Will Sawin, independently and also on 20 May, posted a preprint making the exponent explicit: there are point sets with more than $n^{1.014}$ unit distances, via the same Golod–Shafarevich route.[^7] The frequently quoted figure of $\delta \approx 0.014$ is Sawin's, not the model's. The model's $\delta$ was inexplicit.
 
@@ -86,7 +86,7 @@ Formalisation came last. On 26 June, Logical Intelligence reported a Lean 4 proo
 
 Three distinct things have been called "AI solves an Erdős problem" in the past year, and they are not the same kind of event.
 
-**Erdős Problem #728**, resolved in January 2026, is the cleanest formal case: GPT-5.2 Pro generated an argument, Harmonic's Aristotle formalised it in Lean, and the Lean proof was translated back into readable mathematics for arXiv.[^10] The result concerns a logarithmic-gap phenomenon in factorial divisibility. It is genuinely new, fully machine-checked, and far less famous than the unit distance problem.
+**Erdős Problem #728**, resolved in January 2026, is the cleanest formal case: GPT-5.2 Pro generated an argument, Harmonic's Aristotle formalised it in Lean, and the Lean proof was translated back into readable mathematics for arXiv.[^10] The result concerns a logarithmic-gap phenomenon in factorial divisibility. It is new, fully machine-checked, and far less famous than the unit distance problem.
 
 **The Erdős problems database episodes** of late 2025 were something else again. Models were credited with resolving open problems when what they had actually done was locate an existing proof in the literature that the database's maintainers had not indexed. That is a useful capability and not a mathematical discovery.
 

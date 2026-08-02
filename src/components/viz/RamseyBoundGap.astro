@@ -7,9 +7,9 @@
   <div class="chart">
     <svg viewBox="0 0 400 240" role="img" aria-labelledby="ramsey-gap-chart">
       <title id="ramsey-gap-chart">
-        Exponent θ in R_k(3) = k^(θk) plotted against the number of colours on a logarithmic
-        axis. The factorial upper bound rises toward 1, the classical exponential lower bound
-        decays toward 0, and the new lower bound climbs toward 1/3.
+        Exponent θ in R_k(3) = k^(θk) plotted against the number of colours on a logarithmic axis.
+        The factorial upper bound rises toward 1, the classical exponential lower bound decays
+        toward 0, and the new lower bound climbs toward 1/3.
       </title>
 
       <path class="axis" d="M50 30v170h330"></path>
@@ -34,18 +34,13 @@
         d="M50 200L80 199.7L110 191L140 184.4L200 175.7L290 168.2L380 163.8L380 36.1L290 38.2L200 42.2L140 48.5L110 54.6L80 66.9L50 103.8Z"
       ></path>
 
-      <path
-        class="curve upper"
-        d="M50 103.8L80 66.9L110 54.6L140 48.5L200 42.2L290 38.2L380 36.1"
+      <path class="curve upper" d="M50 103.8L80 66.9L110 54.6L140 48.5L200 42.2L290 38.2L380 36.1"
       ></path>
-      <path
-        class="curve new"
-        d="M50 200L80 199.7L110 191L140 184.4L200 175.7L290 168.2L380 163.8"
+      <path class="curve new" d="M50 200L80 199.7L110 191L140 184.4L200 175.7L290 168.2L380 163.8"
       ></path>
       <path
         class="curve old"
-        d="M50 112.3L80 156.1L110 170.8L140 178.1L200 185.4L290 190.3L380 192.7"
-      ></path>
+        d="M50 112.3L80 156.1L110 170.8L140 178.1L200 185.4L290 190.3L380 192.7"></path>
 
       <text class="curve-label" x="196" y="34">upper: θ → 1</text>
       <text class="curve-label" x="196" y="139">new lower: θ → 1/3</text>
@@ -58,17 +53,19 @@
     <div>
       <dt>Upper bound (classical)</dt>
       <dd>R<sub>k</sub>(3) ≤ (e − 1/6)·k! + 1 for k ≥ 4</dd>
-      <dd class="reading">k<sup>(1+o(1))k</sup> — factorial growth</dd>
+      <dd class="reading">k<sup>(1+o(1))k</sup>, factorial growth</dd>
     </div>
     <div>
       <dt>Lower bound (before)</dt>
       <dd>R<sub>k</sub>(3) ≥ 380<sup>k/5</sup> − O(1)</dd>
-      <dd class="reading">purely exponential — θ decays like 1/log k</dd>
+      <dd class="reading">purely exponential; θ decays like 1/log k</dd>
     </div>
     <div class="result">
       <dt>Lower bound (this work)</dt>
       <dd>R<sub>k</sub>(3) ≥ (c·k<sup>1/3</sup> / log k)<sup>k</sup></dd>
-      <dd class="reading">k<sup>(1/3−o(1))k</sup> — superexponential, so R<sub>k</sub>(3) = k<sup>Θ(k)</sup></dd>
+      <dd class="reading">
+        k<sup>(1/3−o(1))k</sup>, superexponential, so R<sub>k</sub>(3) = k<sup>Θ(k)</sup>
+      </dd>
     </div>
   </dl>
 </figure>

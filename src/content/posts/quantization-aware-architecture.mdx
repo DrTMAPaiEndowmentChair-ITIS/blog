@@ -4,12 +4,12 @@ pubDate: 2026-07-29
 author: 'Aadit Agrawal'
 category: 'Models & Training'
 description: 'Look at quantization as an architecture constraint: activation outliers, block scaling, format range, and which layers resist low precision.'
-topics: ['Quantization', 'FP8', 'Numerics']
+topics: ['Quantization', 'Architecture', 'Training']
 ---
 
 import PrecisionFormatLadder from '../../components/viz/PrecisionFormatLadder.astro'
 
-Quantization is usually applied after the fact: train in BF16, compress, measure the damage. That framing treats low precision as a lossy postprocessing step and leaves the model's own structure — which decides how much damage there is — out of scope.
+Quantization is usually applied after the fact: train in BF16, compress, measure the damage. That framing treats low precision as a lossy postprocessing step and leaves out the model's own structure, which decides how much damage there is.
 
 The more useful framing is that numeric format is an architectural constraint. Some design decisions make a model quantize well and some make it resist, and those decisions are made long before anyone runs a calibration set.
 
@@ -26,8 +26,8 @@ A format allocates bits between exponent and mantissa, and that split is more co
 | FP16     | 16   | 5        | 10       | 65504           | ~1e-3              |
 | FP8 E4M3 | 8    | 4        | 3        | 448             | ~6e-2              |
 | FP8 E5M2 | 8    | 5        | 2        | 57344           | ~1e-1              |
-| INT8     | 8    | —        | 7 + sign | scale-dependent | uniform            |
-| INT4     | 4    | —        | 3 + sign | scale-dependent | uniform            |
+| INT8     | 8    | none     | 7 + sign | scale-dependent | uniform            |
+| INT4     | 4    | none     | 3 + sign | scale-dependent | uniform            |
 
 BF16 displaced FP16 for training because it shares FP32's exponent range. FP16's 65504 ceiling requires loss scaling to keep gradients from underflowing and overflowing; BF16 does not, at the cost of mantissa bits that turn out to matter less.
 
@@ -43,7 +43,7 @@ With one scale per tensor, a single large value forces $s$ upward and quantizes 
 
 Transformer activations are not well conditioned for uniform quantization. Past roughly 6B parameters, systematic outlier features emerge: a small number of hidden dimensions carry values 10 to 100 times larger than the rest, consistently across tokens and layers.[^1]
 
-Consistency is the key property. These are not random spikes; they occupy specific channels, and those channels do disproportionate work — zeroing them collapses model quality, so they cannot simply be clipped.
+Consistency is the key property. These are not random spikes; they occupy specific channels, and those channels do disproportionate work: zeroing them collapses model quality, so they cannot simply be clipped.
 
 The responses fall into three families:
 
@@ -67,7 +67,7 @@ $$
 b_{\text{eff}} = b + \frac{32}{g}
 $$
 
-At $b = 4$ and $g = 128$, that is 4.25 bits. At $g = 32$, 5 bits — a 25% overhead, which is exactly the range where "4-bit" and "5-bit" quantizations stop being clearly ordered.
+At $b = 4$ and $g = 128$, that is 4.25 bits. At $g = 32$, 5 bits, a 25% overhead. That is the range where "4-bit" and "5-bit" quantizations stop being clearly ordered.
 
 Microscaling formats standardize this. MXFP4 pairs 32 FP4 values with a shared 8-bit exponent, giving 4.25 effective bits with hardware support for the block structure.[^3] The shared exponent restores dynamic range that flat INT4 cannot express, which is why MXFP4 outperforms INT4 at nominally the same width. NVFP4 uses a smaller block with an FP8 scale, trading more metadata for better accuracy.
 
@@ -89,7 +89,7 @@ Sensitivity varies systematically, and the pattern is stable enough to design ar
 
 **First and last transformer blocks.** More sensitive than the middle in most measurements.
 
-A mixed-precision assignment following this pattern typically beats a uniform assignment at the same average bit width by a wide margin — which is why GGUF supports per-tensor quantization types and why formats that fix one dtype per file leave quality on the table.
+A mixed-precision assignment following this pattern typically beats a uniform assignment at the same average bit width, which is why GGUF supports per-tensor quantization types and why formats that fix one dtype per file leave quality on the table.
 
 ## Training in low precision
 
@@ -97,7 +97,7 @@ Post-training quantization accepts a model's numerics as given. Training in the 
 
 FP8 training is now routine on hardware with native support. The standard configuration uses E4M3 for forward tensors, where precision matters more than range, and E5M2 for gradients, where range matters more. Master weights and optimizer state stay in higher precision; accumulation happens in FP32.
 
-DeepSeek-V3 demonstrated FP8 mixed-precision training at frontier scale, with fine-grained tile- and block-wise scaling and periodic high-precision accumulation to bound error growth.[^4] The reported result — a frontier-quality model trained substantially more cheaply — is why native low-precision training became a design target rather than an optimization.
+DeepSeek-V3 demonstrated FP8 mixed-precision training at frontier scale, with fine-grained tile- and block-wise scaling and periodic high-precision accumulation to bound error growth.[^4] The reported result, a frontier-quality model trained more cheaply, is why native low-precision training became a design target rather than an optimization.
 
 Quantization-aware training goes further, simulating quantization in the forward pass so gradients account for it. The rounding operation has zero gradient almost everywhere, so QAT uses a straight-through estimator:
 
@@ -131,7 +131,7 @@ What to measure:
 
 1. **Task accuracy on the deployed workload**, not a general benchmark suite.
 2. **Long-context retrieval**, where accumulated error compounds over more positions.
-3. **Structured output validity** — JSON and code are unusually sensitive, because a single wrong token invalidates the whole output.
+3. **Structured output validity.** JSON and code are unusually sensitive, because a single wrong token invalidates the whole output.
 4. **Distribution shape, not just argmax.** KL divergence against the reference model on a held-out set catches tail degradation that greedy agreement misses entirely. Under sampling, the tail is what the user sees.
 5. **Behavior under sampling at temperature**, for the same reason.
 6. **Actual throughput.** A format the kernels do not support natively will be dequantized to something they do, and the memory saving will not become a speed gain.

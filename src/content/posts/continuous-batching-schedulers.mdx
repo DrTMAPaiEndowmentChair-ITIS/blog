@@ -2,9 +2,9 @@
 title: 'Continuous Batching: How the Scheduler Decides Your Throughput'
 pubDate: 2026-07-14
 author: 'Aadit Agrawal'
-category: 'Inference & Deployment'
+category: 'Serving & Runtime'
 description: 'Design an LLM serving scheduler around iteration-level batching, chunked prefill, admission control, and preemption under cache pressure.'
-topics: ['Scheduling', 'Continuous batching', 'LLM serving']
+topics: ['Scheduling', 'LLM serving', 'Latency']
 ---
 
 import BatchSchedulerTimeline from '../../components/viz/BatchSchedulerTimeline.astro'
@@ -17,7 +17,7 @@ Kernel work gets most of the attention in inference optimization, and it is wher
 
 Batching amortizes weight reads. During decode, the model reads all its weights to produce one token per sequence, so a batch of $n$ costs roughly the same memory traffic as a batch of one. Throughput scales close to linearly until the matrix units saturate.
 
-Static batching collects $n$ requests, runs them together, and returns when all finish. With generation, output lengths vary by orders of magnitude in the same workload — a yes/no answer and a long document summary arrive at the same endpoint. Every finished sequence holds its slot, computing padding, until the longest one completes.
+Static batching collects $n$ requests, runs them together, and returns when all finish. With generation, output lengths vary by orders of magnitude in the same workload: a yes/no answer and a long document summary arrive at the same endpoint. Every finished sequence holds its slot, computing padding, until the longest one completes.
 
 With output lengths $\ell_1..\ell_n$, useful work fraction is:
 
@@ -29,7 +29,7 @@ For a realistic long-tailed length distribution this lands around 0.2–0.4. Mos
 
 Continuous batching, introduced as iteration-level scheduling in Orca, makes the batch mutable between forward passes: finished sequences leave immediately and queued ones join.[^1] The batch is re-formed every step. Orca reported order-of-magnitude latency improvements at comparable throughput against static batching, and it is now the default design in essentially every production serving stack.
 
-## The step loop
+## Step loop structure
 
 The core is small. Everything hard is in the policies it calls.
 
@@ -68,7 +68,7 @@ $$
 B = \underbrace{n_{\text{decode}}}_{\text{1 token each}} + \underbrace{c}_{\text{prefill chunk}}
 $$
 
-with $c$ chosen so that $B$ lands on the compute-saturating knee. Step time becomes roughly constant, which makes inter-token latency predictable and makes the whole system easier to reason about — a bounded step time is what allows any latency SLO to hold.
+with $c$ chosen so that $B$ lands on the compute-saturating knee. Step time becomes roughly constant, which makes inter-token latency predictable and makes the whole system easier to reason about. A bounded step time is what allows any latency SLO to hold.
 
 The cost is that a chunked prompt attends to previously chunked positions, so the attention kernel must handle a mixed batch of prefill chunks and decode rows. That is real kernel complexity, and it is why chunked prefill is a server feature rather than something you bolt on.
 
@@ -84,11 +84,11 @@ $$
 \text{blocks}(r) = \left\lceil \frac{|p_r|}{B_{\text{blk}}} \right\rceil + \left\lceil \frac{\widehat{\ell_r}}{B_{\text{blk}}} \right\rceil
 $$
 
-$\widehat{\ell_r}$ is an estimate — `max_tokens` if the client supplied one, otherwise a high quantile of the observed output-length distribution for that route. Using the mean here guarantees periodic exhaustion; using the maximum wastes most of the cache. A p90 with preemption as the backstop is the practical setting.
+$\widehat{\ell_r}$ is an estimate: `max_tokens` if the client supplied one, otherwise a high quantile of the observed output-length distribution for that route. Using the mean here guarantees periodic exhaustion; using the maximum wastes most of the cache. A p90 with preemption as the backstop is the practical setting.
 
 Admission also needs a queueing discipline. FIFO is fair and produces bad tail latency when a few enormous prompts sit at the head. Shortest-job-first improves the mean and starves long requests. The usual compromise is FIFO with a bounded number of concurrent long-prompt admissions, so head-of-line blocking is capped without reordering the queue.
 
-Load shedding belongs here too. When queue depth exceeds what can be served within the SLO, rejecting immediately with a retry hint is better than accepting work that will time out. A request that times out consumed prefill compute and produced nothing — the worst possible outcome per unit of hardware.
+Load shedding belongs here too. When queue depth exceeds what can be served within the SLO, rejecting immediately with a retry hint is better than accepting work that will time out. A request that times out consumed prefill compute and produced nothing, which is the worst possible outcome per unit of hardware.
 
 ## Preemption
 
@@ -111,7 +111,7 @@ Preemption rate is a first-class metric. A steady nonzero rate means admission i
 
 ## Prefix-aware composition
 
-If requests share prefixes — a common system prompt, a few-shot preamble, a document being asked about repeatedly — the KV state for that prefix can be computed once and shared. This changes admission cost: a request whose 4k-token prefix is already cached needs blocks only for its suffix.
+If requests share a common system prompt, a few-shot preamble, or a document being asked about repeatedly, the KV state for that prefix can be computed once and shared. This changes admission cost: a request whose 4k-token prefix is already cached needs blocks only for its suffix.
 
 The scheduler should therefore consult the prefix cache before estimating cost, and prefer admitting requests with high reuse when memory is tight. At the fleet level the same logic applies to routing: sending a request to the replica holding its prefix can save more time than sending it to the least-loaded replica.
 
@@ -149,7 +149,7 @@ The metrics that make scheduler behavior legible:
 | Prefix hit tokens               | Reuse actually realized           |
 | Requests rejected vs. timed out | Whether shedding is working       |
 
-Averages hide the failures. Step time in particular should be a histogram — a mean of 25 ms with a p99 of 400 ms is a chunked-prefill misconfiguration, and the mean will never show it.
+Averages hide the failures. Step time in particular should be a histogram. A mean of 25 ms with a p99 of 400 ms is a chunked-prefill misconfiguration, and the mean will never show it.
 
 ## Failure modes
 

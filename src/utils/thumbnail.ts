@@ -766,15 +766,230 @@ const layers: Motif = (rng, geo, ctx) => {
   return marks
 }
 
+/**
+ * Serving & Runtime — a paged block table. A logical run of blocks maps to
+ * scattered physical pages, which is the one picture that explains why the
+ * whole category exists. Free pages stay hollow so occupancy reads at a glance.
+ */
+const pages: Motif = (rng, geo, ctx) => {
+  const marks: string[] = []
+  const padX = geo.w * 0.08
+  const padY = geo.h * 0.14
+  const cols = Math.max(4, Math.min(12, Math.round(rng.int(6, 9) * geo.density)))
+  const rows = Math.max(2, Math.round(rng.int(3, 4) * Math.min(1.2, geo.density)))
+  const cellW = (geo.w - padX * 2) / cols
+  const cellH = (geo.h - padY * 2) / rows
+  const gap = Math.min(cellW, cellH) * 0.22
+
+  // Which cells belong to the tracked sequence. Deliberately non-contiguous.
+  const owned = new Set<number>()
+  const want = Math.max(3, Math.round(cols * rows * rng.range(0.28, 0.42)))
+  while (owned.size < want) owned.add(rng.int(0, cols * rows))
+
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      const i = r * cols + c
+      const x = padX + c * cellW
+      const y = padY + r * cellH
+      const held = owned.has(i)
+      if (held) marks.push(rect(ctx, x, y, cellW - gap, cellH - gap, 0.24, true))
+      marks.push(rect(ctx, x, y, cellW - gap, cellH - gap, held ? 0.7 : 0.26))
+    }
+  }
+
+  // The block table: a run along the top edge, tying logical order to the grid.
+  const tableY = padY * 0.5
+  marks.push(line(ctx, padX, tableY, geo.w - padX, tableY, 0.3))
+  const ticks = Math.min(want, 5)
+  for (let i = 0; i < ticks; i += 1) {
+    const x = padX + ((i + 0.5) * (geo.w - padX * 2)) / ticks
+    marks.push(line(ctx, x, tableY - cellH * 0.14, x, tableY + cellH * 0.14, 0.55))
+  }
+  return marks
+}
+
+/**
+ * Serving & Runtime — request bars on a shared timeline. They start and end at
+ * unrelated points, which is the shape continuous batching exploits and static
+ * batching wastes.
+ */
+const requests: Motif = (rng, geo, ctx) => {
+  const marks: string[] = []
+  const padX = geo.w * 0.08
+  const padY = geo.h * 0.16
+  const innerW = geo.w - padX * 2
+  const lanes = Math.max(3, Math.min(10, Math.round(rng.int(5, 7) * geo.density)))
+  const laneH = (geo.h - padY * 2) / lanes
+  const barH = laneH * 0.46
+
+  for (let i = 0; i < lanes; i += 1) {
+    const y = padY + i * laneH + (laneH - barH) / 2
+    const start = rng.range(0, 0.45)
+    // Long-tailed lengths: most short, occasionally one that runs to the edge.
+    const len = rng.chance(0.22) ? rng.range(0.5, 1 - start) : rng.range(0.12, 0.34)
+    const x = padX + innerW * start
+    const w = innerW * Math.min(len, 1 - start)
+    marks.push(rect(ctx, x, y, w, barH, 0.26, true))
+    marks.push(rect(ctx, x, y, w, barH, 0.6))
+    // Arrival tick to the left of each bar.
+    marks.push(line(ctx, x - laneH * 0.16, y + barH / 2, x, y + barH / 2, 0.4))
+  }
+
+  const stepX = padX + innerW * rng.range(0.5, 0.72)
+  marks.push(line(ctx, stepX, padY * 0.5, stepX, geo.h - padY * 0.5, 0.65))
+  return marks
+}
+
+/**
+ * Serving & Runtime — a memory hierarchy drawn as nested bands with a transfer
+ * arc crossing them. Weights and cache move down; the arc is the cost.
+ */
+const tiers: Motif = (rng, geo, ctx) => {
+  const marks: string[] = []
+  const padX = geo.w * 0.1
+  const padY = geo.h * 0.14
+  const bands = Math.max(3, Math.min(5, Math.round(rng.int(3, 5) * Math.min(1.1, geo.density))))
+  const bandH = (geo.h - padY * 2) / bands
+  const focal = rng.int(0, bands)
+
+  for (let i = 0; i < bands; i += 1) {
+    // Each tier is narrower than the one above it: capacity shrinks going down.
+    const inset = padX * (0.4 + i * 0.55)
+    const y = padY + i * bandH
+    const h = bandH * 0.66
+    const w = geo.w - inset * 2
+    if (i === focal) marks.push(rect(ctx, inset, y, w, h, 0.22, true))
+    marks.push(rect(ctx, inset, y, w, h, i === focal ? 0.72 : 0.32))
+  }
+
+  const x = padX + (geo.w - padX * 2) * rng.range(0.3, 0.7)
+  marks.push(
+    path(
+      ctx,
+      `M ${round(x)} ${round(padY)} L ${round(x)} ${round(padY + bands * bandH - bandH * 0.34)}`,
+      0.5
+    )
+  )
+  marks.push(dot(ctx, x, padY + bands * bandH - bandH * 0.34, Math.max(1, bandH * 0.1), 0.7))
+  return marks
+}
+
+/**
+ * Theory & Mathematics — a point set with one unit-distance circle drawn in.
+ * Discrete geometry's basic gesture: fixed points, a distance that repeats.
+ */
+const pointset: Motif = (rng, geo, ctx) => {
+  const marks: string[] = []
+  const padX = geo.w * 0.12
+  const padY = geo.h * 0.16
+  const cols = Math.max(4, Math.min(11, Math.round(rng.int(5, 8) * geo.density)))
+  const rows = Math.max(3, Math.round(rng.int(3, 5) * Math.min(1.2, geo.density)))
+  const stepX = (geo.w - padX * 2) / Math.max(1, cols - 1)
+  const stepY = (geo.h - padY * 2) / Math.max(1, rows - 1)
+  const r = Math.min(stepX, stepY)
+
+  const fx = rng.int(1, Math.max(2, cols - 1))
+  const fy = rng.int(1, Math.max(2, rows - 1))
+  const cx = padX + fx * stepX
+  const cy = padY + fy * stepY
+
+  marks.push(
+    `<circle cx="${round(cx)}" cy="${round(cy)}" r="${round(r)}" ${strokeAttrs(ctx, 0.5)}/>`
+  )
+
+  for (let j = 0; j < rows; j += 1) {
+    for (let i = 0; i < cols; i += 1) {
+      const x = padX + i * stepX
+      const y = padY + j * stepY
+      const d = Math.hypot(x - cx, y - cy)
+      // Points sitting on the circle are the ones the problem is about.
+      const onCircle = Math.abs(d - r) < Math.min(stepX, stepY) * 0.18
+      marks.push(
+        dot(ctx, x, y, Math.max(0.7, r * (onCircle ? 0.09 : 0.055)), onCircle ? 0.85 : 0.4)
+      )
+      if (onCircle) marks.push(line(ctx, cx, cy, x, y, 0.4))
+    }
+  }
+  return marks
+}
+
+/**
+ * Theory & Mathematics — an upper and a lower bound closing on an unknown
+ * value. The gap between the brackets is the result; the dashed span is what
+ * stays open.
+ */
+const boundgap: Motif = (rng, geo, ctx) => {
+  const marks: string[] = []
+  const padX = geo.w * 0.1
+  const padY = geo.h * 0.18
+  const steps = Math.max(3, Math.min(8, Math.round(rng.int(4, 6) * geo.density)))
+  const rowH = (geo.h - padY * 2) / steps
+  let lo = rng.range(0.04, 0.16)
+  let hi = rng.range(0.82, 0.96)
+
+  for (let i = 0; i < steps; i += 1) {
+    const y = padY + i * rowH + rowH / 2
+    const x1 = padX + (geo.w - padX * 2) * lo
+    const x2 = padX + (geo.w - padX * 2) * hi
+    const cap = rowH * 0.3
+    const focal = i === steps - 1
+    marks.push(line(ctx, x1, y, x2, y, focal ? 0.7 : 0.34))
+    marks.push(line(ctx, x1, y - cap, x1, y + cap, focal ? 0.8 : 0.45))
+    marks.push(line(ctx, x2, y - cap, x2, y + cap, focal ? 0.8 : 0.45))
+    // Each successive row tightens, but never to zero.
+    lo += (hi - lo) * rng.range(0.12, 0.3)
+    hi -= (hi - lo) * rng.range(0.12, 0.3)
+  }
+
+  const truth = padX + (geo.w - padX * 2) * ((lo + hi) / 2)
+  marks.push(line(ctx, truth, padY * 0.5, truth, geo.h - padY * 0.5, 0.5))
+  return marks
+}
+
+/**
+ * Theory & Mathematics — a complete graph on a handful of vertices with its
+ * edges split between two weights. Ramsey-style: the question is whether a
+ * monochromatic clique is forced.
+ */
+const clique: Motif = (rng, geo, ctx) => {
+  const marks: string[] = []
+  const cx = geo.w / 2
+  const cy = geo.h / 2
+  const r = Math.min(geo.w, geo.h) * 0.36
+  const n = Math.max(5, Math.min(9, Math.round(rng.int(5, 7) * Math.min(1.2, geo.density))))
+  const phase = rng.range(0, Math.PI * 2)
+
+  const pts = Array.from({ length: n }, (_, i) => {
+    const a = phase + (i / n) * Math.PI * 2
+    return { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r * (geo.h < geo.w ? 0.92 : 1) }
+  })
+
+  for (let i = 0; i < n; i += 1) {
+    for (let j = i + 1; j < n; j += 1) {
+      const a = pts[i]
+      const b = pts[j]
+      if (!a || !b) continue
+      // Two "colours" rendered as two weights, since the art is monochrome.
+      const strong = rng.chance(0.42)
+      marks.push(line(ctx, a.x, a.y, b.x, b.y, strong ? 0.55 : 0.16, strong ? 1 : 0.6))
+    }
+  }
+  for (const p of pts) marks.push(dot(ctx, p.x, p.y, Math.max(1, r * 0.075), 0.85))
+  return marks
+}
+
 // Three motifs per category. They share a grammar within each family — nodes
 // and edges for models, time and throughput for inference, orthogonal grids for
-// hardware, packed rectangles for ecosystems — so the category still reads at a
-// glance while no two posts in it look alike.
+// hardware, packed rectangles for ecosystems, allocation and queueing for
+// serving, and discrete point/bound geometry for theory — so the category still
+// reads at a glance while no two posts in it look alike.
 const MOTIFS: Record<PostCategory, readonly Motif[]> = {
   'Models & Training': [routing, attention, curves],
   'Inference & Deployment': [pipeline, stream, histogram],
+  'Serving & Runtime': [pages, requests, tiers],
   'Hardware & Systems': [circuit, floorplan, hierarchy],
-  'Ecosystems & Tooling': [modules, graph, layers]
+  'Ecosystems & Tooling': [modules, graph, layers],
+  'Theory & Mathematics': [pointset, boundgap, clique]
 }
 
 const isPostCategory = (value: string): value is PostCategory =>

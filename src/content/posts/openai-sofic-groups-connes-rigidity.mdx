@@ -2,16 +2,16 @@
 title: 'A Non-Sofic Group and the Fall of Connes’s Rigidity Conjecture'
 pubDate: 2026-08-04
 author: 'Aadit Agrawal'
-category: 'Models & Training'
+category: 'Theory & Mathematics'
 description: 'Two chapters of OpenAI’s ten-result collection settle long-standing questions in group theory and operator algebras: an explicit non-sofic group, and infinitely many property-(T) groups sharing one group von Neumann algebra.'
-topics: ['Sofic groups', 'Operator algebras', 'Property (T)', 'Mathematics']
+topics: ['Group theory', 'Operator algebras', 'Mathematics']
 ---
 
 import SoficApproximation from '../../components/viz/SoficApproximation.astro'
 import SoficGroupClasses from '../../components/viz/SoficGroupClasses.astro'
 import SoficConnesFiber from '../../components/viz/SoficConnesFiber.astro'
 
-OpenAI's collection *Ten Advances in Mathematics and Theoretical Computer Science* reports results obtained by an internal model across ten separate areas.[^1] Two of its chapters land in the same corner of mathematics — infinite discrete groups and the von Neumann algebras built from them — and both resolve questions that had been open for decades in the negative direction.
+OpenAI's collection _Ten Advances in Mathematics and Theoretical Computer Science_ reports results obtained by an internal model across ten separate areas.[^1] Two of its chapters land in the same corner of mathematics, infinite discrete groups and the von Neumann algebras built from them, and both resolve questions that had been open for decades in the negative direction.
 
 Chapter 3 constructs an explicit group that admits no finite permutation approximations at all. Chapter 4 constructs infinitely many pairwise nonisomorphic rigid groups that are indistinguishable to the operator algebra built from them.
 
@@ -19,13 +19,13 @@ The two are worth reading together because they attack the same instinct from op
 
 ## Soficity is approximation by permutations
 
-Let $H$ be a countable group. A *sofic approximation* of $H$ is a sequence of maps
+Let $H$ be a countable group. A _sofic approximation_ of $H$ is a sequence of maps
 
 $$
 p_n : H \longrightarrow \operatorname{Sym}(Y_n)
 $$
 
-into the symmetric groups of finite sets $Y_n$, with $|Y_n| \to \infty$. These maps are not required to be homomorphisms. They are required only to look like homomorphisms in a statistical sense, measured by *normalized Hamming distance*:
+into the symmetric groups of finite sets $Y_n$, with $|Y_n| \to \infty$. These maps are not required to be homomorphisms. They are required only to look like homomorphisms in a statistical sense, measured by _normalized Hamming distance_:
 
 $$
 d_H(p, q) = \frac{\lvert \{ z \in Y : pz \neq qz \} \rvert}{\lvert Y \rvert}
@@ -42,13 +42,13 @@ d_H\bigl(p_n(gh),\, p_n(g)p_n(h)\bigr) \to 0,
 d_H\bigl(p_n(g),\, 1\bigr) \to 1 \;\; (g \neq 1).
 $$
 
-The second condition says multiplication holds at almost every point of $Y_n$. The third says every nonidentity element of $H$ moves almost every point — the approximation stays faithful, and does not quietly send distinct group elements to nearly the same permutation. A group is *sofic* if such a sequence exists.
+The second condition says multiplication holds at almost every point of $Y_n$. The third says every nonidentity element of $H$ moves almost every point: the approximation stays faithful, and does not quietly send distinct group elements to nearly the same permutation. A group is _sofic_ if such a sequence exists.
 
 <SoficApproximation />
 
-Gromov introduced the property in work on symbolic dynamics,[^2] and Weiss named sofic groups and asked whether a nonsofic one exists. The question hardened into the *soficity conjecture*: is every countable group sofic?[^3]
+Gromov introduced the property in work on symbolic dynamics,[^2] and Weiss named sofic groups and asked whether a nonsofic one exists. The question hardened into the _soficity conjecture_: is every countable group sofic?[^3]
 
-Nobody could produce a counterexample, and the class kept absorbing everything thrown at it. Amenable groups are sofic. Residually finite groups — those where every nonidentity element survives in some finite quotient — are sofic. So is the wider LEF class: a group is *locally embeddable into finite groups* if for every finite subset $F$ there is a finite group $B$ and an injection $\varphi : F \to B$ with
+Nobody could produce a counterexample, and the class kept absorbing everything thrown at it. Amenable groups are sofic. Residually finite groups, those where every nonidentity element survives in some finite quotient, are sofic. So is the wider LEF class: a group is _locally embeddable into finite groups_ if for every finite subset $F$ there is a finite group $B$ and an injection $\varphi : F \to B$ with
 
 $$
 \varphi(xy) = \varphi(x)\varphi(y)
@@ -61,30 +61,30 @@ so each finite chunk of the multiplication table embeds exactly, with $B$ allowe
 
 ## Why anyone cared
 
-Soficity mattered because a long list of conjectures had been proved *for sofic groups* and remained open in general. That made "every group is sofic" the load-bearing assumption in a whole shelf of theorems.
+Soficity mattered because a long list of conjectures had been proved _for sofic groups_ and remained open in general. That made "every group is sofic" the load-bearing assumption in a whole shelf of theorems.
 
-Gottschalk's surjunctivity conjecture is the original motivation. A group $H$ is *surjunctive* if for every finite alphabet $A$, every injective $H$-equivariant continuous map $A^H \to A^H$ is surjective — a cellular-automaton analogue of the fact that an injective self-map of a finite set is onto. Gromov and Weiss proved every sofic group is surjunctive.
+Gottschalk's surjunctivity conjecture is the original motivation. A group $H$ is _surjunctive_ if for every finite alphabet $A$, every injective $H$-equivariant continuous map $A^H \to A^H$ is surjective, a cellular-automaton analogue of the fact that an injective self-map of a finite set is onto. Gromov and Weiss proved every sofic group is surjunctive.
 
-Connes's embedding conjecture for groups asks whether every discrete group is *hyperlinear*: approximable by finite-dimensional unitary matrices in normalized Hilbert–Schmidt distance. Permutation matrices satisfy
+Connes's embedding conjecture for groups asks whether every discrete group is _hyperlinear_: approximable by finite-dimensional unitary matrices in normalized Hilbert–Schmidt distance. Permutation matrices satisfy
 
 $$
 \lVert P_\sigma - P_\tau \rVert_{2,n}^2 = 2\, d_H(\sigma, \tau),
 $$
 
-so every sofic group is hyperlinear. Kaplansky's direct-finiteness conjecture — does $ab = 1$ in a group algebra force $ba = 1$? — Lück's determinant conjecture, the algebraic eigenvalue conjecture, and the Kervaire–Laudenbach conjecture all have "true for sofic groups" theorems attached.
+so every sofic group is hyperlinear. Kaplansky's direct-finiteness conjecture, which asks whether $ab = 1$ in a group algebra forces $ba = 1$, together with Lück's determinant conjecture, the algebraic eigenvalue conjecture, and the Kervaire–Laudenbach conjecture all have "true for sofic groups" theorems attached.
 
-Earlier work had produced conditional routes to a nonsofic group: Bowen and Burton from flexible permutation stability of $\mathrm{PSL}_d(\mathbb Z)$, Gohla and Thom from central extensions of $p$-adic lattices under a stability hypothesis. Every route needed an unproved stability assumption. Separately, the Aldous–Lyons conjecture — a broader statement about unimodular random rooted networks, of which the soficity conjecture is the restriction to point masses on normal subgroups — was disproved by Bowen, Chapman, Lubotzky and Vidick using machinery descended from $\mathrm{MIP}^* = \mathrm{RE}$. That did not settle soficity, because a non-co-sofic invariant random subgroup need not be supported on a normal subgroup.
+Earlier work had produced conditional routes to a nonsofic group: Bowen and Burton from flexible permutation stability of $\mathrm{PSL}_d(\mathbb Z)$, Gohla and Thom from central extensions of $p$-adic lattices under a stability hypothesis. Every route needed an unproved stability assumption. Separately, the Aldous–Lyons conjecture, a broader statement about unimodular random rooted networks of which the soficity conjecture is the restriction to point masses on normal subgroups, was disproved by Bowen, Chapman, Lubotzky and Vidick using machinery descended from $\mathrm{MIP}^* = \mathrm{RE}$. That did not settle soficity, because a non-co-sofic invariant random subgroup need not be supported on a normal subgroup.
 
 ## The counterexample
 
-Let $\mathbb F_2$ be the field with two elements. The *binary Leavitt algebra* is
+Let $\mathbb F_2$ be the field with two elements. The _binary Leavitt algebra_ is
 
 $$
 R = L_{\mathbb F_2}(1,2)
 = \mathbb F_2 \langle s_0, s_1, t_0, t_1 \mid t_i s_j = \delta_{ij},\; s_0 t_0 + s_1 t_1 = 1 \rangle .
 $$
 
-The relations are the algebraic shadow of the Cuntz algebra $\mathcal O_2$. They say $R \cong R^2$ as right $R$-modules: the ring is isomorphic to two copies of itself. Note $t_0 s_0 = 1$ while $s_0 t_0$ is a proper idempotent, so the ring is genuinely one-sided in places. Write $R^\times$ for the group of invertible elements. Since $R$ is finitely generated over a finite field, $R^\times$ is countable.
+The relations are the algebraic shadow of the Cuntz algebra $\mathcal O_2$. They say $R \cong R^2$ as right $R$-modules: the ring is isomorphic to two copies of itself. Note $t_0 s_0 = 1$ while $s_0 t_0$ is a proper idempotent, so the ring is one-sided in places. Write $R^\times$ for the group of invertible elements. Since $R$ is finitely generated over a finite field, $R^\times$ is countable.
 
 > **Theorem 1.1 (Chapter 3).**
 
@@ -92,7 +92,7 @@ $$
 L_{\mathbb F_2}(1,2)^\times \ \text{ is not sofic.}
 $$
 
-The proof works inside a finitely generated subgroup, which suffices because soficity passes to subgroups. A *complete prefix code* is a finite set of pairwise prefix-incomparable binary words whose cylinders partition all infinite binary strings; once its $n$ words are ordered, it induces a unital ring isomorphism
+The proof works inside a finitely generated subgroup, which suffices because soficity passes to subgroups. A _complete prefix code_ is a finite set of pairwise prefix-incomparable binary words whose cylinders partition all infinite binary strings; once its $n$ words are ordered, it induces a unital ring isomorphism
 
 $$
 \Theta_E : M_n(R) \xrightarrow{\ \sim\ } R .
@@ -100,14 +100,14 @@ $$
 
 Applying this to a specific nine-word code $D$ realizes the elementary matrix group $\mathrm{EL}_9(R)$ inside $R^\times$ as $G := \mathrm{EL}_D(R)$. By the Ershov–Jaikin-Zapirain theorem, elementary groups over a finitely generated ring have Kazhdan's property $(T)$ once $n \ge 3$, so $G$ is a property-$(T)$ group.
 
-Property $(T)$ is a spectral-gap condition: every unitary representation with almost invariant unit vectors has a genuine nonzero invariant vector. Its relevance here is geometric rather than analytic. Given permutations modeling a finite generating set, the *generator graph* joins each point of $Y_n$ to its image under each generator. Kun's theorem says the generator graph of a sofic approximation to a property-$(T)$ group becomes a disjoint union of uniformly expanding graphs after changing $o(|Y_n|)$ edges[^4] — where a component $C$ is a $\gamma$-expander when
+Property $(T)$ is a spectral-gap condition: every unitary representation with almost invariant unit vectors has a genuine nonzero invariant vector. Its relevance here is geometric rather than analytic. Given permutations modeling a finite generating set, the _generator graph_ joins each point of $Y_n$ to its image under each generator. Kun's theorem says the generator graph of a sofic approximation to a property-$(T)$ group becomes a disjoint union of uniformly expanding graphs after changing $o(|Y_n|)$ edges,[^4] where a component $C$ is a $\gamma$-expander when
 
 $$
 \lvert \partial_C U \rvert \ \ge\ \gamma \min\{\lvert U \rvert,\, \lvert C \setminus U \rvert\}
 \qquad (U \subseteq C).
 $$
 
-The Kun–Thom centralizer theorem then says: if $K$ has property $(T)$, $J$ is finitely generated, and a sofic approximation of $K \times J$ has a *single* uniformly expanding $K$-generator graph on the whole of $Y_n$, then $J$ is LEF.
+The Kun–Thom centralizer theorem then says: if $K$ has property $(T)$, $J$ is finitely generated, and a sofic approximation of $K \times J$ has a _single_ uniformly expanding $K$-generator graph on the whole of $Y_n$, then $J$ is LEF.
 
 The gap between the two is the whole difficulty. Kun's decomposition delivers many expanding components; Kun–Thom needs one. The gap is real, not technical: $\Lambda = \mathrm{SL}_3(\mathbb Z)$ has property $(T)$ and is residually finite, $B = \mathrm{BS}(2,3)$ is sofic but not residually finite and hence not LEF, and $\Lambda \times B$ is nonetheless sofic. Expanding $\Lambda$-components alone cannot force a commuting factor to be LEF.
 
@@ -129,7 +129,7 @@ $$
 t_1 J t_1^{-1} \le \Gamma .
 $$
 
-Then soficity of $G$ implies $J$ is LEF. The extra nesting — conjugation by $t_1$ pushes *both* commuting factors inside $\Gamma$ — is exactly what the $\mathrm{SL}_3(\mathbb Z) \times \mathrm{BS}(2,3)$ example lacks.
+Then soficity of $G$ implies $J$ is LEF. The extra nesting, in which conjugation by $t_1$ pushes _both_ commuting factors inside $\Gamma$, is exactly what the $\mathrm{SL}_3(\mathbb Z) \times \mathrm{BS}(2,3)$ example lacks.
 
 The argument applies Kun's theorem separately to the $\Gamma$- and $G$-generator graphs, giving two different partitions of $Y_n$. A median-normalized size function
 
@@ -139,22 +139,22 @@ f(z) = \frac{M(z)}{M(z) + m_A},
 M(z) = \lvert C(z) \rvert
 $$
 
-on each $G$-component $A$ is almost nondecreasing along the permutations approximating the $t_i$ and almost preserved by $\Gamma$-generators. Because permutations conserve total increase and decrease, expansion pins $f$ near $1/2$ outside a negligible set, which forces each transported $\Gamma$-component to have roughly the same size as its target — so it fills more than half of it, and the matching is injective. That injectivity lets the argument descend to a single expanding component and invoke Kun–Thom.
+on each $G$-component $A$ is almost nondecreasing along the permutations approximating the $t_i$ and almost preserved by $\Gamma$-generators. Because permutations conserve total increase and decrease, expansion pins $f$ near $1/2$ outside a negligible set, which forces each transported $\Gamma$-component to have roughly the same size as its target, so it fills more than half of it and the matching is injective. That injectivity lets the argument descend to a single expanding component and invoke Kun–Thom.
 
-Finally the Leavitt configuration supplies the pieces. Inside $G = \mathrm{EL}_D(R)$ the chapter builds a property-$(T)$ subgroup $\Gamma$ acting inside the cylinder $[0]$, units $u, v$, and a subgroup $J \cong V$ — Thompson's group $V$ — acting inside the disjoint cylinder $[1000]$, with conjugation by $u$ moving $J$ into $[0001] \subseteq [0]$. Thompson's group $V$ is finitely presented, infinite and simple, and no such group is LEF. So $G$ cannot be sofic, and neither can $R^\times$.
+Finally the Leavitt configuration supplies the pieces. Inside $G = \mathrm{EL}_D(R)$ the chapter builds a property-$(T)$ subgroup $\Gamma$ acting inside the cylinder $[0]$, units $u, v$, and a subgroup $J \cong V$, Thompson's group $V$, acting inside the disjoint cylinder $[1000]$, with conjugation by $u$ moving $J$ into $[0001] \subseteq [0]$. Thompson's group $V$ is finitely presented, infinite and simple, and no such group is LEF. So $G$ cannot be sofic, and neither can $R^\times$.
 
 ## What the counterexample does and does not break
 
 The theorem removes an assumption; it does not by itself falsify the conjectures that relied on it.
 
-| Question | Status for $R^\times$ |
-| --- | --- |
-| Soficity conjecture | Refuted outright |
-| Gottschalk surjunctivity | Open for $R^\times$; either answer is a headline |
-| Hyperlinearity / Connes embedding for groups | Undetermined — soficity implies it, not conversely |
-| Kaplansky direct finiteness | Open only in positive characteristic |
-| Lück determinant, algebraic eigenvalue | Unsettled for $R^\times$ |
-| Kervaire–Laudenbach | Would follow if $R^\times$ were hyperlinear |
+| Question                                     | Status for $R^\times$                             |
+| -------------------------------------------- | ------------------------------------------------- |
+| Soficity conjecture                          | Refuted outright                                  |
+| Gottschalk surjunctivity                     | Open for $R^\times$; either answer is a headline  |
+| Hyperlinearity / Connes embedding for groups | Undetermined; soficity implies it, not conversely |
+| Kaplansky direct finiteness                  | Open only in positive characteristic              |
+| Lück determinant, algebraic eigenvalue       | Unsettled for $R^\times$                          |
+| Kervaire–Laudenbach                          | Would follow if $R^\times$ were hyperlinear       |
 
 The surjunctivity entry is the sharpest. Surjunctivity passes to subgroups, so if $R^\times$ is surjunctive, it is the first surjunctive nonsofic group; if it is not, Gottschalk's conjecture is false. Either way the next result comes from the same object.
 
@@ -168,7 +168,7 @@ $$
 \lambda_G(g)\delta_h = \delta_{gh},
 $$
 
-and the *group von Neumann algebra* is the double commutant
+and the _group von Neumann algebra_ is the double commutant
 
 $$
 L(G) = \lambda_G(G)'' ,
@@ -178,9 +178,9 @@ $$
 
 Concretely, $L(G)$ is the weak closure of finite complex combinations $\sum_g a_g \lambda_G(g)$, with canonical trace $\tau_G(x) = a_1$. It is an analytic completion of the group algebra, and completion loses information: it is a coarse invariant by construction.
 
-A group is *ICC* if it is infinite and every nonidentity conjugacy class is infinite. For infinite $G$, the classical criterion of Murray and von Neumann says $L(G)$ is a $\mathrm{II}_1$ factor — an infinite-dimensional factor with a faithful normal tracial state — precisely when $G$ is ICC.
+A group is _ICC_ if it is infinite and every nonidentity conjugacy class is infinite. For infinite $G$, the classical criterion of Murray and von Neumann says $L(G)$ is a $\mathrm{II}_1$ factor, an infinite-dimensional factor with a faithful normal tracial state, precisely when $G$ is ICC.
 
-How coarse is the invariant? Connes's classification of injective factors gives the extreme case: *every* amenable ICC group has the same group factor, the hyperfinite $\mathrm{II}_1$ factor. All amenability collapses to one point.
+How coarse is the invariant? Connes's classification of injective factors gives the extreme case: _every_ amenable ICC group has the same group factor, the hyperfinite $\mathrm{II}_1$ factor. All amenability collapses to one point.
 
 Property $(T)$ is the opposite of amenability, and was expected to prevent the collapse entirely.
 
@@ -188,7 +188,7 @@ Property $(T)$ is the opposite of amenability, and was expected to prevent the c
 
 It appears as Problem 1 in the appendix to Chapter 5 of his 1994 monograph.[^5]
 
-The surrounding notion is *W\*-superrigidity*: a countable group $G$ is W\*-superrigid if $L(G) \cong L(H)$ implies $G \cong H$ for every countable $H$ — the group is fully recoverable from its factor. Such groups exist; the first examples came from Ioana, Popa and Vaes,[^7] and the first with property $(T)$ from Chifan, Ioana, Osin and Sun. The question was whether property $(T)$ alone forces it.
+The surrounding notion is _W\*-superrigidity_: a countable group $G$ is W\*-superrigid if $L(G) \cong L(H)$ implies $G \cong H$ for every countable $H$, so the group is fully recoverable from its factor. Such groups exist; the first examples came from Ioana, Popa and Vaes,[^7] and the first with property $(T)$ from Chifan, Ioana, Osin and Sun. The question was whether property $(T)$ alone forces it.
 
 ## The fiber is infinite
 
@@ -211,7 +211,7 @@ $$
 L(A \rtimes K) \cong L^\infty(\widehat A, m_{\widehat A}) \rtimes K .
 $$
 
-The right-hand side depends on the Haar *probability space* of the dual $\widehat A$ and on the $K$-action — but not on the compact group law of $\widehat A$. Two different group structures on the same measured $K$-space give the same crossed product, and hence the same factor, while their discrete duals can be nonisomorphic groups.
+The right-hand side depends on the Haar _probability space_ of the dual $\widehat A$ and on the $K$-action, but not on the compact group law of $\widehat A$. Two different group structures on the same measured $K$-space give the same crossed product, and hence the same factor, while their discrete duals can be nonisomorphic groups.
 
 The elementary model is the four-point space $\mathbb F_2^2$. Coordinatewise addition makes it the Klein four-group. The binary carry
 
@@ -247,7 +247,7 @@ Fourier transform identifies $L(\Gamma_0) \cong L(\Lambda)$, while order-four to
 
 Verifying that $\Lambda$ is ICC and has property $(T)$ suffices for the pair, because both properties transfer across an isomorphism of group factors: by the Murray–von Neumann criterion the ICC property is detected by factoriality, and by the Connes–Jones characterization an ICC group has property $(T)$ if and only if its group factor does.
 
-Shifting the carry by $n$ coefficient positions in each of the four directions produces compact groups $C_n$ with the same measured $K$-action, hence $\Gamma_n = \widehat{C_n} \rtimes K$ with $L(\Gamma_n) \cong L(\Lambda)$. Pontryagin duality embeds $\Gamma_0$ in $\Gamma_n$ with index $2^{4n}$, and the finite-orbit part of the intrinsic quotient $E_n[2]/2E_n$ has order $2^{4n}$ — an invariant computed from the abstract group that recovers $n$, which is what proves the family pairwise nonisomorphic.
+Shifting the carry by $n$ coefficient positions in each of the four directions produces compact groups $C_n$ with the same measured $K$-action, hence $\Gamma_n = \widehat{C_n} \rtimes K$ with $L(\Gamma_n) \cong L(\Lambda)$. Pontryagin duality embeds $\Gamma_0$ in $\Gamma_n$ with index $2^{4n}$, and the finite-orbit part of the intrinsic quotient $E_n[2]/2E_n$ has order $2^{4n}$, an invariant computed from the abstract group that recovers $n$, which is what proves the family pairwise nonisomorphic.
 
 Infinite fibers were already known outside the property-$(T)$ world: for a nontrivial finite abelian $H_0$ and $n \ge 3$, infinitely many pairwise nonisomorphic $H$ satisfy $L(H) \cong L(H_0 \wr \mathrm{PSL}_n(\mathbb Z))$, but that wreath product lacks property $(T)$. The new content is an infinite fiber sitting entirely inside the class where the countability bound applies.
 
@@ -255,9 +255,9 @@ Infinite fibers were already known outside the property-$(T)$ world: for a nontr
 
 Both results are negative, and both are negative in the same way: a property that looked like it should transmit rigidity turns out not to.
 
-Property $(T)$ appears in both chapters, in opposite roles. In Chapter 3 it is the *tool* — it forces sofic approximations to be expanders, and expansion is what lets the argument match components and isolate a single one. In Chapter 4 it is the *hypothesis that fails to deliver* — spectral rigidity of the group does not survive the passage to the weak closure, because the crossed product only remembers a measure space and an action.
+Property $(T)$ appears in both chapters, in opposite roles. In Chapter 3 it is the _tool_: it forces sofic approximations to be expanders, and expansion is what lets the argument match components and isolate a single one. In Chapter 4 it is the _hypothesis that fails to deliver_: spectral rigidity of the group does not survive the passage to the weak closure, because the crossed product only remembers a measure space and an action.
 
-Neither proof needs a stability hypothesis or a computational reduction. Both are ordinary mathematics, checkable line by line — OpenAI also published Lean 4 certificates alongside the paper[^8] — and both close questions that had resisted the standard machinery for decades. That the arguments were produced by a model rather than a person is a fact about provenance; the theorems stand on their statements.
+Neither proof needs a stability hypothesis or a computational reduction. Both are ordinary mathematics, checkable line by line, and OpenAI published Lean 4 certificates alongside the paper.[^8] Both close questions that had resisted the standard machinery for decades. That the arguments were produced by a model rather than a person is a fact about provenance; the theorems stand on their statements.
 
 ## References
 

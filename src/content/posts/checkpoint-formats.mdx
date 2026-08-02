@@ -2,9 +2,9 @@
 title: 'Checkpoint Formats: Safetensors, GGUF, ONNX, and the Pickle Problem'
 pubDate: 2026-07-02
 author: 'Aadit Agrawal'
-category: 'Inference & Deployment'
+category: 'Serving & Runtime'
 description: 'Compare serialization formats for model weights and see how header layout, memory mapping, and trust boundaries decide load time.'
-topics: ['Checkpoints', 'Safetensors', 'GGUF']
+topics: ['Model loading', 'LLM serving', 'Security']
 ---
 
 import CheckpointFormatMap from '../../components/viz/CheckpointFormatMap.astro'
@@ -59,9 +59,9 @@ Three consequences follow directly:
 
 **There is no code path to execute.** The parser reads integers, strings, and offsets. A malicious file can produce wrong tensors or a failed parse; it cannot import a module.
 
-The zero-copy property is the one that changes deployment behavior. A conventional load reads bytes into a buffer, then copies into a tensor, then copies to the device — three traversals of the whole checkpoint. A mapped load traverses once, on the device transfer.
+The zero-copy property is the one that changes deployment behavior. A conventional load reads bytes into a buffer, then copies into a tensor, then copies to the device, which is three traversals of the whole checkpoint. A mapped load traverses once, on the device transfer.
 
-### The header is still an input
+### Header validation
 
 Zero-copy does not mean unvalidated. A loader must check that:
 
@@ -74,13 +74,13 @@ The reference implementations do this. A hand-rolled reader that trusts `data_of
 
 ### What safetensors deliberately omits
 
-There is a free-form `__metadata__` string map and nothing else. No graph, no tokenizer, no hyperparameters, no quantization scheme. A safetensors file is only tensors. Everything else lives in sidecar files — `config.json`, `tokenizer.json`, `generation_config.json` — and the loader is responsible for keeping them consistent.
+There is a free-form `__metadata__` string map and nothing else. No graph, no tokenizer, no hyperparameters, no quantization scheme. A safetensors file is only tensors. Everything else lives in sidecar files: `config.json`, `tokenizer.json`, `generation_config.json`. The loader is responsible for keeping them consistent.
 
 For a hub-distributed repository that is fine, because the repository is the unit. For a file you hand to someone, it means one file is not enough.
 
 ## GGUF: one file, quantization included
 
-GGUF was designed for the opposite distribution model — a single file a user downloads and runs locally.[^1] Its structure is a magic number, a version, tensor and metadata counts, a key-value metadata block, then a tensor directory, then aligned tensor data.
+GGUF was designed for the opposite distribution model: a single file a user downloads and runs locally.[^1] Its structure is a magic number, a version, tensor and metadata counts, a key-value metadata block, then a tensor directory, then aligned tensor data.
 
 The metadata block is typed and extensible: architecture name, layer counts, head counts, RoPE parameters, the full tokenizer including merges and special-token ids, and chat-template strings. The tensor directory names each tensor and gives its dimensions, its quantization type, and its offset.
 
@@ -100,7 +100,7 @@ ONNX serializes a computation graph as protobuf, with initializers (weights) eit
 
 That buys portability across runtimes and costs flexibility. A dynamic control-flow pattern that is trivial in eager Python has to be expressed in ONNX operators or traced away. For transformer decoding, KV cache handling has to become explicit graph inputs and outputs.
 
-Protobuf also imposes a 2 GB message limit, so any real LLM must use external data — at which point ONNX has the same sidecar-consistency problem as safetensors, plus a graph to keep in sync.
+Protobuf also imposes a 2 GB message limit, so any real LLM must use external data, at which point ONNX has the same sidecar-consistency problem as safetensors, plus a graph to keep in sync.
 
 A TensorRT engine goes further and is not portable at all. The plan file is specialized to a GPU architecture, a TensorRT version, and often a fixed shape profile. It loads very fast because nearly all decisions were made at build time. It is a build artifact, not a distribution artifact, and rebuilding it is part of the deployment pipeline rather than the download.
 

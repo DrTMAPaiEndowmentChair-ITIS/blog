@@ -2,9 +2,9 @@
 title: 'Serving Thousands of LoRA Adapters from One Base Model'
 pubDate: 2026-07-08
 author: 'Aadit Agrawal'
-category: 'Inference & Deployment'
+category: 'Serving & Runtime'
 description: 'Multiplex many low-rank adapters over shared base weights with batched gather kernels, adapter paging, and per-tenant routing.'
-topics: ['LoRA', 'Multi-tenancy', 'LLM serving']
+topics: ['Fine-tuning', 'Multi-tenancy', 'LLM serving']
 ---
 
 import AdapterMultiplexing from '../../components/viz/AdapterMultiplexing.astro'
@@ -15,7 +15,7 @@ Getting from one to the other is a scheduling and kernel problem, not a training
 
 <AdapterMultiplexing />
 
-## The structure that makes multiplexing possible
+## Low-rank structure and additivity
 
 LoRA replaces a weight update with a low-rank factorization.[^1] For a frozen base matrix $W_0 \in \mathbb{R}^{d \times k}$:
 
@@ -27,7 +27,7 @@ with $r \ll \min(d,k)$. Two properties do the work:
 
 **Additivity.** The adapter contribution is a separate additive term. The base output $W_0x$ does not depend on which adapter is active.
 
-**Rank.** Parameters scale as $r(d+k)$ instead of $dk$. At $d = k = 4096$ and $r = 16$, that is 131k parameters against 16.8M — about 0.8%.
+**Rank.** Parameters scale as $r(d+k)$ instead of $dk$. At $d = k = 4096$ and $r = 16$, that is 131k parameters against 16.8M, about 0.8%.
 
 Additivity is what allows a single batch to contain requests using different adapters. Every request in the batch shares the $W_0x$ computation and differs only in the low-rank correction.
 
@@ -35,7 +35,7 @@ Additivity is what allows a single batch to contain requests using different ada
 
 You can fold the adapter into the base: $W' = W_0 + \frac{\alpha}{r}BA$.
 
-Merged serving is the fastest possible per-token path — it is exactly base-model inference, no extra kernels, no extra memory traffic. It also destroys multiplexing. A merged replica serves exactly one adapter, and switching means either re-merging (a full pass over the weights) or keeping a second copy.
+Merged serving is the fastest possible per-token path: exactly base-model inference, no extra kernels, no extra memory traffic. It also destroys multiplexing. A merged replica serves exactly one adapter, and switching means either re-merging (a full pass over the weights) or keeping a second copy.
 
 |                      | Merged           | Unmerged        |
 | -------------------- | ---------------- | --------------- |
@@ -70,7 +70,7 @@ That last point has a direct scheduling consequence.
 
 ## Adapter-aware scheduling
 
-Since cost scales with distinct adapters per step, the scheduler should prefer batches with adapter locality — without starving low-traffic tenants.
+Since cost scales with distinct adapters per step, the scheduler should prefer batches with adapter locality, without starving low-traffic tenants.
 
 A workable policy admits by a score combining wait time and locality:
 
@@ -81,7 +81,7 @@ def admission_score(req, active_adapters, now, w_fair=1.0, w_local=0.35):
     return w_fair * wait + w_local * locality * req.est_tokens
 ```
 
-Weighting wait time linearly bounds starvation: a request from an unpopular adapter accumulates score until it wins regardless of locality. Setting `w_local` too high produces exactly the failure this is meant to avoid — head-of-line blocking for small tenants while a popular adapter monopolizes the batch. Track per-adapter p99 queue time and tune against it, not against aggregate throughput.
+Weighting wait time linearly bounds starvation: a request from an unpopular adapter accumulates score until it wins regardless of locality. Setting `w_local` too high produces exactly the failure this is meant to avoid: head-of-line blocking for small tenants while a popular adapter monopolizes the batch. Track per-adapter p99 queue time and tune against it, not against aggregate throughput.
 
 At the fleet level, consistent-hash routing on adapter id concentrates each adapter's traffic on a subset of replicas, which improves both adapter-cache hit rate and batch locality. It also creates hotspots when one tenant is much larger than the others, so the router needs a load term that can override the hash.
 
@@ -95,7 +95,7 @@ Adapters are small enough to treat like cache rather than like weights. A pool w
 | Host memory    | ~10–40 ms over PCIe                | Recently used   |
 | Object storage | 100 ms–seconds                     | Everything else |
 
-The critical requirement is that a fetch must not block the decode loop. An adapter miss should either delay only that request's admission, or trigger a prefetch while the request queues. A synchronous fetch inside the step function converts one tenant's cold adapter into a latency spike for every request in the batch — the single most common failure in these systems.
+The critical requirement is that a fetch must not block the decode loop. An adapter miss should either delay only that request's admission, or trigger a prefetch while the request queues. A synchronous fetch inside the step function converts one tenant's cold adapter into a latency spike for every request in the batch. That is the single most common failure in these systems.
 
 ```python
 async def admit(req, pool):
@@ -134,7 +134,7 @@ class PrefixKey:
 
 Aggregate throughput hides everything that matters in a multi-tenant deployment. The dashboard needs:
 
-- **Distinct adapters per step**, distribution not mean — this is the primary cost driver.
+- **Distinct adapters per step**, distribution not mean. This is the primary cost driver.
 - **Adapter cache hit rate**, split by tier, and **adapter fetch stalls** counted separately from cache misses.
 - **Per-adapter p50/p99 TTFT**, so a fairness regression is visible before a tenant reports it.
 - **Adapter overhead fraction**: step time with adapters minus estimated base-only step time.

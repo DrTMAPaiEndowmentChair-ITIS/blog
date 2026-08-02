@@ -2,9 +2,9 @@
 title: "Ten Advances: What OpenAI's Math Results Do and Do Not Show"
 pubDate: 2026-08-02
 author: 'Aadit Agrawal'
-category: 'Models & Training'
+category: 'Theory & Mathematics'
 description: 'A walk through the ten mathematics and theoretical computer science results OpenAI released, the statements they actually prove, and how to read the verification claims.'
-topics: ['Mathematics', 'Reasoning', 'Evaluation', 'Verification']
+topics: ['Mathematics', 'Reasoning', 'Evaluation', 'Formal verification']
 ---
 
 import TenAdvResultsMap from '../../components/viz/TenAdvResultsMap.astro'
@@ -27,7 +27,7 @@ The paper credits no human authors. The mathematical arguments are attributed to
 
 Each argument is accompanied by a Lean 4 formalization, released alongside the paper, plus a model-written document reconstructing how each proof came together from the reasoning traces.[^2] Simon Willison, who covered the release, notes the gap that remains: the prompts are not published, and neither is the count of problems on which the same spend produced nothing.[^2]
 
-The acknowledgments name individual mathematicians who read individual chapters — Sorin Popa on the Connes chapter, and Henry Bradford, Michael Chapman, Alon Dogon, and Francesco Fournier-Facio on the non-sofic chapter.[^1] They are thanked as readers, not listed as authors and not described as referees. That distinction matters, and I will come back to it.
+The acknowledgments name individual mathematicians who read individual chapters: Sorin Popa on the Connes chapter, and Henry Bradford, Michael Chapman, Alon Dogon, and Francesco Fournier-Facio on the non-sofic chapter.[^1] They are thanked as readers, not listed as authors and not described as referees. That distinction matters, and I will come back to it.
 
 ## The ten results
 
@@ -39,7 +39,7 @@ The acknowledgments name individual mathematicians who read individual chapters 
 
 **4. Connes rigidity.** Connes conjectured that the group von Neumann algebra $L(G)$ of an ICC property-(T) group determines $G$. The paper constructs finitely generated ICC property-(T) groups $\Lambda,\Gamma_0,\Gamma_1,\ldots$, pairwise nonisomorphic, with $L(\Gamma_n)\cong L(\Lambda)$ for all $n$, where $\Gamma_n$ contains a copy of $\Gamma_0$ of index $24^n$. The pair $\Lambda,\Gamma_0$ already refutes the conjecture; the infinite family additionally answers Popa's finite-to-one question negatively and shows his countability bound is sharp.
 
-**5. Permanent lower bounds.** For exact symbolic computation of $\mathrm{per}_n$ over $\mathbb{C}$: division-free arithmetic circuits with unrestricted reuse require $\Omega(n^2\log\log n)$ gates, and arithmetic formulas require $\Omega(n^4/\log n)$ variable-labeled leaves even when division is allowed. The chapter also explains why both arguments use properties specific to the permanent and do not transfer to the determinant — which is the honest caveat, since the determinant has polynomial-size circuits.
+**5. Permanent lower bounds.** For exact symbolic computation of $\mathrm{per}_n$ over $\mathbb{C}$: division-free arithmetic circuits with unrestricted reuse require $\Omega(n^2\log\log n)$ gates, and arithmetic formulas require $\Omega(n^4/\log n)$ variable-labeled leaves even when division is allowed. The chapter also explains why both arguments use properties specific to the permanent and do not transfer to the determinant, which is the honest caveat, since the determinant has polynomial-size circuits.
 
 **6. Quantum parallel repetition.** For every finite two-player one-round game $G$ with entangled value $\omega^*(G)=1-\varepsilon<1$ and answer alphabets $A,B$,
 
@@ -74,7 +74,7 @@ Benchmark reporting and theorem reporting fail in different directions, and the 
 
 The contamination point deserves emphasis, because it is where the October 2025 episode went wrong. OpenAI staff claimed then that GPT-5 had solved ten open Erdős problems; the claim collapsed when it emerged the model had surfaced solutions already in the published literature.[^3] That failure was a retrieval failure dressed as a discovery, and it is exactly the failure a benchmark cannot detect and a theorem statement can. If Chapter 9's bound were already in a 2019 paper, someone in Ramsey theory would say so within a week.
 
-The last row is the one people skip. Ten theorems tell you the system produced ten proofs. They do not tell you the success rate, the compute distribution, or what the tenth-percentile attempt looked like. Willison's unanswered question — how many problems absorbed the same spend and yielded nothing — is the denominator, and without it the numerator is not a rate.[^2]
+The last row is the one people skip. Ten theorems tell you the system produced ten proofs. They do not tell you the success rate, the compute distribution, or what the tenth-percentile attempt looked like. Willison's unanswered question, how many problems absorbed the same spend and yielded nothing, is the denominator, and without it the numerator is not a rate.[^2]
 
 ## What verification covers
 
@@ -84,19 +84,19 @@ A Lean certificate is a strong form of evidence and a narrow one.
 
 Formalization establishes that a derivation compiles: given the formal hypotheses, the formal conclusion follows, with no appeal to a reader's charity about an omitted step. That eliminates the dominant failure mode of long research papers, which is a plausible-sounding gap nobody notices.
 
-It does not establish three other things. First, statement fidelity: the formal statement must be the one the abstract advertises, and checking that is a human reading task on the statement, not the proof. Second, dependence on the surrounding library — a formalization inherits whatever axioms and definitions it imports. Third, significance. No proof assistant can tell you whether $\Omega(n^2\log\log n)$ gates for the permanent is a step toward separating VP from VNP or a barrier-bound curiosity.
+It does not establish three other things. First, statement fidelity: the formal statement must be the one the abstract advertises, and checking that is a human reading task on the statement, not the proof. Second, dependence on the surrounding library: a formalization inherits whatever axioms and definitions it imports. Third, significance. No proof assistant can tell you whether $\Omega(n^2\log\log n)$ gates for the permanent is a step toward separating VP from VNP or a barrier-bound curiosity.
 
-This is why the earlier May 2026 result was packaged differently. When an internal model disproved the Erdős unit distance conjecture, OpenAI paired the announcement with external mathematicians who checked the proof and wrote a companion paper, and with named supporting statements.[^4] External review was the credibility mechanism because the result was not formalized. Here, formalization does part of that work and named readers do the rest — a weaker arrangement on the human side, a stronger one on the mechanical side.
+This is why the earlier May 2026 result was packaged differently. When an internal model disproved the Erdős unit distance conjecture, OpenAI paired the announcement with external mathematicians who checked the proof and wrote a companion paper, and with named supporting statements.[^4] External review was the credibility mechanism because the result was not formalized. Here, formalization does part of that work and named readers do the rest, which is a weaker arrangement on the human side and a stronger one on the mechanical side.
 
 ## What a professional objection looks like
 
 The objections worth taking seriously are not "an AI cannot do mathematics." They are procedural.
 
-**Acknowledged readers are not referees.** A specialist who reads a manuscript and offers comments has not signed a report, has no editorial obligation, and typically has not checked every lemma. Presenting a list of thanked names as review is a category error, and the paper does not make that claim — but coverage of it can.
+**Acknowledged readers are not referees.** A specialist who reads a manuscript and offers comments has not signed a report, has no editorial obligation, and typically has not checked every lemma. Presenting a list of thanked names as review is a category error, and the paper does not make that claim, though coverage of it can.
 
 **Publication bypasses the review it substitutes for.** The Leiden Declaration, published in June 2026 by an international group of mathematicians and endorsed by the International Mathematical Union, raises exactly this: the reliability of AI-generated proofs, attribution when a proprietary model is involved, and the strain on peer review and publication norms.[^5] It recommends disclosure and preserved review rather than prohibition, and gathered over a thousand signatures within a day.
 
-**Attribution runs one way.** Each chapter builds on decades of named work — Delsarte's programs, Kun's expander decomposition, Yuen's dependency-breaking framework, Berman and Berndtsson's transport argument. The results are extensions of a literature that the system was trained on and that the paper cites but whose authors did not consent to that use. This is the sharpest version of the Leiden concern.
+**Attribution runs one way.** Each chapter builds on decades of named work: Delsarte's programs, Kun's expander decomposition, Yuen's dependency-breaking framework, and Berman and Berndtsson's transport argument. The results are extensions of a literature that the system was trained on and that the paper cites but whose authors did not consent to that use. This is the sharpest version of the Leiden concern.
 
 **Reproducibility is partial.** Lean sources are public; the model, the prompts, the search procedure, and the failure log are not. Someone can confirm the theorems without being able to reproduce the process that found them. Those are different scientific claims and they are being reported as one.
 
@@ -106,7 +106,7 @@ The mathematicians reacting publicly split along predictable lines. Terence Tao 
 
 Strip away the specific chapters and four things transfer.
 
-**Verifiable domains are where autonomous search pays.** A proof assistant is an oracle that returns a hard yes or no. Search against a hard oracle can run long without drifting, which is not true of search against a learned reward model. The economics reported here — modest per-problem spend against problems open for decades — hold only where such an oracle exists.
+**Verifiable domains are where autonomous search pays.** A proof assistant is an oracle that returns a hard yes or no. Search against a hard oracle can run long without drifting, which is not true of search against a learned reward model. The economics reported here, modest per-problem spend against problems open for decades, hold only where such an oracle exists.
 
 **The bottleneck moves to problem selection.** Ten results across nine subfields means someone chose ten problems that were open, tractable, and cleanly statable. That selection is the scarce input, and it is human.
 
@@ -118,7 +118,7 @@ The honest summary: ten specific, precisely stated, machine-checked improvements
 
 ## The rest of this series
 
-Four companion posts go deeper on individual threads from this release: the sphere-packing and coding-theory chapters and why an exponent that stood since 1978 moved; the non-sofic group construction and what it settles in group theory; the complexity-theory chapters on the permanent, parallel repetition, and lattice hardness; and the verification pipeline itself — Lean certificates, what they prove, and what peer review still has to do.
+Four companion posts go deeper on individual threads from this release: the sphere-packing and coding-theory chapters and why an exponent that stood since 1978 moved; the non-sofic group construction and what it settles in group theory; the complexity-theory chapters on the permanent, parallel repetition, and lattice hardness; and the verification pipeline itself, covering Lean certificates, what they prove, and what peer review still has to do.
 
 ## References
 

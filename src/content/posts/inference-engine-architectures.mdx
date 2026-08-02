@@ -2,9 +2,9 @@
 title: 'Inference Engine Architectures: What vLLM, SGLang, TensorRT-LLM, and llama.cpp Optimize'
 pubDate: 2026-07-20
 author: 'Aadit Agrawal'
-category: 'Inference & Deployment'
-description: 'Compare serving engines by the layer each one optimizes — memory management, compilation, program structure, or single-node portability.'
-topics: ['vLLM', 'SGLang', 'TensorRT-LLM']
+category: 'Serving & Runtime'
+description: 'Compare serving engines by the layer each one optimizes: memory management, compilation, program structure, or single-node portability.'
+topics: ['LLM serving', 'Scheduling', 'KV cache']
 ---
 
 import EngineLayerStack from '../../components/viz/EngineLayerStack.astro'
@@ -15,15 +15,15 @@ Four layers, four answers.
 
 <EngineLayerStack />
 
-## The layers
+## Layers common to every engine
 
 Every engine contains roughly the same components:
 
-1. **API and request handling** — protocol, streaming, sampling parameters, structured output.
-2. **Scheduler** — admission, batch composition, preemption.
-3. **Memory manager** — KV cache allocation, prefix reuse, adapter storage.
-4. **Execution** — graph construction, kernel selection, quantization, parallelism.
-5. **Kernels** — attention, GEMM, sampling.
+1. **API and request handling.** Protocol, streaming, sampling parameters, structured output.
+2. **Scheduler.** Admission, batch composition, preemption.
+3. **Memory manager.** KV cache allocation, prefix reuse, adapter storage.
+4. **Execution.** Graph construction, kernel selection, quantization, parallelism.
+5. **Kernels.** Attention, GEMM, sampling.
 
 They differ in which layer carries the innovation and which is treated as commodity.
 
@@ -33,7 +33,7 @@ vLLM's founding observation was that conventional serving wasted most of its KV 
 
 The consequences compound. Near-zero fragmentation means more concurrent sequences per GPU. Blocks addressed through a table can be shared, which gives prefix caching and copy-on-write for parallel sampling almost for free. Blocks can be moved between tiers, which gives swap-based preemption. One memory abstraction produces most of the feature set.
 
-Everything above it follows from that: continuous batching over a mutable block pool, admission control expressed in blocks, chunked prefill as a token budget. Kernels are largely adopted from elsewhere — FlashAttention, FlashInfer, vendor GEMM libraries — which is a deliberate position, since it lets the engine track new models and new hardware quickly.
+Everything above it follows from that: continuous batching over a mutable block pool, admission control expressed in blocks, chunked prefill as a token budget. Kernels are largely adopted from elsewhere: FlashAttention, FlashInfer, and vendor GEMM libraries. That is a deliberate position, since it lets the engine track new models and new hardware quickly.
 
 The result is the broadest model and hardware coverage in the ecosystem and the shortest path from a new architecture's release to serving it. Peak single-request latency on a fixed, well-known model shape is not where it wins.
 
@@ -45,7 +45,7 @@ SGLang starts from a different observation: real workloads are rarely one prompt
 
 An engine that only sees independent requests cannot exploit that structure. SGLang's RadixAttention maintains a radix tree over token sequences as the KV cache index, so prefixes are shared automatically across calls without the application declaring anything.[^2] A branching program with a common preamble computes that preamble once.
 
-The front-end language is the other half. Expressing generation, branching, and constrained output as a program lets the runtime see the whole structure and schedule it — including reordering calls to maximize prefix reuse.
+The front-end language is the other half. Expressing generation, branching, and constrained output as a program lets the runtime see the whole structure and schedule it, including reordering calls to maximize prefix reuse.
 
 Constrained decoding is treated as a first-class path rather than a filter, with the automaton for a grammar compiled and applied across a batch, so structured output does not collapse throughput.
 
@@ -53,9 +53,9 @@ Constrained decoding is treated as a first-class path rather than a filter, with
 
 ## TensorRT-LLM: decisions move to build time
 
-TensorRT-LLM inverts the flexibility tradeoff. Instead of deciding kernels and layouts at run time, a build step compiles the model into an engine plan: kernels fused, layouts chosen, quantization applied, shape profiles fixed, and — where possible — the whole decode step captured as a CUDA graph so per-step launch overhead disappears.
+TensorRT-LLM inverts the flexibility tradeoff. Instead of deciding kernels and layouts at run time, a build step compiles the model into an engine plan: kernels fused, layouts chosen, quantization applied, shape profiles fixed, and, where possible, the whole decode step captured as a CUDA graph so per-step launch overhead disappears.
 
-For a fixed model on NVIDIA hardware with a known shape distribution, this yields the lowest achievable per-token latency, particularly at small batch sizes where launch overhead is a large fraction of step time. It also gives the most complete access to hardware-specific numerics — FP8 and FP4 paths on recent architectures, with vendor-tuned kernels.
+For a fixed model on NVIDIA hardware with a known shape distribution, this yields the lowest achievable per-token latency, particularly at small batch sizes where launch overhead is a large fraction of step time. It also gives the most complete access to hardware-specific numerics: FP8 and FP4 paths on recent architectures, with vendor-tuned kernels.
 
 The costs are structural rather than incidental:
 

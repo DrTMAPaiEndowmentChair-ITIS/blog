@@ -30,6 +30,11 @@ const SITE_CARD = '_site'
 
 const FALLBACK_CATEGORY = POST_CATEGORIES[0]
 
+const CATEGORY_HALVES = [
+  POST_CATEGORIES.slice(0, Math.ceil(POST_CATEGORIES.length / 2)),
+  POST_CATEGORIES.slice(Math.ceil(POST_CATEGORIES.length / 2))
+] as const
+
 /**
  * Pull a single scalar out of the leading frontmatter block. The schema in
  * `src/content.config.ts` keeps every field we need on one line, so a full YAML
@@ -86,8 +91,10 @@ const siteCard = await renderOgCard({
   eyebrow: host,
   title: themeConfig.site.title,
   description: themeConfig.site.description,
-  footerLeft: `${POST_CATEGORIES[0]} · ${POST_CATEGORIES[1]}`,
-  footerRight: `${POST_CATEGORIES[2]} · ${POST_CATEGORIES[3]}`,
+  // Split down the middle rather than indexed, so adding a category keeps the
+  // footer balanced instead of silently dropping the tail.
+  footerLeft: CATEGORY_HALVES[0].join(' · '),
+  footerRight: CATEGORY_HALVES[1].join(' · '),
   // Seeded to land on the attention matrix: the one motif that reads as the
   // whole subject rather than any single category.
   art: { seed: 'itis', category: 'Models & Training' }

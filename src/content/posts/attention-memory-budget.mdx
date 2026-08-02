@@ -4,7 +4,7 @@ pubDate: 2026-07-23
 author: 'Aadit Agrawal'
 category: 'Models & Training'
 description: 'Derive KV cache cost per token across attention variants and see why key-value head count is chosen before quality is measured.'
-topics: ['Attention', 'GQA', 'Architecture']
+topics: ['Attention', 'Architecture', 'KV cache']
 ---
 
 import KVBudgetLadder from '../../components/viz/KVBudgetLadder.astro'
@@ -25,7 +25,7 @@ $$
 
 The 2 is keys and values. Note what is absent: the number of _query_ heads. Query projections are computed and consumed within a step and never cached. This asymmetry is the entire design space.
 
-For a 70B-class model — $L = 80$, $H_q = 64$, $d_h = 128$, FP16 — full multi-head attention gives:
+For a 70B-class model with $L = 80$, $H_q = 64$, $d_h = 128$, and FP16, full multi-head attention gives:
 
 $$
 m = 2 \times 80 \times 64 \times 128 \times 2 = 2{,}621{,}440 \text{ bytes} \approx 2.5 \text{ MiB per token}
@@ -35,7 +35,7 @@ A 32k-token context is 80 GiB of cache for one sequence. On an 80 GiB device als
 
 ## Sharing key-value heads
 
-**Multi-query attention** (MQA) takes the extreme position: all query heads attend to a single shared key-value head.[^1] $H_{kv} = 1$, so cache drops by a factor of $H_q$ — 64x in the example, from 2.5 MiB to 40 KiB per token.
+**Multi-query attention** (MQA) takes the extreme position: all query heads attend to a single shared key-value head.[^1] $H_{kv} = 1$, so cache drops by a factor of $H_q$: 64x in the example, from 2.5 MiB to 40 KiB per token.
 
 **Grouped-query attention** (GQA) interpolates: $H_q$ query heads are partitioned into $G$ groups, each sharing one key-value head.[^2] $H_{kv} = G$, and $G = H_q$ recovers MHA while $G = 1$ recovers MQA.
 
@@ -43,13 +43,13 @@ $$
 \text{cache ratio} = \frac{G}{H_q}
 $$
 
-The GQA paper's central practical finding is that an existing MHA checkpoint can be converted by mean-pooling the key and value projections within each group and then uptraining on a small fraction of the original compute — roughly 5% — reaching quality close to the original MHA model while serving at near-MQA speed. That result is why GQA became the default rather than a from-scratch design choice: it is a conversion, not a retraining.
+The GQA paper's central practical finding is that an existing MHA checkpoint can be converted by mean-pooling the key and value projections within each group and then uptraining on roughly 5% of the original compute, reaching quality close to the original MHA model while serving at near-MQA speed. That result is why GQA became the default rather than a from-scratch design choice: it is a conversion, not a retraining.
 
 $G = 8$ is the common landing point across model families. It gives an 8x cache reduction at $H_q = 64$ with quality loss that is small on most benchmarks.
 
 ## What sharing actually costs
 
-The naive intuition — fewer key-value heads means less capacity — is roughly right but misplaced in where the damage appears.
+The naive intuition, that fewer key-value heads means less capacity, is roughly right but misplaced in where the damage appears.
 
 Aggregate benchmark scores move very little between MHA and GQA at $G = 8$. What degrades measurably is long-context retrieval: tasks requiring exact recall of a specific span from far back in the context. Each query head under MQA attends to the same key space, so heads lose the ability to specialize their retrieval patterns independently. Induction-style heads that copy from earlier positions are exactly the mechanism this constrains.
 
@@ -75,7 +75,7 @@ Cached bytes per token become $L d_c b$ rather than $2 L H_{kv} d_h b$. With $d_
 
 The up-projection matrices can be absorbed into the query and output projections algebraically, so the reconstruction does not add a separate matrix multiply at inference. That absorption is what makes MLA practical rather than a memory-for-compute trade.
 
-Rotary position embeddings complicate this. RoPE applies a position-dependent rotation to keys, which does not commute with the up-projection, so the absorption trick breaks. The published solution is a decoupled design: a small portion of each head carries RoPE directly and is cached separately, while the bulk stays in the latent. It is genuinely more complex than GQA, and that complexity is the main reason adoption has been narrower despite the better frontier.
+Rotary position embeddings complicate this. RoPE applies a position-dependent rotation to keys, which does not commute with the up-projection, so the absorption trick breaks. The published solution is a decoupled design: a small portion of each head carries RoPE directly and is cached separately, while the bulk stays in the latent. That decoupling is more complex than GQA, and it is the main reason adoption has been narrower despite the better cache-versus-quality frontier.
 
 ## Comparison
 
@@ -84,7 +84,7 @@ Rotary position embeddings complicate this. RoPE applies a position-dependent ro
 | MHA             | $H_q$    | 1                   | Full                       | Baseline               |
 | GQA, $G$ groups | $G$      | $G / H_q$           | Within groups only         | Trivial                |
 | MQA             | 1        | $1 / H_q$           | None                       | Trivial                |
-| MLA             | —        | $d_c / (2 H_q d_h)$ | Retained via up-projection | High, RoPE interaction |
+| MLA             | n/a      | $d_c / (2 H_q d_h)$ | Retained via up-projection | High, RoPE interaction |
 
 ## Working backwards from a serving target
 
@@ -104,7 +104,7 @@ def max_kv_heads(device_bytes, tp, weight_bytes, workspace,
     return free // (per_token_per_head * concurrency * context)
 ```
 
-Round down to a power of two that divides $H_q$, and that is the group count. If it comes out below 1, the target is infeasible and something else has to give — context length, concurrency, cache precision, or the model.
+Round down to a power of two that divides $H_q$, and that is the group count. If it comes out below 1, the target is infeasible and something else has to give: context length, concurrency, cache precision, or the model.
 
 Two adjustments are usually available before changing the architecture. Quantizing the cache to FP8 halves $b$, which is equivalent to doubling the allowed head count and is often the cheaper move. And sliding-window attention on a subset of layers bounds $S$ for those layers, which can be a larger saving than any head-count change.
 
@@ -112,9 +112,9 @@ Two adjustments are usually available before changing the architecture. Quantizi
 
 **Cache quantization composes but not freely.** GQA at $G=8$ plus FP8 cache gives 16x over MHA at FP16. But fewer key-value heads means each cached value carries more of the model's retrieval capacity, so quantization error has more leverage. Measure the combination, not each independently.
 
-**Kernel efficiency changes with $G$.** With few key-value heads, the same K and V are read by many query heads, which is a favorable access pattern — the shared data stays in on-chip memory. A well-written GQA kernel is faster per token than an MHA kernel beyond the cache saving. A kernel that materializes the shared heads per query head instead throws that away.
+**Kernel efficiency changes with $G$.** With few key-value heads, the same K and V are read by many query heads, which is a favorable access pattern, since the shared data stays in on-chip memory. A well-written GQA kernel is faster per token than an MHA kernel beyond the cache saving. A kernel that materializes the shared heads per query head instead throws that away.
 
-**Tensor parallelism has a floor.** Key-value heads are partitioned across ranks. With $G = 8$ and $P = 16$, ranks either duplicate heads or sit idle. Aggressive GQA and aggressive tensor parallelism conflict, and the resolution is usually to duplicate — which silently negates part of the memory saving.
+**Tensor parallelism has a floor.** Key-value heads are partitioned across ranks. With $G = 8$ and $P = 16$, ranks either duplicate heads or sit idle. Aggressive GQA and aggressive tensor parallelism conflict, and the resolution is usually to duplicate, which silently negates part of the memory saving.
 
 **Speculative decoding amplifies the win.** Verification processes several draft tokens per step, so per-token cache cost multiplies. A smaller cache makes deeper speculation affordable.
 
@@ -123,12 +123,12 @@ Two adjustments are usually available before changing the architecture. Quantizi
 The protocol that catches what benchmarks miss:
 
 1. **Retrieval at target context.** Needle-in-haystack at the maximum supported length, with the needle placed across the full range of depths. Report worst position, not average.
-2. **Multi-reference tasks.** Questions requiring several distinct spans simultaneously — this is where reduced head diversity shows up first.
+2. **Multi-reference tasks.** Questions requiring several distinct spans simultaneously. This is where reduced head diversity shows up first.
 3. **Long-form coherence.** Generation quality at long output lengths, where cache degradation compounds.
 4. **Realized concurrency.** Measured, not computed: fragmentation and workspace mean the theoretical number is optimistic.
 5. **Goodput at the SLO.** The number that translates the architecture choice into cost.
 
-The last one is the point of the exercise. A 5% relative drop on a retrieval benchmark that buys 8x concurrency is usually the right trade, and stating it that way — rather than as a quality regression to be avoided — is how the decision should be framed.
+The last one is the point of the exercise. A 5% relative drop on a retrieval benchmark that buys 8x concurrency is usually the right trade, Stating it that way, rather than as a quality regression to be avoided, is how the decision should be framed.
 
 ## References
 

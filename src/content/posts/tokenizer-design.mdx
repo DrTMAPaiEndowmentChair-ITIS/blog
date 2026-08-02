@@ -4,14 +4,14 @@ pubDate: 2026-08-01
 author: 'Aadit Agrawal'
 category: 'Models & Training'
 description: 'Treat vocabulary size as a compute allocation: fertility, embedding cost, multilingual fairness, and the failure modes tokenizers cause.'
-topics: ['Tokenizers', 'Vocabulary', 'Architecture']
+topics: ['Tokenization', 'Architecture', 'Training']
 ---
 
 import VocabCostCurve from '../../components/viz/VocabCostCurve.astro'
 
 The tokenizer is chosen early, rarely revisited, and impossible to change afterwards without retraining. It determines the sequence length for every document the model will ever see, the size of two of its largest matrices, how much non-English users pay per request, and a specific family of reasoning failures that look like model deficiencies but are not.
 
-For a component with those properties, it receives remarkably little design attention.
+For a component with those properties, it receives little design attention.
 
 <VocabCostCurve />
 
@@ -23,7 +23,7 @@ $$
 F = \frac{\text{tokens}}{\text{words}}
 $$
 
-For English, a well-fitted 32k BPE vocabulary lands around 1.3. For languages written in scripts underrepresented in the training corpus, the same tokenizer can produce 3 to 5. This is not a small inefficiency — it means the same semantic content costs several times more, consumes several times more of the context window, and is billed several times more.
+For English, a well-fitted 32k BPE vocabulary lands around 1.3. For languages written in scripts underrepresented in the training corpus, the same tokenizer can produce 3 to 5. This is not a small inefficiency: the same semantic content costs several times more, consumes several times more of the context window, and is billed several times more.
 
 Fertility is also compute. Attention is quadratic in sequence length during prefill and linear per token during decode. A fertility ratio of 3 between two languages means a factor of 3 in decode cost and up to 9 in prefill attention for the same content.
 
@@ -35,7 +35,7 @@ $$
 P_{\text{vocab}} = V \cdot d_{\text{model}} \times (1 + \mathbb{1}[\text{untied}])
 $$
 
-At $V = 128\text{k}$ and $d_{\text{model}} = 8192$ with untied embeddings, that is 2.1B parameters — a meaningful fraction of a mid-sized model, spent entirely on the interface between text and hidden states.
+At $V = 128\text{k}$ and $d_{\text{model}} = 8192$ with untied embeddings, that is 2.1B parameters, a meaningful fraction of a mid-sized model, spent entirely on the interface between text and hidden states.
 
 The softmax cost is the other side. Every generated token requires a projection to $V$ logits, which at large $V$ becomes a nontrivial share of per-token work, and the logit tensor itself becomes a real memory allocation in a large batch.
 
@@ -44,7 +44,7 @@ The tradeoff:
 - Sequence length savings apply at **every layer, every token** and compound with context length.
 - Embedding cost is paid **once in parameters** and **once per token** at the output projection.
 
-Doubling the vocabulary yields diminishing fertility improvements — Zipf's law means each doubling covers progressively rarer strings — while parameter cost grows linearly. The optimum has moved upward over time as models got wider and multilingual coverage became a priority: 32k was standard, 128k is now common, and 256k appears in the most multilingual designs.
+Doubling the vocabulary yields diminishing fertility improvements, because Zipf's law means each doubling covers progressively rarer strings, while parameter cost grows linearly. The optimum has moved upward over time as models got wider and multilingual coverage became a priority: 32k was standard, 128k is now common, and 256k appears in the most multilingual designs.
 
 Empirical work on vocabulary scaling finds that optimal vocabulary size grows with model size, and that many models are under-vocabularized relative to their compute budget.[^1] The reasoning is the same as any scaling-law allocation: the embedding parameters compete with depth and width for a fixed budget, and the balance shifts as the budget grows.
 
@@ -54,15 +54,15 @@ Empirical work on vocabulary scaling finds that optimal vocabulary size grows wi
 
 **WordPiece** is similar but selects merges by likelihood improvement rather than raw frequency.
 
-**Unigram** starts from a large candidate set and prunes to maximize corpus likelihood under a unigram model, which yields a probabilistic segmentation and enables subword regularization — sampling different segmentations during training as an augmentation.
+**Unigram** starts from a large candidate set and prunes to maximize corpus likelihood under a unigram model, which yields a probabilistic segmentation and enables subword regularization, meaning different segmentations are sampled during training as an augmentation.
 
 **Byte-level fallback** guarantees no out-of-vocabulary input by allowing any byte as a token. Every modern tokenizer includes this. The safety is real; the cost is that rare scripts degrade to near-byte-level fertility.
 
-The pre-tokenization regex matters as much as the algorithm. It decides where merges may not cross — typically at whitespace and punctuation boundaries, with special handling for digits and contractions. Two tokenizers with the same algorithm and vocabulary size but different pre-tokenization patterns produce meaningfully different vocabularies.
+The pre-tokenization regex matters as much as the algorithm. It decides where merges may not cross, typically at whitespace and punctuation boundaries, with special handling for digits and contractions. Two tokenizers with the same algorithm and vocabulary size but different pre-tokenization patterns produce meaningfully different vocabularies.
 
 ## Failure modes that look like model failures
 
-**Arithmetic.** If numbers tokenize inconsistently — `1234` as one token, `1235` as two — the model must learn arithmetic over a representation where digit position is not consistently exposed. Splitting numbers into individual digits, or into fixed groups of three, measurably improves arithmetic. This is a pure tokenizer fix for what is invariably reported as a reasoning limitation.
+**Arithmetic.** If numbers tokenize inconsistently, with `1234` as one token and `1235` as two, the model must learn arithmetic over a representation where digit position is not consistently exposed. Splitting numbers into individual digits, or into fixed groups of three, measurably improves arithmetic. This is a pure tokenizer fix for what is invariably reported as a reasoning limitation.
 
 **Character-level tasks.** Counting letters in a word is hard when the word is one token. The model has no direct access to the characters; it must have learned the spelling as a property of the token embedding. The well-known counting failures are tokenization artifacts, not reasoning failures.
 
@@ -82,7 +82,7 @@ The consequences are concrete and asymmetric:
 - **Context.** A fixed context window holds several times less text.
 - **Quality.** Longer sequences for the same content mean more positions to model and, empirically, worse performance.
 
-Mitigation is a corpus-sampling decision at tokenizer training time. Upsampling low-resource languages when fitting the tokenizer — independently of the model's training mix — raises their vocabulary allocation and lowers their fertility, at some cost to English fertility. Given how much larger the effect is for the disadvantaged languages, the trade is usually clearly worth making.
+Mitigation is a corpus-sampling decision at tokenizer training time. Upsampling low-resource languages when fitting the tokenizer, independently of the model's training mix, raises their vocabulary allocation and lowers their fertility, at some cost to English fertility. Given how much larger the effect is for the disadvantaged languages, the trade is usually clearly worth making.
 
 Measure it directly:
 
@@ -113,7 +113,7 @@ def init_new_token(new_str, old_tok, old_emb):
     return old_emb[pieces].mean(dim=0)
 ```
 
-Then train, typically with a lower learning rate on the embedding layer than on the rest. Even so, expect some regression on the original distribution — extension is not free, and for a large change a fresh tokenizer plus full training is often cleaner.
+Then train, typically with a lower learning rate on the embedding layer than on the rest. Even so, expect some regression on the original distribution. Extension is not free, and for a large change a fresh tokenizer plus full training is often cleaner.
 
 ## Choosing
 
@@ -122,7 +122,7 @@ The decision sequence:
 1. **Fit the vocabulary to the actual deployment mix**, not to a general web corpus, and upsample underrepresented languages when fitting.
 2. **Size it against model width.** Larger $d_{\text{model}}$ supports a larger vocabulary before embedding cost dominates. Frontier-scale models sit at 128k–256k.
 3. **Handle numbers explicitly.** Digit-level or fixed-group splitting.
-4. **Reserve special tokens generously.** Adding them later means resizing the embedding, and running out mid-project is a genuinely annoying problem.
+4. **Reserve special tokens generously.** Adding them later means resizing the embedding, and running out mid-project forces a resize that invalidates every existing checkpoint.
 5. **Decide tying deliberately.** Tied input and output embeddings halve the vocabulary parameter cost with modest quality effect at large scale; untied is standard at frontier scale where the parameters are affordable.
 6. **Train tokenizer and model on the same corpus** to avoid glitch tokens.
 7. **Measure fertility across the deployment mix before committing.** This is the last cheap moment to change it.
