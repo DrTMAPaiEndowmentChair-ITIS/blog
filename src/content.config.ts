@@ -16,6 +16,9 @@ const posts = defineCollection({
       category: z.enum(POST_CATEGORIES),
       description: z.string(),
       topics: z.array(z.string()).default([]),
+      // Pins a post to the front of the hero mosaic, which otherwise shows the
+      // most recent work. Temporary promotions only: a pin outranks every post
+      // published after it until removed. At most two pins are honoured.
       featured: z.boolean().default(false)
     })
 })

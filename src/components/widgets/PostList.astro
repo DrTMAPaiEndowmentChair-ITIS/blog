@@ -79,15 +79,18 @@ const primaryTopics = allTopics.slice(0, PRIMARY_TOPICS)
 const overflowTopics = allTopics.slice(PRIMARY_TOPICS)
 
 // The hero mosaic wants exactly three slots: one lead card and two stacked
-// beside it. Rank `featured: true` posts ahead of the rest, then fill slots
-// with the highest-ranked post from a category not already on show — two cards
-// from one category would draw the same motif family and read as duplicates.
-// Only if that runs out do we allow a repeat, so the mosaic is never short.
+// beside it. `posts` arrives newest-first, so the default mosaic is simply the
+// most recent work and needs no upkeep as posts land.
+//
+// `featured: true` pins a post to the front of that order. It is an override
+// for a deliberate, temporary promotion, not the normal way to fill the hero:
+// a pin left in place outranks every later post indefinitely, which is how the
+// mosaic goes stale. Pins are capped below the slot count so at least one slot
+// always tracks recency and a forgotten pin can never freeze the whole mosaic.
 const HERO_SLOTS = 3
-const ranked = [
-  ...posts.filter((post) => post.data.featured),
-  ...posts.filter((post) => !post.data.featured)
-]
+const MAX_PINS = HERO_SLOTS - 1
+const pinned = posts.filter((post) => post.data.featured).slice(0, MAX_PINS)
+const ranked = [...pinned, ...posts.filter((post) => !pinned.includes(post))]
 
 const heroPosts: typeof posts = []
 const usedCategories = new Set<string>()
