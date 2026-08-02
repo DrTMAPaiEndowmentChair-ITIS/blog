@@ -1,0 +1,138 @@
+---
+title: 'Inference SLOs: TTFT, TPOT, and Why Throughput Is the Wrong Target'
+pubDate: 2026-07-17
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: 'Define latency objectives for streaming generation, model the queueing behind them, and benchmark goodput instead of peak tokens per second.'
+topics: ['SLO', 'Latency', 'Benchmarking']
+---
+
+import LatencyThroughputFrontier from '../../components/viz/LatencyThroughputFrontier.astro'
+
+"Tokens per second" is reported for a deployment as if it were a single quantity. It is at least three: how fast a single stream produces tokens, how many tokens the replica produces across all streams, and how many tokens reach a user within an acceptable time. Optimizing the second at the expense of the third is the most common mistake in inference capacity planning, and it is easy to make because the second number is the one benchmarks print.
+
+<LatencyThroughputFrontier />
+
+## The quantities
+
+**TTFT — time to first token.** Queue wait plus prefill. What a user perceives as responsiveness. Scales with prompt length and with load.
+
+**TPOT — time per output token.** Steady-state inter-token latency during decode. Determines whether streaming text feels smooth. Roughly constant per replica configuration, degrading with batch size.
+
+**End-to-end latency.** $\text{TTFT} + \text{TPOT} \times (\ell - 1)$ for an $\ell$-token response.
+
+**Throughput.** Output tokens per second across all concurrent requests on a replica.
+
+**Goodput.** Throughput counting only requests that met their SLO. This is the number that maps to delivered value, and it is the one nobody reports by default.
+
+The distinction between the last two is the whole argument. Throughput rises monotonically with load until saturation. Goodput rises, peaks, and then falls — because past a point, additional load pushes requests past their deadline, and a request that misses its deadline consumed resources and delivered nothing.
+
+## Setting the numbers from the interaction
+
+SLOs should come from what the response is for, not from what the hardware happens to do.
+
+| Interaction             | TTFT target | TPOT target | Rationale                                   |
+| ----------------------- | ----------- | ----------- | ------------------------------------------- |
+| Chat, streamed          | < 500 ms    | < 50 ms     | ~20 tok/s exceeds comfortable reading speed |
+| Code completion, inline | < 200 ms    | < 30 ms     | Competes with the user's own typing         |
+| Agent tool-call step    | < 1 s       | Irrelevant  | Nothing is streamed to a human              |
+| Batch summarization     | Minutes     | Irrelevant  | Only end-to-end throughput matters          |
+| Voice, real-time        | < 300 ms    | < 25 ms     | Must outrun speech synthesis                |
+
+Two observations. For non-streamed workloads TPOT is not a user-facing quantity at all, and enforcing a TPOT SLO there simply lowers throughput for no benefit. And for agentic workloads, the meaningful latency is the sum over the whole trajectory — a ten-step agent with a one-second per-step budget is a ten-second interaction, so per-step SLOs must be derived from the trajectory budget rather than set independently.
+
+This is why one deployment cannot serve every workload well. A replica pool tuned for interactive chat runs at a batch size that leaves throughput on the table; the same pool tuned for batch work has interactive TPOT far outside target. Separate pools with separate configurations is usually cheaper than one compromise pool.
+
+## Why the tradeoff exists
+
+Decode is memory bound. Producing one token for one sequence requires reading all model weights. Producing one token for $n$ sequences requires reading them once. Per-step time is roughly:
+
+$$
+T_{\text{step}}(n) \approx \underbrace{\frac{W}{B_{\text{mem}}}}_{\text{weights, constant in } n} + \underbrace{n \cdot \frac{K}{B_{\text{mem}}}}_{\text{KV reads}} + \underbrace{f_{\text{compute}}(n)}_{\text{negligible until saturation}}
+$$
+
+Throughput is $n / T_{\text{step}}(n)$ and TPOT is $T_{\text{step}}(n)$. At small $n$ the constant weight term dominates, so doubling $n$ nearly doubles throughput at nearly unchanged TPOT — this is free money and the reason batching exists. As $n$ grows, the KV term and then compute saturation make $T_{\text{step}}$ grow linearly, and throughput flattens while TPOT keeps climbing.
+
+The KV term is why attention architecture shows up in a latency budget. A model with GQA at 8 groups has one eighth the per-sequence KV read of full multi-head attention, which moves the knee to a much larger batch size. Memory-efficient attention is a latency feature, not only a capacity feature.
+
+## Queueing puts the tail where it is
+
+Utilization determines the tail more than service time does. Under M/M/1-ish assumptions the expected wait is:
+
+$$
+W = \frac{\rho}{1 - \rho} \cdot \frac{1}{\mu}
+$$
+
+At $\rho = 0.5$, wait is one service time. At $\rho = 0.9$, nine. At $\rho = 0.95$, nineteen. LLM serving is not M/M/1 — service times are heavy-tailed because output lengths are — but the shape holds and is worse: high service-time variance amplifies the tail further.
+
+Two practical consequences.
+
+**Target utilization must leave headroom.** Running a replica pool at 90% average utilization guarantees a bad p99 even if the mean looks fine. Interactive pools generally need to sit at 60–75%.
+
+**Variance is a lever.** Chunked prefill exists partly to reduce service-time variance: bounding step time bounds the variance that queueing theory then amplifies. Reducing variance improves the tail more than a proportional reduction in mean service time.
+
+## Benchmarking that means something
+
+A benchmark that reports one number at one concurrency is not usable for capacity planning. What is needed is a sweep that produces the goodput curve.
+
+```python
+def sweep(client, workload, concurrencies, slo):
+    rows = []
+    for c in concurrencies:
+        r = run_closed_loop(client, workload, concurrency=c, duration_s=180)
+        met = [x for x in r.requests
+               if x.ttft <= slo.ttft and x.tpot_p50 <= slo.tpot]
+        rows.append({
+            "concurrency": c,
+            "throughput_tok_s": r.output_tokens / r.wall_s,
+            "goodput_tok_s": sum(x.output_tokens for x in met) / r.wall_s,
+            "ttft_p50": pct(r, "ttft", 50),
+            "ttft_p99": pct(r, "ttft", 99),
+            "tpot_p50": pct(r, "tpot", 50),
+            "tpot_p99": pct(r, "tpot", 99),
+            "slo_attainment": len(met) / len(r.requests),
+        })
+    return rows
+```
+
+The operating point is the concurrency that maximizes `goodput_tok_s`, not `throughput_tok_s`. On most configurations these differ substantially, and the goodput peak sits well to the left.
+
+Details that decide whether the numbers transfer to production:
+
+**Use the real length distribution.** Fixed 512-in/128-out prompts produce a benchmark whose variance is zero and whose queueing behavior therefore bears no relation to production. Replay a sampled length distribution from actual traffic.
+
+**Reproduce prefix structure.** If production requests share a long system prompt, a benchmark with unique prompts measures a workload with no cache reuse and will overstate cost by a large factor. If they do not share prefixes and the benchmark reuses one prompt, it understates it by the same factor.
+
+**Open loop for latency, closed loop for capacity.** A closed-loop harness with fixed concurrency cannot produce a queue, because it never sends more than the system can absorb. Latency SLOs must be measured under Poisson arrivals at a fixed rate; only then does the tail reflect real queueing.
+
+**Warm first.** The first requests pay autotuning, workspace allocation, and graph capture. Discard them explicitly rather than letting them inflate the p99.
+
+**Report tokenizer-consistent counts.** Tokens per second is meaningless across models with different vocabularies. Characters or words per second is more comparable when comparing model families; tokens per second is fine within one.
+
+## Where the tail actually comes from
+
+When p99 TTFT is far above p50, the cause is usually one of a short list:
+
+**Long-prompt convoys.** One large prefill stalls every stream on the replica. Fixed by chunked prefill; visible as a step-time spike correlated with prompt length.
+
+**Preemption.** Under cache pressure the scheduler swaps or recomputes a running request, and that request's TPOT includes a full stall. Visible in the preemption counter.
+
+**Cold replicas.** An autoscaling event adds a replica that receives traffic before warmup finishes. Every request routed there in the first seconds is slow. Fixed by readiness gating, not by scaling policy.
+
+**Head-of-line blocking in the queue.** FIFO plus a heavy-tailed prompt distribution puts occasional enormous requests in front of everything.
+
+**Cross-tenant interference.** In multi-tenant deployments, one tenant's burst degrades another's tail. Per-tenant rate limits and separate SLO accounting are the only real fix.
+
+Each of these has a distinct signature. Chasing p99 without separating them produces a lot of tuning and little improvement.
+
+## An error budget for latency
+
+Latency SLOs are more useful stated as attainment rather than as a percentile:
+
+> 99% of chat requests over a rolling 28 days have TTFT ≤ 500 ms and median TPOT ≤ 50 ms.
+
+That formulation gives an error budget: 1% of requests may miss. The budget makes tradeoffs explicit and decidable. Enough budget remaining means capacity can be pushed for cost. Budget nearly exhausted means the next change should be headroom, not a feature.
+
+It also disciplines the reporting. A single p99 over an arbitrary window can be gamed by window choice; attainment over a fixed window cannot.
+
+Peak throughput remains a useful number — it bounds what is possible. But nothing in a deployment should be tuned to it, because it is achieved at an operating point where a large fraction of requests are already failing their objective.

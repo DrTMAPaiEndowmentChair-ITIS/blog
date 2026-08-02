@@ -1,0 +1,248 @@
+---
+// A model hub is a content-addressed CDN with a package manager on top
+---
+
+<figure class="viz" aria-labelledby="htp-title" data-htp-motion>
+  <div class="viz-header">
+    <figcaption id="htp-title">
+      A model hub is a content-addressed CDN with a package manager on top
+    </figcaption>
+    <button
+      type="button"
+      data-replay
+      aria-label="Replay a model hub is a content-addressed cdn with a package manager on top"
+      >Replay</button
+    >
+  </div>
+  <div class="rail"><b>Repository revision</b><span>commit hash, not a branch name</span></div>
+  <div class="paths">
+    <section style={`--delay:${170}ms`}>
+      <>
+        <strong>Resolve</strong>
+        <div>
+          <span style={`--delay:${300}ms`}>repo id</span>
+          <span style={`--delay:${355}ms`}>revision</span>
+          <span style={`--delay:${410}ms`}>file list</span>
+        </div>
+        <small>A tag or branch can move; a commit hash pins the exact bytes.</small>
+      </>
+    </section>
+    <section style={`--delay:${320}ms`}>
+      <>
+        <strong>Transfer</strong>
+        <div>
+          <span style={`--delay:${450}ms`}>content-defined chunking</span>
+          <span style={`--delay:${505}ms`}>dedup against cache</span>
+          <span style={`--delay:${560}ms`}>parallel ranges</span>
+        </div>
+        <small>Unchanged chunks are skipped entirely across revisions and across models.</small>
+      </>
+    </section>
+    <section style={`--delay:${470}ms`}>
+      <>
+        <strong>Admit</strong>
+        <div>
+          <span style={`--delay:${600}ms`}>checksum</span>
+          <span style={`--delay:${655}ms`}>format check</span>
+          <span style={`--delay:${710}ms`}>provenance</span>
+        </div>
+        <small
+          >A checkpoint is executable input; treat an unpinned download as untrusted code.</small
+        >
+      </>
+    </section>
+  </div>
+  <div class="rail alt"><b>Local cache</b><span>deduplicated blobs, symlinked snapshots</span></div>
+  <div class="legend">
+    <i></i> Reproducibility and supply-chain safety come from the same field: the pinned revision
+  </div>
+</figure>
+
+<style>
+  .viz {
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    font: 600 var(--font-size-s) var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .viz-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.2rem;
+  }
+  button {
+    min-width: 4.5rem;
+    min-height: 2.75rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    font: 0.72rem var(--mono);
+    cursor: pointer;
+    transition:
+      transform 140ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  button:active {
+    transform: scale(0.97);
+  }
+  button:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
+  }
+  .rail {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.7rem 1rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    font: 0.78rem var(--mono);
+  }
+  .rail span {
+    color: var(--text-tertiary);
+    text-align: right;
+  }
+  .rail.alt {
+    border-style: dashed;
+  }
+  .paths {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.8rem;
+    margin: 0.8rem 0;
+  }
+  .paths section {
+    padding: 1rem;
+    border-left: 3px solid var(--text-secondary);
+    background: var(--bg);
+  }
+  section strong {
+    font: 0.8rem var(--mono);
+  }
+  section div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0.7rem 0;
+  }
+  section span {
+    font: 0.7rem var(--mono);
+    padding: 0.3rem 0.4rem;
+    border: 1px solid var(--border);
+  }
+  section small {
+    display: block;
+    font: 0.72rem var(--mono);
+    color: var(--text-tertiary);
+    line-height: 1.5;
+  }
+  .legend {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    font: 0.78rem var(--mono);
+    color: var(--text-secondary);
+  }
+  .legend i {
+    display: inline-block;
+    width: 18px;
+    border-top: 3px solid var(--text-secondary);
+    margin-right: 0.5rem;
+  }
+  .motion-ready:not(.is-running) .rail,
+  .motion-ready:not(.is-running) .paths section,
+  .motion-ready:not(.is-running) .paths section span,
+  .motion-ready:not(.is-running) .legend {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  .motion-ready.is-running .rail:not(.alt) {
+    animation: htp-enter 320ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .paths section {
+    animation: htp-enter 320ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .paths section span {
+    animation: htp-enter 300ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .rail.alt {
+    animation: htp-enter 320ms 900ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .legend {
+    animation: htp-enter 300ms 1020ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  @keyframes htp-enter {
+    from {
+      opacity: 0;
+      transform: translateY(7px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @media (hover: hover) and (pointer: fine) {
+    button:hover {
+      opacity: 0.72;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button {
+      display: none;
+    }
+    .motion-ready * {
+      animation: none !important;
+      opacity: 1 !important;
+    }
+  }
+  @media (max-width: 620px) {
+    .viz-header {
+      align-items: flex-start;
+    }
+    .paths {
+      grid-template-columns: 1fr;
+    }
+    .rail {
+      display: grid;
+      gap: 0.3rem;
+    }
+    .rail span {
+      text-align: left;
+    }
+  }
+</style>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-htp-motion]').forEach((figure) => {
+    if (figure.dataset.motionBound || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    figure.dataset.motionBound = 'true'
+    figure.classList.add('motion-ready')
+
+    const play = () => {
+      figure.classList.remove('is-running')
+      void figure.offsetWidth
+      figure.classList.add('is-running')
+    }
+
+    figure.querySelector('[data-replay]')?.addEventListener('click', play)
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return
+        play()
+        observer.disconnect()
+      },
+      { threshold: 0.35 }
+    )
+    observer.observe(figure)
+  })
+</script>

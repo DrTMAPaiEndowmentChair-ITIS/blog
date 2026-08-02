@@ -1,0 +1,143 @@
+---
+title: 'Cold Starts: Getting Model Weights from Storage into HBM'
+pubDate: 2026-07-05
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: 'Break down the cold-start path for large models across object storage, page cache, PCIe, and snapshot restore, then measure each stage.'
+topics: ['Cold start', 'Weight loading', 'Autoscaling']
+---
+
+import WeightLoadPath from '../../components/viz/WeightLoadPath.astro'
+
+Serving benchmarks report tokens per second on a warm replica. Autoscaling behavior is decided by a different number: how long a replica takes to go from scheduled to serving. For a large model that number is dominated by moving tens or hundreds of gigabytes through a chain of increasingly fast, increasingly small memories.
+
+Cold start is a bandwidth problem with a scheduling problem layered on top. Both are measurable, and most deployments are slow for reasons that have nothing to do with the model.
+
+<WeightLoadPath />
+
+## The chain and its rates
+
+A checkpoint that lives in object storage and must end up in HBM crosses several boundaries, each with its own achievable rate:
+
+| Hop                          | Typical achievable rate | Notes                                            |
+| ---------------------------- | ----------------------- | ------------------------------------------------ |
+| Object store → node          | 1–12 GiB/s              | Depends on network tier and parallel connections |
+| Local NVMe → page cache      | 2–14 GiB/s              | Per-device; often striped                        |
+| Page cache → pinned host buf | 5–20 GiB/s              | A memory copy, but a real one                    |
+| Pinned host → HBM (PCIe 5)   | ~50 GiB/s               | ~25 GiB/s on PCIe 4                              |
+| Pageable host → HBM          | 5–15 GiB/s              | Driver stages through an internal pinned buffer  |
+
+Lower bound on cold start, ignoring overlap:
+
+$$
+T_{\text{cold}} \geq \frac{S}{B_{\text{net}}} + \frac{S}{B_{\text{h2d}}}
+$$
+
+For a 140 GiB checkpoint at 3 GiB/s network and 20 GiB/s effective host-to-device, that is roughly 47 + 7 = 54 seconds. Deployments routinely see three to five times that, and the gap is almost always one of a small number of causes.
+
+## Where the time actually goes
+
+**Pageable transfers.** `tensor.to("cuda")` from ordinary heap memory cannot DMA directly. The driver copies into an internal pinned staging buffer first, so every byte is copied twice and the transfer runs at a fraction of link rate. The fix is pinned staging buffers you control, reused across chunks rather than allocated per tensor.
+
+**Serialized stages.** Fetch, then copy, then transfer, with nothing overlapping. The stages use different resources — NIC, CPU, PCIe — and should be pipelined. Overlapping the network fetch of chunk `n+1` with the device transfer of chunk `n` brings the total close to `S / min(B_net, B_h2d)` rather than the sum.
+
+**Per-tensor overhead.** A large model has thousands of tensors. If each one triggers a separate allocation, a separate transfer, and a separate synchronize, launch and synchronization overhead can dominate the actual bytes. Batch small tensors into a single staged buffer.
+
+**Single-stream fetch.** Object stores deliver bandwidth through concurrency. A single-threaded `GET` of a 140 GiB file will not saturate anything. Ranged parallel reads across many connections are the difference between 300 MiB/s and multiple GiB/s.
+
+**Deserialize-then-copy.** Formats that require a parse or decompression step insert a CPU-bound stage between storage and PCIe. A memory-mappable format removes that stage entirely; this is one of the main practical arguments for safetensors.
+
+## Memory mapping and the page cache
+
+`mmap` maps file pages into the process address space without an eager read. Pages fault in on access. This is why a mapped load looks nearly instantaneous the second time — the pages are already in the page cache, and the "load" is address-space bookkeeping.
+
+Two implications:
+
+**A warm benchmark measures nothing about cold start.** Drop caches, or measure on a genuinely fresh node, or the result is a page-table exercise.
+
+**A mapped tensor is not resident memory.** Sizing a container's memory limit from RSS after a mapped load will under-provision, because page-cache pages are reclaimable and may not be counted the way you expect. Under memory pressure the kernel evicts them, and the next access re-reads from disk mid-request.
+
+Sequential access order matters when the pages are not resident. Faulting in a 140 GiB file in tensor-declaration order, when the payload is laid out in a different order, turns a sequential read into a seek pattern. Iterate in offset order and let readahead work.
+
+## Node-local caching
+
+The first replica on a node pays the network cost. Every subsequent replica, and every restart, should not.
+
+A local NVMe cache keyed by content hash turns the steady-state cold start into a local read. The policy that matters is eviction: LRU over checkpoint files is usually wrong because it ignores both size and refetch cost. A cost-aware score works better:
+
+$$
+\text{value}(m) = \frac{\widehat{p_{\text{restart}}}(m) \cdot \frac{S_m}{B_{\text{net}}}}{S_m} = \frac{\widehat{p_{\text{restart}}}(m)}{B_{\text{net}}}
+$$
+
+which reduces to "keep what is most likely to be needed again," because refetch time is proportional to size and so cancels. The useful refinement is per-model network cost, since not all checkpoints come from the same tier of storage.
+
+For clusters that support it, GPUDirect Storage moves data from NVMe to HBM over PCIe without a bounce through host memory, removing one full copy. It requires a supported filesystem and driver stack, and it interacts badly with anything that wants to transform bytes on the way through — another argument for a format whose on-disk layout is the in-memory layout.
+
+## Snapshot and restore
+
+The fastest load is the one that does not happen. If a process reaches a known-good state after loading, that state can be captured and restored.
+
+CRIU-style checkpointing of a GPU process, plus device-memory snapshotting, lets a replica skip parsing, allocation, and initialization entirely and resume from a memory image. Serverless GPU platforms use this to reach sub-second starts for models that take a minute to load conventionally.
+
+The constraints are real:
+
+- The restore target must match the source in GPU model, driver version, and CUDA context assumptions.
+- Any open file descriptor, socket, or clock-dependent state in the snapshot must be re-established.
+- The snapshot is roughly the size of the resident footprint, so it is not free storage-wise.
+
+Snapshot restore is worth building when the model set is small and stable and the scale-up rate is high. It is not worth building for a long tail of rarely used models, where the cache-and-stream path is simpler and nearly as good.
+
+## Overlapping load with the first request
+
+Weights are needed in layer order. A forward pass through layer 0 cannot start before layer 0's weights are resident, but it does not need layer 40's.
+
+That allows a genuine pipeline: begin prefill as soon as the early layers land, and continue streaming later layers while early layers compute. The gain is bounded by the ratio of compute time to transfer time, which for a single prefill is usually unfavorable — the transfer is much slower — so this mostly helps the first request rather than the replica's readiness overall.
+
+The more valuable version is admission control that understands partial readiness. A replica that reports healthy the moment its process starts will receive traffic it cannot serve, and the load balancer will record timeouts. A replica that reports readiness only after a successful synthetic forward pass will not.
+
+```python
+async def readiness(engine):
+    if not engine.weights_resident:
+        return 503, {"stage": "loading", "pct": engine.load_progress}
+    if not engine.warmed:
+        return 503, {"stage": "warming"}
+    return 200, {"stage": "ready"}
+```
+
+The warm stage matters more than it looks. The first forward pass triggers kernel autotuning, workspace allocation, and, for compiled backends, graph capture. A replica that skips warmup serves its first several requests at several times the steady-state latency, which lands directly in the tail-latency SLO.
+
+## A measurement harness
+
+Reporting one total is not actionable. Instrument the stages separately and report them as a fixed set of spans:
+
+```python
+STAGES = ["fetch", "map", "stage_host", "h2d", "init", "warmup"]
+
+def report(spans, size_gib):
+    total = sum(spans.values())
+    for name in STAGES:
+        s = spans.get(name, 0.0)
+        rate = f"{size_gib / s:6.2f} GiB/s" if s > 0 else "     n/a"
+        print(f"{name:<12} {s:7.2f}s {100 * s / total:5.1f}%  {rate}")
+    print(f"{'total':<12} {total:7.2f}s")
+```
+
+Run it in three configurations: cold node, warm page cache, and warm local cache. The three profiles answer three different questions — what a scale-out event costs, what a process restart costs, and whether the local cache is doing its job.
+
+Track these as fleet metrics, not one-off measurements. Cold-start time drifts when checkpoint size grows, when a storage tier changes, or when a library update alters the load path. The drift is invisible until an autoscaling event exposes it during a traffic spike.
+
+## Autoscaling consequences
+
+Cold start sets the minimum useful reaction time of a scaling policy. If a replica takes 90 seconds to become ready, a policy reacting to a one-minute load average is always responding to conditions that have already changed.
+
+The practical responses:
+
+**Scale on a leading signal.** Queue depth and arrival rate lead saturation; GPU utilization lags it.
+
+**Keep warm capacity proportional to cold-start cost.** The buffer needed is roughly the traffic growth expected during one cold start, which makes slow loading directly expensive in idle hardware.
+
+**Separate model swap from replica launch.** A running process that can load a second model into free HBM avoids process startup, driver init, and warmup. This is the main structural argument for a multi-model server over one-process-per-model.
+
+**Bound the blast radius of a bad checkpoint.** A checkpoint that fails to load after a 60-second fetch produces a crash loop that hammers object storage. Cache the failure, not just the success.
+
+Cold start is not a fixed property of a model. It is a property of the path, and every hop in that path is something you chose.

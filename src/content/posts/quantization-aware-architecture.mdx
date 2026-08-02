@@ -1,0 +1,149 @@
+---
+title: 'Designing Models for Low Precision: Outliers, Scales, and Native FP8'
+pubDate: 2026-07-29
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Look at quantization as an architecture constraint: activation outliers, block scaling, format range, and which layers resist low precision.'
+topics: ['Quantization', 'FP8', 'Numerics']
+---
+
+import PrecisionFormatLadder from '../../components/viz/PrecisionFormatLadder.astro'
+
+Quantization is usually applied after the fact: train in BF16, compress, measure the damage. That framing treats low precision as a lossy postprocessing step and leaves the model's own structure — which decides how much damage there is — out of scope.
+
+The more useful framing is that numeric format is an architectural constraint. Some design decisions make a model quantize well and some make it resist, and those decisions are made long before anyone runs a calibration set.
+
+<PrecisionFormatLadder />
+
+## Range versus resolution
+
+A format allocates bits between exponent and mantissa, and that split is more consequential than the total.
+
+| Format   | Bits | Exponent | Mantissa | Approx. max     | Relative precision |
+| -------- | ---- | -------- | -------- | --------------- | ------------------ |
+| FP32     | 32   | 8        | 23       | 3.4e38          | ~1e-7              |
+| BF16     | 16   | 8        | 7        | 3.4e38          | ~8e-3              |
+| FP16     | 16   | 5        | 10       | 65504           | ~1e-3              |
+| FP8 E4M3 | 8    | 4        | 3        | 448             | ~6e-2              |
+| FP8 E5M2 | 8    | 5        | 2        | 57344           | ~1e-1              |
+| INT8     | 8    | —        | 7 + sign | scale-dependent | uniform            |
+| INT4     | 4    | —        | 3 + sign | scale-dependent | uniform            |
+
+BF16 displaced FP16 for training because it shares FP32's exponent range. FP16's 65504 ceiling requires loss scaling to keep gradients from underflowing and overflowing; BF16 does not, at the cost of mantissa bits that turn out to matter less.
+
+The integer formats have no exponent at all. Their entire dynamic range comes from an external scale:
+
+$$
+\hat{w} = s \cdot (q - z), \qquad q \in [-2^{b-1}, 2^{b-1} - 1]
+$$
+
+With one scale per tensor, a single large value forces $s$ upward and quantizes every other value into a handful of levels. This is the mechanism behind essentially every quantization failure.
+
+## Outliers
+
+Transformer activations are not well conditioned for uniform quantization. Past roughly 6B parameters, systematic outlier features emerge: a small number of hidden dimensions carry values 10 to 100 times larger than the rest, consistently across tokens and layers.[^1]
+
+Consistency is the key property. These are not random spikes; they occupy specific channels, and those channels do disproportionate work — zeroing them collapses model quality, so they cannot simply be clipped.
+
+The responses fall into three families:
+
+**Separate the outliers.** LLM.int8() decomposes the matrix multiply, keeping outlier dimensions in FP16 and the rest in INT8. Correct, but the mixed-precision path costs throughput.
+
+**Migrate the difficulty.** SmoothQuant observes that activation outliers are hard to quantize while weights are easy, and rescales to move some of the burden across the multiplication.[^2] For $Y = XW$, insert a diagonal $S$:
+
+$$
+Y = (X S^{-1})(S W)
+$$
+
+Mathematically identical, numerically much better behaved, and $S$ can be folded into the preceding layer norm so it costs nothing at run time. This is the technique that made W8A8 practical.
+
+**Shrink the scale's scope.** Per-channel scales for weights, per-token for activations, or group-wise scales within a channel. Finer granularity means an outlier corrupts fewer neighbors. The cost is scale storage and more complex kernels.
+
+## Block scaling and what "4-bit" really costs
+
+Group-wise scaling is where the bit count stops being the footprint. With group size $g$ and one FP16 scale plus one zero point per group, effective bits per weight are:
+
+$$
+b_{\text{eff}} = b + \frac{32}{g}
+$$
+
+At $b = 4$ and $g = 128$, that is 4.25 bits. At $g = 32$, 5 bits — a 25% overhead, which is exactly the range where "4-bit" and "5-bit" quantizations stop being clearly ordered.
+
+Microscaling formats standardize this. MXFP4 pairs 32 FP4 values with a shared 8-bit exponent, giving 4.25 effective bits with hardware support for the block structure.[^3] The shared exponent restores dynamic range that flat INT4 cannot express, which is why MXFP4 outperforms INT4 at nominally the same width. NVFP4 uses a smaller block with an FP8 scale, trading more metadata for better accuracy.
+
+The general point: at 4 bits and below, the metadata is a first-class part of the format. Comparing quantization schemes by nominal bit width is comparing the wrong number.
+
+## Not all layers are equal
+
+Sensitivity varies systematically, and the pattern is stable enough to design around.
+
+**Embeddings and the output head.** Large, and the head directly produces logits. Quantization error here maps to distribution error with no intervening layers to absorb it. Usually kept at higher precision; when weights are tied, quantizing one quantizes both.
+
+**Attention output projections.** Consistently among the most sensitive linear layers.
+
+**Feed-forward up- and down-projections.** The bulk of the parameters and the most tolerant. This is where aggressive quantization pays.
+
+**Layer norm parameters.** Tiny, and they set the scale for everything downstream. Never quantize.
+
+**Router weights in an MoE.** Small and decisive: a router error changes which experts run, which is a discrete failure rather than a small numerical one. Keep at full precision.
+
+**First and last transformer blocks.** More sensitive than the middle in most measurements.
+
+A mixed-precision assignment following this pattern typically beats a uniform assignment at the same average bit width by a wide margin — which is why GGUF supports per-tensor quantization types and why formats that fix one dtype per file leave quality on the table.
+
+## Training in low precision
+
+Post-training quantization accepts a model's numerics as given. Training in the target format changes the model's own distributions to suit it.
+
+FP8 training is now routine on hardware with native support. The standard configuration uses E4M3 for forward tensors, where precision matters more than range, and E5M2 for gradients, where range matters more. Master weights and optimizer state stay in higher precision; accumulation happens in FP32.
+
+DeepSeek-V3 demonstrated FP8 mixed-precision training at frontier scale, with fine-grained tile- and block-wise scaling and periodic high-precision accumulation to bound error growth.[^4] The reported result — a frontier-quality model trained substantially more cheaply — is why native low-precision training became a design target rather than an optimization.
+
+Quantization-aware training goes further, simulating quantization in the forward pass so gradients account for it. The rounding operation has zero gradient almost everywhere, so QAT uses a straight-through estimator:
+
+$$
+\frac{\partial \hat{w}}{\partial w} \approx \mathbb{1}[|w| \leq \text{clip range}]
+$$
+
+QAT reliably recovers accuracy that PTQ loses at 4 bits and below. It costs a training run, which is why it is used for models that will be deployed at scale for a long time and skipped otherwise.
+
+## Architectural choices that help
+
+Several decisions made for other reasons turn out to affect quantizability, and can be made deliberately:
+
+**Normalization placement.** Pre-norm architectures keep residual-stream magnitudes bounded; post-norm allows growth across depth. Bounded activations quantize better.
+
+**QK normalization.** Normalizing queries and keys before the attention product bounds logit magnitude, which both stabilizes training and removes a source of activation outliers.
+
+**Activation function.** Gated variants like SwiGLU produce different outlier structure than plain GELU, since the product of two projections can amplify. Worth measuring rather than assuming.
+
+**Residual scaling.** Scaling residual contributions by depth keeps the stream from growing, which directly bounds the range activations must cover.
+
+**Head dimension.** Larger heads mean more values sharing a scale under per-head quantization, so more opportunity for one outlier to dominate.
+
+None of these is free, and none should be chosen for quantizability alone. But when two options are otherwise comparable, the one with bounded activation range is the one that will still work at 4 bits.
+
+## Evaluating
+
+Perplexity is a poor quantization metric. It is dominated by locally predictable tokens and moves very little while specific capabilities degrade badly. A quantization that raises perplexity by 0.1 can lose a large fraction of a model's code-generation accuracy.
+
+What to measure:
+
+1. **Task accuracy on the deployed workload**, not a general benchmark suite.
+2. **Long-context retrieval**, where accumulated error compounds over more positions.
+3. **Structured output validity** — JSON and code are unusually sensitive, because a single wrong token invalidates the whole output.
+4. **Distribution shape, not just argmax.** KL divergence against the reference model on a held-out set catches tail degradation that greedy agreement misses entirely. Under sampling, the tail is what the user sees.
+5. **Behavior under sampling at temperature**, for the same reason.
+6. **Actual throughput.** A format the kernels do not support natively will be dequantized to something they do, and the memory saving will not become a speed gain.
+
+That last point is the most common disappointment. A 4-bit model that halves memory and delivers no speedup is running a dequantize-then-BF16-GEMM path. The saving is real for capacity and absent for latency, and knowing which one you needed determines whether the quantization was worth it.
+
+## References
+
+[^1]: Tim Dettmers et al., "LLM.int8(): 8-bit Matrix Multiplication for Transformers at Scale," NeurIPS, 2022. [https://arxiv.org/abs/2208.07339](https://arxiv.org/abs/2208.07339)
+
+[^2]: Guangxuan Xiao et al., "SmoothQuant: Accurate and Efficient Post-Training Quantization for Large Language Models," ICML, 2023. [https://arxiv.org/abs/2211.10438](https://arxiv.org/abs/2211.10438)
+
+[^3]: Bita Darvish Rouhani et al., "Microscaling Data Formats for Deep Learning," arXiv, 2023. [https://arxiv.org/abs/2310.10537](https://arxiv.org/abs/2310.10537)
+
+[^4]: DeepSeek-AI, "DeepSeek-V3 Technical Report," arXiv, 2024. [https://arxiv.org/abs/2412.19437](https://arxiv.org/abs/2412.19437)

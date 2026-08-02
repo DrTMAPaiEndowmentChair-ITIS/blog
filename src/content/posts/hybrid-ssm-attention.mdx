@@ -1,0 +1,120 @@
+---
+title: 'Hybrid Architectures: State Space Models Where Attention Is Too Expensive'
+pubDate: 2026-07-26
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Understand selective state space models, what fixed-size recurrent state loses, and why production designs interleave a few attention layers.'
+topics: ['State space models', 'Mamba', 'Architecture']
+---
+
+import SequenceMixerCompare from '../../components/viz/SequenceMixerCompare.astro'
+
+Attention's cost profile is well known: quadratic in sequence length during prefill, and linear in context during decode because every past key and value must be read. The second is the one that binds in serving, since it means per-token cost grows with how much has already been generated.
+
+A recurrent layer with fixed-size state has neither property. The question is what it gives up, and the answer turned out to be specific enough that the field's response was not to replace attention but to interleave with it.
+
+<SequenceMixerCompare />
+
+## Linear state space layers
+
+A continuous state space model maps a signal through a latent state:
+
+$$
+h'(t) = A h(t) + B x(t), \qquad y(t) = C h(t)
+$$
+
+Discretized with step size $\Delta$, this becomes a linear recurrence:
+
+$$
+h_t = \bar{A} h_{t-1} + \bar{B} x_t, \qquad y_t = C h_t
+$$
+
+Two evaluation modes fall out of linearity. Sequentially, each step is $O(1)$ in context. Unrolled, the output is a convolution with a kernel derivable in closed form, computable for the whole sequence in $O(S \log S)$ via FFT. Training uses the parallel form; inference uses the recurrent form. That duality is the structural advantage.
+
+S4 made this work at depth by constraining $A$ to a HiPPO-derived structure that provably retains long-range information rather than decaying it.[^1] The initialization is not incidental — a randomly initialized linear recurrence forgets, and the whole approach depends on it not doing so.
+
+But a fixed $\bar{A}$, $\bar{B}$, $C$ means the layer applies the same transformation regardless of input. It cannot decide to remember this token and ignore that one. For language, where the relevant history is entirely content-dependent, this is disqualifying.
+
+## Selectivity
+
+Mamba's contribution is making the parameters functions of the input.[^2] $\Delta$, $B$, and $C$ are produced by linear projections of $x_t$, so the recurrence gates on content: the model can decide, per token, how much to write into state and how much to let through.
+
+This breaks the convolution — a time-varying recurrence has no fixed kernel — so the FFT path is gone. Mamba recovers parallel training with a hardware-aware selective scan: a parallel-prefix scan whose state lives in on-chip SRAM, with recomputation in the backward pass rather than materializing the full state sequence in HBM. The layer is memory-bandwidth efficient in the same way FlashAttention is, and for the same reason.
+
+The reported results are what made this a live option: Transformer-quality language modeling at matched parameter counts, linear scaling in sequence length, and roughly 5x higher decode throughput than a comparable Transformer because there is no cache to read.
+
+Mamba-2 then reframed the selective SSM and attention as instances of a common structured-matrix formulation, which allowed the scan to be expressed in terms of matrix multiplications and thus to use tensor cores.[^3] That made the layer substantially faster in practice and clarified that these are not opposing families so much as different points in one design space.
+
+## What fixed-size state cannot do
+
+The limitation is information-theoretic and not a training artifact. A state of $d_{\text{state}}$ values compresses the entire history. Attention keeps every token addressable and pays for it.
+
+The tasks that separate them are exactly the ones requiring exact recall of arbitrary content:
+
+**Copying and retrieval.** Reproduce a specific span from far back verbatim. A fixed state must have decided to keep it, without knowing at the time that it would be asked for.
+
+**Associative recall.** Given key-value pairs seen earlier, answer a query about one of them. Capacity is bounded by state size; attention's is bounded by context.
+
+**In-context learning from many examples.** Few-shot performance depends on retaining specific demonstrations, not a summary of them.
+
+Attention is uniquely suited here: the query at retrieval time constructs the lookup. A recurrent layer must commit at write time.
+
+Empirically, pure SSMs match or beat Transformers on perplexity and general benchmarks while lagging noticeably on recall-heavy evaluations. Perplexity is dominated by locally predictable tokens and does not surface the gap — which is why architecture selection on perplexity alone is misleading here.
+
+## The hybrid resolution
+
+If the deficit is specifically exact recall, a small number of attention layers should be enough to cover it. This is what production hybrids do.
+
+Jamba interleaves Transformer and Mamba layers at roughly a 1:7 ratio, adds mixture-of-experts, and fits a 256k context on a single 80 GiB GPU — with a KV cache reported at roughly an eighth of a comparable pure Transformer's, because only the attention layers cache anything.[^4] NVIDIA's analysis of hybrid designs reached a consistent conclusion: a small proportion of attention layers recovers most of the recall gap, with diminishing returns beyond it.
+
+Cache arithmetic for a hybrid with $L$ layers of which $L_a$ are attention:
+
+$$
+m = 2 L_a H_{kv} d_h b + (L - L_a) \cdot s_{\text{ssm}}
+$$
+
+The second term is constant in context length. With $L_a / L = 1/8$ and GQA on the attention layers, cache per token is under 2% of a full-MHA Transformer's, and the part that grows with context is one eighth as large.
+
+Design questions that follow, none with fully settled answers:
+
+**How many attention layers?** Between one in four and one in eight in published designs. Below one in eight, recall degrades sharply.
+
+**Where?** Not in the first layers — early layers do local processing that recurrence handles well. Spreading them through the middle and later stack is the common choice.
+
+**Sliding window or full?** Some designs use windowed attention on the attention layers, bounding cache further and relying on the recurrent layers for long-range information. This is a smaller version of the same tradeoff, one level down.
+
+## Serving consequences
+
+Hybrids are not a drop-in change to an inference stack.
+
+**State is not a KV cache.** Each sequence carries a fixed-size recurrent state per SSM layer. It does not grow, does not fragment, and does not page. Existing block allocators do not manage it, so the memory manager needs a second, simpler allocator alongside.
+
+**Prefill and decode use different kernels.** The scan runs in parallel-associative form during prefill and sequential form during decode. Two code paths that must agree numerically — and where they disagree, a model produces different output for the same prompt depending on whether it was prefilled or generated incrementally. This is a real and subtle class of bug.
+
+**Preemption changes character.** Recomputing a preempted sequence's state means replaying the scan. Swapping means transferring a small fixed buffer. Because the state is small, swap is nearly always the right choice, inverting the usual guidance.
+
+**Speculative decoding needs care.** Rejecting a draft token requires rolling the recurrent state back. Since the state is overwritten each step rather than appended to, rollback means either snapshotting per step or recomputing from the last accepted position. Neither is free, and the cost partly offsets speculation's benefit.
+
+**Constant per-token cost changes the batching curve.** Without a growing KV read, decode step time is far less sensitive to context length. Long-context serving economics look genuinely different — the usual sharp cost increase with context largely disappears for the recurrent layers.
+
+## Evaluating an architecture choice
+
+Perplexity will not tell you what you need. The protocol that will:
+
+1. **Needle-in-haystack at target context**, needle placed across all depths, reporting the worst depth. This is the primary discriminator.
+2. **Multi-needle and multi-hop retrieval**, which stresses state capacity rather than state persistence.
+3. **Long-input summarization**, where the failure mode is dropping specific facts rather than degraded fluency.
+4. **Many-shot in-context learning**, measuring whether accuracy still improves as demonstrations are added — a pure SSM often plateaus early.
+5. **Decode throughput versus context length.** The whole point is that this curve is flat; verify it on the actual implementation rather than assuming it.
+
+Hybrids are currently the pragmatic answer: keep enough attention to preserve exact recall, replace the rest with layers whose decode cost does not grow. That the field converged on interleaving rather than replacement is informative about how specific attention's advantage actually is.
+
+## References
+
+[^1]: Albert Gu, Karan Goel, and Christopher Ré, "Efficiently Modeling Long Sequences with Structured State Spaces," ICLR, 2022. [https://arxiv.org/abs/2111.00396](https://arxiv.org/abs/2111.00396)
+
+[^2]: Albert Gu and Tri Dao, "Mamba: Linear-Time Sequence Modeling with Selective State Spaces," COLM, 2024. [https://arxiv.org/abs/2312.00752](https://arxiv.org/abs/2312.00752)
+
+[^3]: Tri Dao and Albert Gu, "Transformers are SSMs: Generalized Models and Efficient Algorithms Through Structured State Space Duality," ICML, 2024. [https://arxiv.org/abs/2405.21060](https://arxiv.org/abs/2405.21060)
+
+[^4]: Opher Lieber et al., "Jamba: A Hybrid Transformer-Mamba Language Model," arXiv, 2024. [https://arxiv.org/abs/2403.19887](https://arxiv.org/abs/2403.19887)

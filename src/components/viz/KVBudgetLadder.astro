@@ -1,0 +1,267 @@
+---
+// Attention variants are a KV-cache budget decision before they are a quality decision
+---
+
+<figure class="viz" aria-labelledby="kbl-title" data-kbl-motion>
+  <div class="viz-header">
+    <figcaption id="kbl-title">
+      Attention variants are a KV-cache budget decision before they are a quality decision
+    </figcaption>
+    <button
+      type="button"
+      data-replay
+      aria-label="Replay attention variants are a kv-cache budget decision before they are a quality decision"
+      >Replay</button
+    >
+  </div>
+  <div class="unit">
+    KV bytes per token, 64 layers, head dim 128, FP16, relative to full multi-head attention.
+  </div>
+  <div class="rows">
+    <div class="row" style={`--delay:${160}ms; --width:100%`}>
+      <>
+        <span class="name">MHA, 64 heads</span>
+        <span class="bar" aria-hidden="true"><i></i></span>
+        <span class="value">1.00x</span>
+        <span class="note"
+          >Every query head owns a key-value head. Maximum cache, maximum expressiveness per head.</span
+        >
+      </>
+    </div>
+    <div class="row" style={`--delay:${240}ms; --width:13%`}>
+      <>
+        <span class="name">GQA, 8 groups</span>
+        <span class="bar" aria-hidden="true"><i></i></span>
+        <span class="value">0.125x</span>
+        <span class="note"
+          >Eight query heads share one key-value head. The common frontier default.</span
+        >
+      </>
+    </div>
+    <div class="row" style={`--delay:${320}ms; --width:7%`}>
+      <>
+        <span class="name">GQA, 4 groups</span>
+        <span class="bar" aria-hidden="true"><i></i></span>
+        <span class="value">0.0625x</span>
+        <span class="note"
+          >Halves cache again; quality loss becomes measurable on long-context retrieval.</span
+        >
+      </>
+    </div>
+    <div class="row" style={`--delay:${400}ms; --width:4%`}>
+      <>
+        <span class="name">MQA, 1 head</span>
+        <span class="bar" aria-hidden="true"><i></i></span>
+        <span class="value">0.016x</span>
+        <span class="note"
+          >One shared key-value head. Cheapest cache, largest reported quality gap.</span
+        >
+      </>
+    </div>
+    <div class="row" style={`--delay:${480}ms; --width:5%`}>
+      <>
+        <span class="name">MLA, latent</span>
+        <span class="bar" aria-hidden="true"><i></i></span>
+        <span class="value">~0.04x</span>
+        <span class="note"
+          >Caches a low-rank latent and projects keys and values back up inside the kernel.</span
+        >
+      </>
+    </div>
+  </div>
+  <div class="legend">
+    <i></i> Cache bytes per token set concurrency; concurrency sets cost per request
+  </div>
+</figure>
+
+<style>
+  .viz {
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    font: 600 var(--font-size-s) var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .viz-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.2rem;
+  }
+  button {
+    min-width: 4.5rem;
+    min-height: 2.75rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    font: 0.72rem var(--mono);
+    cursor: pointer;
+    transition:
+      transform 140ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  button:active {
+    transform: scale(0.97);
+  }
+  button:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
+  }
+  .unit {
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    font: 0.74rem var(--mono);
+    color: var(--text-tertiary);
+  }
+  .rows {
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 0.8rem;
+  }
+  .row {
+    display: grid;
+    grid-template-columns: 9rem 1fr 6.5rem;
+    grid-template-areas: 'name bar value' 'note note note';
+    align-items: center;
+    gap: 0.5rem 0.8rem;
+    padding: 0.7rem 0.75rem;
+    border-left: 3px solid var(--text-secondary);
+    background: var(--bg);
+  }
+  .name {
+    grid-area: name;
+    font: 0.8rem var(--mono);
+  }
+  .bar {
+    grid-area: bar;
+    display: block;
+    height: 10px;
+    border: 1px solid var(--border);
+  }
+  .bar i {
+    display: block;
+    height: 100%;
+    width: var(--width);
+    background: var(--text-secondary);
+  }
+  .value {
+    grid-area: value;
+    text-align: right;
+    font: 0.76rem var(--mono);
+    color: var(--text-secondary);
+  }
+  .note {
+    grid-area: note;
+    font: 0.72rem var(--mono);
+    color: var(--text-tertiary);
+    line-height: 1.5;
+  }
+  .legend {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    font: 0.78rem var(--mono);
+    color: var(--text-secondary);
+  }
+  .legend i {
+    display: inline-block;
+    width: 18px;
+    border-top: 3px solid var(--text-secondary);
+    margin-right: 0.5rem;
+  }
+  .motion-ready:not(.is-running) .row,
+  .motion-ready:not(.is-running) .legend {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  .motion-ready:not(.is-running) .bar i {
+    width: 0;
+  }
+  .motion-ready.is-running .row {
+    animation: kbl-enter 320ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .bar i {
+    animation: kbl-grow 520ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .legend {
+    animation: kbl-enter 300ms 900ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  @keyframes kbl-enter {
+    from {
+      opacity: 0;
+      transform: translateY(7px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes kbl-grow {
+    from {
+      width: 0;
+    }
+    to {
+      width: var(--width);
+    }
+  }
+  @media (hover: hover) and (pointer: fine) {
+    button:hover {
+      opacity: 0.72;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button {
+      display: none;
+    }
+    .motion-ready * {
+      animation: none !important;
+      opacity: 1 !important;
+    }
+    .motion-ready .bar i {
+      width: var(--width);
+    }
+  }
+  @media (max-width: 620px) {
+    .viz-header {
+      align-items: flex-start;
+    }
+    .row {
+      grid-template-columns: 1fr auto;
+      grid-template-areas: 'name value' 'bar bar' 'note note';
+    }
+  }
+</style>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-kbl-motion]').forEach((figure) => {
+    if (figure.dataset.motionBound || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    figure.dataset.motionBound = 'true'
+    figure.classList.add('motion-ready')
+
+    const play = () => {
+      figure.classList.remove('is-running')
+      void figure.offsetWidth
+      figure.classList.add('is-running')
+    }
+
+    figure.querySelector('[data-replay]')?.addEventListener('click', play)
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return
+        play()
+        observer.disconnect()
+      },
+      { threshold: 0.35 }
+    )
+    observer.observe(figure)
+  })
+</script>

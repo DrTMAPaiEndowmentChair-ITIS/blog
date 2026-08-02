@@ -1,0 +1,207 @@
+---
+title: 'Checkpoint Formats: Safetensors, GGUF, ONNX, and the Pickle Problem'
+pubDate: 2026-07-02
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: 'Compare serialization formats for model weights and see how header layout, memory mapping, and trust boundaries decide load time.'
+topics: ['Checkpoints', 'Safetensors', 'GGUF']
+---
+
+import CheckpointFormatMap from '../../components/viz/CheckpointFormatMap.astro'
+
+A checkpoint is usually described as "the weights." That description hides the part that matters operationally. A checkpoint is a file layout, and the layout determines whether a loader can address one tensor without reading the file, whether the bytes can be mapped instead of copied, whether quantization parameters travel with the payload, and whether opening the file can execute code.
+
+Those properties decide cold-start latency, replica scale-out cost, and the size of the trust boundary around model distribution. They are properties of the container, not of the model.
+
+<CheckpointFormatMap />
+
+## What a loader actually needs
+
+Given a file and a target device, a loader has to answer four questions before it can produce a usable module:
+
+1. Which tensors exist, and under what names?
+2. For each tensor, what dtype, shape, and byte range?
+3. What transformation is required between the stored bytes and the in-memory layout?
+4. Is any of this trustworthy?
+
+A format is fast when questions one and two can be answered from a small prefix of the file, and when question three is the identity function.
+
+## Pickle and the cost of a general mechanism
+
+PyTorch's default `torch.save` writes a ZIP archive containing a Python pickle stream plus raw storage records. Pickle is a stack-based virtual machine. Loading executes opcodes, including `GLOBAL` and `REDUCE`, which import an arbitrary module attribute and call it.
+
+This is not a bug being fixed; it is what pickle is for. `weights_only=True` restricts the allowed globals to a small allowlist and is now the PyTorch default, which closes the general execution path, but the format still has structural costs:
+
+- Tensor offsets are not declared in a readable header. Discovering the layout means walking the pickle stream.
+- Selective loading of a single tensor requires a custom unpickler that understands the storage-record indirection.
+- The archive is a container format with its own metadata, so byte ranges are not simply contiguous.
+
+For a checkpoint you produced and control, this is fine. For a checkpoint downloaded from a public hub, "the loader is safe if a flag is set correctly" is a weaker property than "the loader cannot execute anything."
+
+## Safetensors: a header and a payload
+
+Safetensors takes the opposite design position. The file is:
+
+```text
+[ 8 bytes ][ N bytes JSON header ][ tensor payload ]
+   N          {"weight": {"dtype": "F16",
+                          "shape": [4096, 4096],
+                          "data_offsets": [0, 33554432]}, ...}
+```
+
+The first eight bytes are the header length as a little-endian `u64`. The header is UTF-8 JSON mapping tensor names to dtype, shape, and a half-open byte range into the payload. Everything after the header is raw tensor data with no per-tensor framing.
+
+Three consequences follow directly:
+
+**Layout is O(header) to discover.** Reading a few kilobytes tells you every tensor's name, shape, dtype, and exact location. Nothing requires reading the payload.
+
+**Loading can be zero-copy.** Because each tensor is a contiguous byte range with no framing and no compression, the loader can `mmap` the file and construct tensors that point into the mapped region. No parse step, no intermediate buffer.
+
+**There is no code path to execute.** The parser reads integers, strings, and offsets. A malicious file can produce wrong tensors or a failed parse; it cannot import a module.
+
+The zero-copy property is the one that changes deployment behavior. A conventional load reads bytes into a buffer, then copies into a tensor, then copies to the device — three traversals of the whole checkpoint. A mapped load traverses once, on the device transfer.
+
+### The header is still an input
+
+Zero-copy does not mean unvalidated. A loader must check that:
+
+- declared ranges lie inside the file
+- ranges do not overlap in ways the loader does not expect
+- `shape` and `dtype` multiply out to exactly the declared range length
+- the header length does not exceed the file size
+
+The reference implementations do this. A hand-rolled reader that trusts `data_offsets` will happily read out of bounds.
+
+### What safetensors deliberately omits
+
+There is a free-form `__metadata__` string map and nothing else. No graph, no tokenizer, no hyperparameters, no quantization scheme. A safetensors file is only tensors. Everything else lives in sidecar files — `config.json`, `tokenizer.json`, `generation_config.json` — and the loader is responsible for keeping them consistent.
+
+For a hub-distributed repository that is fine, because the repository is the unit. For a file you hand to someone, it means one file is not enough.
+
+## GGUF: one file, quantization included
+
+GGUF was designed for the opposite distribution model — a single file a user downloads and runs locally.[^1] Its structure is a magic number, a version, tensor and metadata counts, a key-value metadata block, then a tensor directory, then aligned tensor data.
+
+The metadata block is typed and extensible: architecture name, layer counts, head counts, RoPE parameters, the full tokenizer including merges and special-token ids, and chat-template strings. The tensor directory names each tensor and gives its dimensions, its quantization type, and its offset.
+
+The per-tensor quantization type is the structural difference from safetensors. GGUF stores weights in block-quantized formats where a block of values shares scale metadata:
+
+$$
+\hat{w}_i = s_b \cdot q_i + z_b, \qquad i \in \text{block } b
+$$
+
+Different tensors in the same file can use different types. Attention output projections and the token embedding are commonly kept at higher precision than feed-forward weights, because the error budget is not uniform across a transformer. A format that fixes one dtype per file cannot express that.
+
+The tradeoff is that GGUF's payload is not the in-memory layout for a general framework. The blocks are laid out for specific dequantizing kernels. GGUF is fast to load for the runtimes that speak its block formats and requires a real conversion for anything else.
+
+## ONNX and engine plans: weights attached to a graph
+
+ONNX serializes a computation graph as protobuf, with initializers (weights) either inline or in external data files. This is a different category of artifact: it describes what to compute, not only what the parameters are.
+
+That buys portability across runtimes and costs flexibility. A dynamic control-flow pattern that is trivial in eager Python has to be expressed in ONNX operators or traced away. For transformer decoding, KV cache handling has to become explicit graph inputs and outputs.
+
+Protobuf also imposes a 2 GB message limit, so any real LLM must use external data — at which point ONNX has the same sidecar-consistency problem as safetensors, plus a graph to keep in sync.
+
+A TensorRT engine goes further and is not portable at all. The plan file is specialized to a GPU architecture, a TensorRT version, and often a fixed shape profile. It loads very fast because nearly all decisions were made at build time. It is a build artifact, not a distribution artifact, and rebuilding it is part of the deployment pipeline rather than the download.
+
+## Comparison
+
+| Property               | Pickle (`.bin`/`.pt`) | Safetensors    | GGUF                 | ONNX           | TRT engine      |
+| ---------------------- | --------------------- | -------------- | -------------------- | -------------- | --------------- |
+| Layout discoverable    | Requires stream walk  | JSON header    | Header + directory   | Protobuf parse | Opaque          |
+| Memory-mappable        | Partially             | Yes, zero-copy | Yes                  | External data  | Yes             |
+| Executes on load       | Yes unless restricted | No             | No                   | No             | No              |
+| Carries hyperparams    | No                    | No             | Yes                  | Graph implies  | Baked in        |
+| Carries tokenizer      | No                    | No             | Yes                  | No             | No              |
+| Mixed per-tensor quant | Framework-dependent   | No             | Yes                  | Limited        | Yes             |
+| Portability            | PyTorch               | Framework-wide | GGML-family runtimes | Broad          | One GPU/version |
+| Natural unit           | Repository            | Repository     | Single file          | Model + data   | Build output    |
+
+## Measuring load, not guessing
+
+Format claims are easy to test. What you want is a breakdown, not a total:
+
+```python
+import time, torch
+from safetensors import safe_open
+
+def load_profile(path, device="cuda"):
+    stats = {}
+    t0 = time.perf_counter()
+    with safe_open(path, framework="pt", device="cpu") as f:
+        keys = list(f.keys())
+        stats["header_s"] = time.perf_counter() - t0
+
+        t1 = time.perf_counter()
+        tensors = {k: f.get_tensor(k) for k in keys}
+        stats["map_s"] = time.perf_counter() - t1
+
+    t2 = time.perf_counter()
+    tensors = {k: v.to(device, non_blocking=True) for k, v in tensors.items()}
+    torch.cuda.synchronize()
+    stats["h2d_s"] = time.perf_counter() - t2
+
+    total = sum(v.numel() * v.element_size() for v in tensors.values())
+    stats["gib"] = total / 1024**3
+    stats["h2d_gib_s"] = stats["gib"] / stats["h2d_s"]
+    return stats
+```
+
+Run it twice. The first run includes filling the OS page cache from disk; the second usually does not. Reporting only the warm number makes every format look good and tells you nothing about a fresh replica. Reporting only the cold number attributes storage bandwidth to the format.
+
+The number to watch is `h2d_gib_s` against the theoretical PCIe or interconnect rate. If a mapped load is far below link speed, the transfer is going through pageable memory and being staged, and the fix is pinned buffers rather than a different format.
+
+## Conversion is a correctness problem
+
+Moving between formats is where quiet breakage lives.
+
+**Tied weights.** Many models share the token embedding with the output projection. Safetensors forbids two tensor names pointing at overlapping byte ranges, so conversion must either duplicate the tensor or drop one name and rely on the config's `tie_word_embeddings` flag. A converter that drops the name and a loader that ignores the flag produce a model with a randomly initialized head.
+
+**Dtype coercion.** BF16 stored, FP16 loaded, is not lossless: BF16 has eight exponent bits and FP16 has five. Values outside FP16's range become infinities. This shows up as `NaN` several layers in, far from the actual fault.
+
+**Layout assumptions.** Attention weight matrices differ between implementations in whether Q/K/V are fused, and in head-interleaving order for rotary embeddings. Two checkpoints with identical shapes and identical tensor names can still be incompatible. Shape checks will not catch it; output comparison against a reference will.
+
+**Metadata drift.** The tensors convert cleanly, `config.json` does not travel, and the new file is loaded with default hyperparameters that happen to parse.
+
+The only reliable acceptance test is numerical: run a fixed prompt set through source and converted models and compare logits.
+
+```python
+def assert_equivalent(ref, cand, batch, atol=2e-2):
+    with torch.no_grad():
+        a = ref(**batch).logits.float()
+        b = cand(**batch).logits.float()
+    max_abs = (a - b).abs().max().item()
+    agree = (a.argmax(-1) == b.argmax(-1)).float().mean().item()
+    assert max_abs < atol, f"logit drift {max_abs}"
+    assert agree > 0.999, f"argmax agreement {agree}"
+```
+
+Greedy-token agreement alone is too weak: two models can agree on every argmax and diverge badly in the distribution's tail, which shows up only under sampling.
+
+## Treating checkpoints as untrusted input
+
+A checkpoint from a public source is an artifact that a process will parse and then use to drive computation. The realistic threat model has three levels:
+
+**Code execution on load.** Only pickle-family formats expose this. Prefer safetensors when it is offered; when it is not, load with restricted globals and, for anything unvetted, in a sandboxed process with no credentials.
+
+**Resource exhaustion.** A header declaring enormous shapes can trigger a large allocation before any check runs. Validate declared sizes against the file size and an expected bound.
+
+**Semantic tampering.** Weights that load cleanly and behave normally except on specific triggers. No format prevents this; it is an evaluation and provenance question, not a serialization one.
+
+Provenance is the control that actually covers the third case. Pin the revision by commit hash rather than branch, record the hash in the deployment manifest, and verify checksums after transfer. A branch name resolves to different bytes on different days, which breaks reproducibility and audit for the same reason.
+
+## Choosing
+
+The decision follows from the distribution model rather than from a benchmark:
+
+- **Serving a repository at fleet scale:** safetensors. Zero-copy load, no execution surface, sidecar config that the serving stack already tracks.
+- **Shipping a quantized model to end users:** GGUF. Single file, tokenizer and hyperparameters included, mixed per-tensor quantization.
+- **Cross-runtime or non-Python deployment:** ONNX, accepting the graph-capture work.
+- **Fixed model, fixed hardware, latency-critical:** build a TensorRT engine as a deployment step, and keep a portable format as the source of truth.
+- **Receiving pickle:** convert once, at ingest, in an isolated process, then never load the original again.
+
+The format is not a detail of the model. It is the interface between storage and compute, and it is one of the few parts of an inference stack that can be changed without touching the model at all.
+
+## References
+
+[^1]: Georgi Gerganov and contributors, "GGUF file format specification," ggml, 2023–2025. [https://github.com/ggml-org/ggml/blob/master/docs/gguf.md](https://github.com/ggml-org/ggml/blob/master/docs/gguf.md)

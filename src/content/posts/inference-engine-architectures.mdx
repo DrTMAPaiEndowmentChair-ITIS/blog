@@ -1,0 +1,125 @@
+---
+title: 'Inference Engine Architectures: What vLLM, SGLang, TensorRT-LLM, and llama.cpp Optimize'
+pubDate: 2026-07-20
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: 'Compare serving engines by the layer each one optimizes — memory management, compilation, program structure, or single-node portability.'
+topics: ['vLLM', 'SGLang', 'TensorRT-LLM']
+---
+
+import EngineLayerStack from '../../components/viz/EngineLayerStack.astro'
+
+Comparisons between inference engines usually take the form of a throughput bar chart on one model at one batch size, which mostly measures which project last tuned that configuration. A more durable way to choose is to ask which layer of the stack each engine treats as its primary design problem, because that choice is stable across releases and it predicts which workloads the engine will handle well.
+
+Four layers, four answers.
+
+<EngineLayerStack />
+
+## The layers
+
+Every engine contains roughly the same components:
+
+1. **API and request handling** — protocol, streaming, sampling parameters, structured output.
+2. **Scheduler** — admission, batch composition, preemption.
+3. **Memory manager** — KV cache allocation, prefix reuse, adapter storage.
+4. **Execution** — graph construction, kernel selection, quantization, parallelism.
+5. **Kernels** — attention, GEMM, sampling.
+
+They differ in which layer carries the innovation and which is treated as commodity.
+
+## vLLM: the memory manager is the product
+
+vLLM's founding observation was that conventional serving wasted most of its KV cache to fragmentation, because sequences were allocated contiguously at maximum length. PagedAttention applies virtual-memory paging: logical token blocks map through a block table to non-contiguous physical blocks, and the attention kernel resolves the indirection.[^1]
+
+The consequences compound. Near-zero fragmentation means more concurrent sequences per GPU. Blocks addressed through a table can be shared, which gives prefix caching and copy-on-write for parallel sampling almost for free. Blocks can be moved between tiers, which gives swap-based preemption. One memory abstraction produces most of the feature set.
+
+Everything above it follows from that: continuous batching over a mutable block pool, admission control expressed in blocks, chunked prefill as a token budget. Kernels are largely adopted from elsewhere — FlashAttention, FlashInfer, vendor GEMM libraries — which is a deliberate position, since it lets the engine track new models and new hardware quickly.
+
+The result is the broadest model and hardware coverage in the ecosystem and the shortest path from a new architecture's release to serving it. Peak single-request latency on a fixed, well-known model shape is not where it wins.
+
+**Choose it for:** heterogeneous model fleets, high concurrency, workloads with prefix reuse, environments where model turnover is frequent.
+
+## SGLang: the unit of work is a program, not a request
+
+SGLang starts from a different observation: real workloads are rarely one prompt in, one completion out. Agents, tool use, structured extraction, self-consistency sampling, and multi-turn interactions are _programs_ with branching, control flow, and repeated calls that share large amounts of context.
+
+An engine that only sees independent requests cannot exploit that structure. SGLang's RadixAttention maintains a radix tree over token sequences as the KV cache index, so prefixes are shared automatically across calls without the application declaring anything.[^2] A branching program with a common preamble computes that preamble once.
+
+The front-end language is the other half. Expressing generation, branching, and constrained output as a program lets the runtime see the whole structure and schedule it — including reordering calls to maximize prefix reuse.
+
+Constrained decoding is treated as a first-class path rather than a filter, with the automaton for a grammar compiled and applied across a batch, so structured output does not collapse throughput.
+
+**Choose it for:** agent loops, tool-calling pipelines, heavy structured output, few-shot workloads with large shared context, anything where the same preamble appears repeatedly.
+
+## TensorRT-LLM: decisions move to build time
+
+TensorRT-LLM inverts the flexibility tradeoff. Instead of deciding kernels and layouts at run time, a build step compiles the model into an engine plan: kernels fused, layouts chosen, quantization applied, shape profiles fixed, and — where possible — the whole decode step captured as a CUDA graph so per-step launch overhead disappears.
+
+For a fixed model on NVIDIA hardware with a known shape distribution, this yields the lowest achievable per-token latency, particularly at small batch sizes where launch overhead is a large fraction of step time. It also gives the most complete access to hardware-specific numerics — FP8 and FP4 paths on recent architectures, with vendor-tuned kernels.
+
+The costs are structural rather than incidental:
+
+- Engine builds take minutes to hours and are part of the deployment pipeline.
+- A plan is specific to a GPU architecture, a TensorRT version, and a shape profile. It is a build artifact, not a distribution artifact.
+- Shapes outside the profile either fail or fall back.
+- New model architectures require support to be added, so the lag behind a release is longer.
+
+**Choose it for:** one or a few stable models, NVIDIA-only fleets, latency-critical serving, deployments where a build step is already normal.
+
+## llama.cpp: one machine, no dependencies
+
+llama.cpp optimizes for a different resource envelope entirely: a single user, commodity hardware, often no discrete GPU, and an installation that must not require a Python environment.
+
+The design follows: a C++ core with no runtime dependencies, GGUF as a single self-describing file carrying weights, hyperparameters, and tokenizer, block-quantized formats down to two bits, and the ability to split layers between GPU and CPU so a model larger than VRAM still runs. Weights are memory-mapped, so a second process on the same machine starts nearly instantly.
+
+None of this is aimed at fleet throughput, and measuring it that way misses the point. The relevant metric is whether a model runs acceptably on hardware that the other engines will not target at all.
+
+**Choose it for:** local and on-device deployment, embedded use, CPU-only environments, distribution to end users, offline operation.
+
+## Side by side
+
+|                             | vLLM                | SGLang            | TensorRT-LLM     | llama.cpp           |
+| --------------------------- | ------------------- | ----------------- | ---------------- | ------------------- |
+| Primary layer               | Memory manager      | Program runtime   | Compiler         | Portable core       |
+| Key mechanism               | Paged KV blocks     | Radix prefix tree | AOT engine plan  | mmap + block quant  |
+| Hardware                    | NVIDIA, AMD, others | NVIDIA, AMD       | NVIDIA only      | Almost anything     |
+| Model onboarding            | Fast                | Fast              | Slower           | Conversion required |
+| Batch-1 latency             | Good                | Good              | Best             | N/A at scale        |
+| High-concurrency throughput | Excellent           | Excellent         | Excellent        | Not a target        |
+| Shared-prefix workloads     | Good                | Best              | Limited          | Limited             |
+| Deployment step             | Load and serve      | Load and serve    | Build then serve | Download and run    |
+| Structured output           | Supported           | First-class       | Supported        | Supported           |
+
+The engines also borrow from each other continuously. Paged attention, chunked prefill, radix prefix caching, and speculative decoding have all propagated across projects. A capability gap observed today is often closed within a release or two, which is another reason to choose on design center rather than on a current benchmark.
+
+## Choosing without a bake-off
+
+Answer four questions:
+
+**How many distinct models, and how often do they change?** Many or frequently → paged-memory server. One, stable → compiled engine becomes viable.
+
+**Does the workload have structure across calls?** Agents, branching, shared preambles → program-level runtime. Independent single-shot requests → structure buys nothing.
+
+**Where does it run?** Non-NVIDIA or mixed → not TensorRT-LLM. End-user machines → llama.cpp.
+
+**What is the SLO shape?** Tight single-stream latency at low concurrency favors compiled engines. High concurrency under a goodput target favors memory-managed servers.
+
+## If you do benchmark
+
+Comparisons that transfer to production share a few properties:
+
+- **Same quantization.** An FP8 engine against a BF16 engine measures the numeric format.
+- **Real length distributions.** Fixed-length prompts remove the variance that drives tail latency.
+- **Real prefix structure.** Unique prompts against a workload with a shared system prompt will overstate cost by a large factor.
+- **Goodput, not throughput.** Peak throughput is reached at an operating point where many requests already miss their deadline.
+- **Warm.** Discard the requests that pay autotuning and graph capture.
+- **Same tokenizer accounting.** Tokens per second is not comparable across vocabularies.
+- **Include the deployment step.** An engine that needs a 40-minute build has a different operational profile even if its steady state is faster.
+
+Most published comparisons violate several of these, which is why they disagree with each other and with what teams observe. The layer each engine optimizes is a more stable predictor than any of them.
+
+## References
+
+[^1]: Woosuk Kwon et al., "Efficient Memory Management for Large Language Model Serving with PagedAttention," SOSP, 2023. [https://arxiv.org/abs/2309.06180](https://arxiv.org/abs/2309.06180)
+
+[^2]: Lianmin Zheng et al., "SGLang: Efficient Execution of Structured Language Model Programs," NeurIPS, 2024. [https://arxiv.org/abs/2312.07104](https://arxiv.org/abs/2312.07104)

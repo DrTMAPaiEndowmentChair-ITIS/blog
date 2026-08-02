@@ -1,0 +1,257 @@
+---
+// Checkpoint formats decide what happens between disk and device
+---
+
+<figure class="viz" aria-labelledby="cfm-title" data-cfm-motion>
+  <div class="viz-header">
+    <figcaption id="cfm-title">
+      Checkpoint formats decide what happens between disk and device
+    </figcaption>
+    <button
+      type="button"
+      data-replay
+      aria-label="Replay checkpoint formats decide what happens between disk and device"
+      >Replay</button
+    >
+  </div>
+  <div class="rail"><b>On-disk bytes</b><span>header, tensor payload, metadata</span></div>
+  <div class="paths">
+    <section style={`--delay:${170}ms`}>
+      <>
+        <strong>Pickle (.bin / .pt)</strong>
+        <div>
+          <span style={`--delay:${300}ms`}>opcode stream</span>
+          <span style={`--delay:${355}ms`}>arbitrary imports</span>
+          <span style={`--delay:${410}ms`}>eager materialization</span>
+        </div>
+        <small>Executes code during load. No partial read without a custom unpickler.</small>
+      </>
+    </section>
+    <section style={`--delay:${320}ms`}>
+      <>
+        <strong>Safetensors</strong>
+        <div>
+          <span style={`--delay:${450}ms`}>JSON header</span>
+          <span style={`--delay:${505}ms`}>contiguous payload</span>
+          <span style={`--delay:${560}ms`}>mmap + zero copy</span>
+        </div>
+        <small>Offsets are declared up front, so a loader can map one tensor at a time.</small>
+      </>
+    </section>
+    <section style={`--delay:${470}ms`}>
+      <>
+        <strong>GGUF</strong>
+        <div>
+          <span style={`--delay:${600}ms`}>kv metadata</span>
+          <span style={`--delay:${655}ms`}>per-tensor quant type</span>
+          <span style={`--delay:${710}ms`}>single file</span>
+        </div>
+        <small>Carries hyperparameters and tokenizer alongside quantized blocks.</small>
+      </>
+    </section>
+    <section style={`--delay:${620}ms`}>
+      <>
+        <strong>ONNX / TensorRT</strong>
+        <div>
+          <span style={`--delay:${750}ms`}>graph protobuf</span>
+          <span style={`--delay:${805}ms`}>external data</span>
+          <span style={`--delay:${860}ms`}>engine plan</span>
+        </div>
+        <small>Weights travel with a computation graph or a hardware-specific plan.</small>
+      </>
+    </section>
+  </div>
+  <div class="rail alt"><b>Device tensors</b><span>dtype, shape, layout, placement</span></div>
+  <div class="legend">
+    <i></i> Format choice sets the floor on cold-start latency and the ceiling on trust
+  </div>
+</figure>
+
+<style>
+  .viz {
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    font: 600 var(--font-size-s) var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .viz-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.2rem;
+  }
+  button {
+    min-width: 4.5rem;
+    min-height: 2.75rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    font: 0.72rem var(--mono);
+    cursor: pointer;
+    transition:
+      transform 140ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  button:active {
+    transform: scale(0.97);
+  }
+  button:focus-visible {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
+  }
+  .rail {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.7rem 1rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    font: 0.78rem var(--mono);
+  }
+  .rail span {
+    color: var(--text-tertiary);
+    text-align: right;
+  }
+  .rail.alt {
+    border-style: dashed;
+  }
+  .paths {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.8rem;
+    margin: 0.8rem 0;
+  }
+  .paths section {
+    padding: 1rem;
+    border-left: 3px solid var(--text-secondary);
+    background: var(--bg);
+  }
+  section strong {
+    font: 0.8rem var(--mono);
+  }
+  section div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0.7rem 0;
+  }
+  section span {
+    font: 0.7rem var(--mono);
+    padding: 0.3rem 0.4rem;
+    border: 1px solid var(--border);
+  }
+  section small {
+    display: block;
+    font: 0.72rem var(--mono);
+    color: var(--text-tertiary);
+    line-height: 1.5;
+  }
+  .legend {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    font: 0.78rem var(--mono);
+    color: var(--text-secondary);
+  }
+  .legend i {
+    display: inline-block;
+    width: 18px;
+    border-top: 3px solid var(--text-secondary);
+    margin-right: 0.5rem;
+  }
+  .motion-ready:not(.is-running) .rail,
+  .motion-ready:not(.is-running) .paths section,
+  .motion-ready:not(.is-running) .paths section span,
+  .motion-ready:not(.is-running) .legend {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  .motion-ready.is-running .rail:not(.alt) {
+    animation: cfm-enter 320ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .paths section {
+    animation: cfm-enter 320ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .paths section span {
+    animation: cfm-enter 300ms var(--delay) cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .rail.alt {
+    animation: cfm-enter 320ms 900ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .motion-ready.is-running .legend {
+    animation: cfm-enter 300ms 1020ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  @keyframes cfm-enter {
+    from {
+      opacity: 0;
+      transform: translateY(7px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @media (hover: hover) and (pointer: fine) {
+    button:hover {
+      opacity: 0.72;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button {
+      display: none;
+    }
+    .motion-ready * {
+      animation: none !important;
+      opacity: 1 !important;
+    }
+  }
+  @media (max-width: 620px) {
+    .viz-header {
+      align-items: flex-start;
+    }
+    .paths {
+      grid-template-columns: 1fr;
+    }
+    .rail {
+      display: grid;
+      gap: 0.3rem;
+    }
+    .rail span {
+      text-align: left;
+    }
+  }
+</style>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-cfm-motion]').forEach((figure) => {
+    if (figure.dataset.motionBound || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    figure.dataset.motionBound = 'true'
+    figure.classList.add('motion-ready')
+
+    const play = () => {
+      figure.classList.remove('is-running')
+      void figure.offsetWidth
+      figure.classList.add('is-running')
+    }
+
+    figure.querySelector('[data-replay]')?.addEventListener('click', play)
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return
+        play()
+        observer.disconnect()
+      },
+      { threshold: 0.35 }
+    )
+    observer.observe(figure)
+  })
+</script>

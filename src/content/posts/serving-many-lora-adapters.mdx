@@ -1,0 +1,151 @@
+---
+title: 'Serving Thousands of LoRA Adapters from One Base Model'
+pubDate: 2026-07-08
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: 'Multiplex many low-rank adapters over shared base weights with batched gather kernels, adapter paging, and per-tenant routing.'
+topics: ['LoRA', 'Multi-tenancy', 'LLM serving']
+---
+
+import AdapterMultiplexing from '../../components/viz/AdapterMultiplexing.astro'
+
+Fine-tuning produces adapters far more often than it produces full models. A LoRA adapter for a 70B model is often under 200 MB against 140 GB of base weights. The economics of that ratio only materialize if one replica can serve many adapters at once. If each adapter requires its own replica, a 700x size advantage becomes a 1x cost advantage.
+
+Getting from one to the other is a scheduling and kernel problem, not a training one.
+
+<AdapterMultiplexing />
+
+## The structure that makes multiplexing possible
+
+LoRA replaces a weight update with a low-rank factorization.[^1] For a frozen base matrix $W_0 \in \mathbb{R}^{d \times k}$:
+
+$$
+h = W_0 x + \frac{\alpha}{r} BAx, \qquad B \in \mathbb{R}^{d \times r},\; A \in \mathbb{R}^{r \times k}
+$$
+
+with $r \ll \min(d,k)$. Two properties do the work:
+
+**Additivity.** The adapter contribution is a separate additive term. The base output $W_0x$ does not depend on which adapter is active.
+
+**Rank.** Parameters scale as $r(d+k)$ instead of $dk$. At $d = k = 4096$ and $r = 16$, that is 131k parameters against 16.8M — about 0.8%.
+
+Additivity is what allows a single batch to contain requests using different adapters. Every request in the batch shares the $W_0x$ computation and differs only in the low-rank correction.
+
+## Merge or keep separate
+
+You can fold the adapter into the base: $W' = W_0 + \frac{\alpha}{r}BA$.
+
+Merged serving is the fastest possible per-token path — it is exactly base-model inference, no extra kernels, no extra memory traffic. It also destroys multiplexing. A merged replica serves exactly one adapter, and switching means either re-merging (a full pass over the weights) or keeping a second copy.
+
+|                      | Merged           | Unmerged        |
+| -------------------- | ---------------- | --------------- |
+| Per-token cost       | Base only        | Base + low-rank |
+| Adapters per replica | 1                | Thousands       |
+| Switch cost          | Full weight pass | Pointer change  |
+| Batch composition    | Homogeneous      | Heterogeneous   |
+
+Merge when one adapter dominates traffic enough to justify dedicated capacity. Keep adapters separate for the long tail, which is where the multi-tenant case lives. Real deployments run both: dedicated merged replicas for the top handful of tenants, one multiplexed pool for everyone else.
+
+## Batching across different adapters
+
+The hard part is the unmerged path. A decode step contains requests $1..n$ using adapters $a_1..a_n$, and the batched GEMM against $W_0$ handles all of them uniformly. The adapter term does not.
+
+The naive approach loops over distinct adapters in the batch and runs a small GEMM per adapter. With 32 requests using 20 distinct adapters, that is 20 launches of a matrix multiply too small to occupy the device, per adapted layer, per step. Launch overhead swamps the arithmetic.
+
+The workable approach treats it as a gather-based grouped operation. Adapter weights are stored in a contiguous pool indexed by adapter id. Each request carries an index. A single kernel gathers the right slice per batch row:
+
+$$
+y_i = W_0 x_i + \frac{\alpha}{r} B_{a_i} \left( A_{a_i} x_i \right)
+$$
+
+Punica implements this as a segmented gather-matrix-multiply that runs the whole heterogeneous batch in one launch, keeping the base GEMM shared.[^2] S-LoRA extends it with unified paged memory holding both KV cache and adapter weights, plus tensor-parallel partitioning of the adapter computation, and reports serving thousands of adapters on one GPU.[^3]
+
+Two details decide whether this actually performs:
+
+**Uniform rank simplifies everything.** A pool where all adapters share rank $r$ is a dense 3-D tensor with clean strides. Mixed ranks require either ragged indexing or padding to the maximum rank. Padding wastes memory proportional to rank variance; ragged indexing costs indirection in the inner loop. Standardizing on one or two ranks across a tenant fleet is a real operational simplification.
+
+**The adapter term is bandwidth bound.** At rank 16 the arithmetic is negligible; the cost is reading $B_{a_i}$ and $A_{a_i}$ for each distinct adapter in the batch. Throughput therefore degrades with adapter diversity per batch, not with batch size. A batch of 32 requests on 2 adapters is much cheaper than 32 requests on 32 adapters.
+
+That last point has a direct scheduling consequence.
+
+## Adapter-aware scheduling
+
+Since cost scales with distinct adapters per step, the scheduler should prefer batches with adapter locality — without starving low-traffic tenants.
+
+A workable policy admits by a score combining wait time and locality:
+
+```python
+def admission_score(req, active_adapters, now, w_fair=1.0, w_local=0.35):
+    wait = now - req.arrival
+    locality = 1.0 if req.adapter_id in active_adapters else 0.0
+    return w_fair * wait + w_local * locality * req.est_tokens
+```
+
+Weighting wait time linearly bounds starvation: a request from an unpopular adapter accumulates score until it wins regardless of locality. Setting `w_local` too high produces exactly the failure this is meant to avoid — head-of-line blocking for small tenants while a popular adapter monopolizes the batch. Track per-adapter p99 queue time and tune against it, not against aggregate throughput.
+
+At the fleet level, consistent-hash routing on adapter id concentrates each adapter's traffic on a subset of replicas, which improves both adapter-cache hit rate and batch locality. It also creates hotspots when one tenant is much larger than the others, so the router needs a load term that can override the hash.
+
+## Paging adapters
+
+Adapters are small enough to treat like cache rather than like weights. A pool with a resident set in HBM, a paged set in host memory, and a cold set in object storage gives a three-tier hierarchy with very different transfer costs:
+
+| Tier           | Fetch latency for a 200 MB adapter | Policy          |
+| -------------- | ---------------------------------- | --------------- |
+| HBM resident   | 0                                  | Hot working set |
+| Host memory    | ~10–40 ms over PCIe                | Recently used   |
+| Object storage | 100 ms–seconds                     | Everything else |
+
+The critical requirement is that a fetch must not block the decode loop. An adapter miss should either delay only that request's admission, or trigger a prefetch while the request queues. A synchronous fetch inside the step function converts one tenant's cold adapter into a latency spike for every request in the batch — the single most common failure in these systems.
+
+```python
+async def admit(req, pool):
+    if not pool.resident(req.adapter_id):
+        pool.prefetch(req.adapter_id)      # non-blocking
+        return Defer(reason="adapter_warming")
+    return Admit()
+```
+
+Eviction should be size-aware only if ranks differ; otherwise LRU over adapter ids, with a pin for adapters under an availability commitment, is sufficient. What matters more is the admission interaction: evicting an adapter that has queued requests causes thrash.
+
+## Correctness across tenants
+
+Multi-tenancy makes several previously harmless bugs into isolation failures.
+
+**Prefix cache keys must include adapter id.** Two tenants sending the same system prompt produce identical token sequences and completely different KV states. A prefix cache keyed on tokens alone will serve one tenant's cached attention state to another. This is a data-leak bug, not a quality bug, and it is silent.
+
+**Base revision must be part of the key too.** An adapter is trained against a specific base checkpoint. Serving it over a different revision produces degraded output with no error.
+
+**Scaling factors must travel with the adapter.** The $\alpha/r$ factor is part of the adapter's definition. A server that applies a default $\alpha$ silently changes the effective adapter strength.
+
+**Sampling parameters and stop sequences are per-request.** In a heterogeneous batch these are no longer batch-level constants. A batched sampler that reads one temperature applies one tenant's settings to all.
+
+A minimal cache key:
+
+```python
+@dataclass(frozen=True)
+class PrefixKey:
+    base_revision: str
+    adapter_id: str | None
+    adapter_revision: str | None
+    token_ids: tuple[int, ...]
+```
+
+## What to measure
+
+Aggregate throughput hides everything that matters in a multi-tenant deployment. The dashboard needs:
+
+- **Distinct adapters per step**, distribution not mean — this is the primary cost driver.
+- **Adapter cache hit rate**, split by tier, and **adapter fetch stalls** counted separately from cache misses.
+- **Per-adapter p50/p99 TTFT**, so a fairness regression is visible before a tenant reports it.
+- **Adapter overhead fraction**: step time with adapters minus estimated base-only step time.
+- **Pool occupancy** in bytes and in adapter count, plus eviction rate.
+
+The headline claim for these systems is throughput at high adapter counts. The number that predicts whether a deployment is actually viable is the p99 TTFT of the least-popular tenant on the replica, because that is the one whose adapter is never resident and whose requests are never the locality-preferred choice.
+
+## References
+
+[^1]: Edward J. Hu et al., "LoRA: Low-Rank Adaptation of Large Language Models," ICLR, 2022. [https://arxiv.org/abs/2106.09685](https://arxiv.org/abs/2106.09685)
+
+[^2]: Lequn Chen et al., "Punica: Multi-Tenant LoRA Serving," MLSys, 2024. [https://arxiv.org/abs/2310.18547](https://arxiv.org/abs/2310.18547)
+
+[^3]: Ying Sheng et al., "S-LoRA: Serving Thousands of Concurrent LoRA Adapters," MLSys, 2024. [https://arxiv.org/abs/2311.03285](https://arxiv.org/abs/2311.03285)

@@ -1,0 +1,174 @@
+---
+title: 'Continuous Batching: How the Scheduler Decides Your Throughput'
+pubDate: 2026-07-14
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: 'Design an LLM serving scheduler around iteration-level batching, chunked prefill, admission control, and preemption under cache pressure.'
+topics: ['Scheduling', 'Continuous batching', 'LLM serving']
+---
+
+import BatchSchedulerTimeline from '../../components/viz/BatchSchedulerTimeline.astro'
+
+Kernel work gets most of the attention in inference optimization, and it is where the peak numbers come from. But between a request arriving and a token being emitted sits a scheduler that decides which requests run this iteration, how much prompt to process, what to do when memory runs out, and when to give up on a request. That component determines how much of the peak a deployment actually reaches, and it is where most of the gap between benchmark and production lives.
+
+<BatchSchedulerTimeline />
+
+## Why static batching fails on generation
+
+Batching amortizes weight reads. During decode, the model reads all its weights to produce one token per sequence, so a batch of $n$ costs roughly the same memory traffic as a batch of one. Throughput scales close to linearly until the matrix units saturate.
+
+Static batching collects $n$ requests, runs them together, and returns when all finish. With generation, output lengths vary by orders of magnitude in the same workload — a yes/no answer and a long document summary arrive at the same endpoint. Every finished sequence holds its slot, computing padding, until the longest one completes.
+
+With output lengths $\ell_1..\ell_n$, useful work fraction is:
+
+$$
+U = \frac{\sum_i \ell_i}{n \cdot \max_i \ell_i}
+$$
+
+For a realistic long-tailed length distribution this lands around 0.2–0.4. Most of the batch is computing nothing.
+
+Continuous batching, introduced as iteration-level scheduling in Orca, makes the batch mutable between forward passes: finished sequences leave immediately and queued ones join.[^1] The batch is re-formed every step. Orca reported order-of-magnitude latency improvements at comparable throughput against static batching, and it is now the default design in essentially every production serving stack.
+
+## The step loop
+
+The core is small. Everything hard is in the policies it calls.
+
+```python
+def step(state):
+    finished = [s for s in state.running if s.done]
+    for s in finished:
+        state.release(s)              # free KV blocks, emit final token
+        state.running.remove(s)
+
+    admitted = state.policy.admit(state.waiting, state.free_blocks)
+    state.running.extend(admitted)
+
+    batch = state.policy.compose(state.running)   # prefill chunks + decode rows
+    logits = state.model.forward(batch)
+    tokens = state.sampler(logits, batch.params)  # per-request sampling params
+
+    for s, t in zip(batch.sequences, tokens):
+        s.append(t)
+        if s.hit_stop() or s.at_limit():
+            s.done = True
+    return tokens
+```
+
+Three policies decide behavior: `admit`, `compose`, and the eviction path that `admit` consults when memory is short.
+
+## Prefill and decode are different workloads
+
+Prefill processes a whole prompt at once: a large matrix multiply, compute bound, high arithmetic intensity. Decode processes one token per sequence: small matrix-vector work, memory bound, latency dominated by reading weights.
+
+Mixing them naively creates the dominant latency pathology in LLM serving. A 32k-token prompt entering prefill occupies the device for hundreds of milliseconds. Every decoding request in the batch waits. From the client's perspective, an unrelated long prompt caused a multi-hundred-millisecond stall in a stream that was producing tokens every 20 ms.
+
+Chunked prefill fixes this by splitting the prompt into fixed-size pieces and scheduling one piece per iteration alongside ongoing decode work.[^2] The step's token budget becomes a constant:
+
+$$
+B = \underbrace{n_{\text{decode}}}_{\text{1 token each}} + \underbrace{c}_{\text{prefill chunk}}
+$$
+
+with $c$ chosen so that $B$ lands on the compute-saturating knee. Step time becomes roughly constant, which makes inter-token latency predictable and makes the whole system easier to reason about — a bounded step time is what allows any latency SLO to hold.
+
+The cost is that a chunked prompt attends to previously chunked positions, so the attention kernel must handle a mixed batch of prefill chunks and decode rows. That is real kernel complexity, and it is why chunked prefill is a server feature rather than something you bolt on.
+
+Choosing $c$: too small and prefill throughput collapses under launch overhead; too large and it reintroduces the stall. A budget of 512 to 2048 tokens per step is the usual range, tuned by measuring inter-token latency at the p99 while long prompts are in flight.
+
+## Admission control
+
+Admission is where availability is won or lost. A request needs KV blocks for its prompt now and for its output later. Admitting on prompt length alone means a batch of requests can begin streaming and then collectively run out of memory.
+
+Reserve for expected growth:
+
+$$
+\text{blocks}(r) = \left\lceil \frac{|p_r|}{B_{\text{blk}}} \right\rceil + \left\lceil \frac{\widehat{\ell_r}}{B_{\text{blk}}} \right\rceil
+$$
+
+$\widehat{\ell_r}$ is an estimate — `max_tokens` if the client supplied one, otherwise a high quantile of the observed output-length distribution for that route. Using the mean here guarantees periodic exhaustion; using the maximum wastes most of the cache. A p90 with preemption as the backstop is the practical setting.
+
+Admission also needs a queueing discipline. FIFO is fair and produces bad tail latency when a few enormous prompts sit at the head. Shortest-job-first improves the mean and starves long requests. The usual compromise is FIFO with a bounded number of concurrent long-prompt admissions, so head-of-line blocking is capped without reordering the queue.
+
+Load shedding belongs here too. When queue depth exceeds what can be served within the SLO, rejecting immediately with a retry hint is better than accepting work that will time out. A request that times out consumed prefill compute and produced nothing — the worst possible outcome per unit of hardware.
+
+## Preemption
+
+Under memory pressure the scheduler must reclaim from running requests. There are two mechanisms:
+
+**Swap.** Copy the sequence's KV blocks to host memory, free the device blocks, restore later. Cost is $2 \times$ transfer over PCIe.
+
+**Recompute.** Discard the blocks entirely and re-run prefill over the prompt plus generated tokens on resume. Cost is a prefill pass.
+
+Which is cheaper depends on length. Transfer cost grows linearly in context; recomputation cost also grows roughly linearly but with a much smaller constant, because prefill is compute-efficient while PCIe transfer is not. For short contexts recompute usually wins; for long ones swap does. vLLM implements both and selects by policy.[^3]
+
+Victim selection is a policy decision with a fairness consequence. Preempting the newest request keeps completed work; it also means a request can be admitted and preempted repeatedly under sustained pressure. A preemption counter with escalating priority prevents that livelock:
+
+```python
+def victim(running):
+    return max(running, key=lambda s: (s.preempt_count == 0, s.arrival))
+```
+
+Preemption rate is a first-class metric. A steady nonzero rate means admission is systematically over-optimistic, and the fix is the reservation estimate, not more preemption.
+
+## Prefix-aware composition
+
+If requests share prefixes — a common system prompt, a few-shot preamble, a document being asked about repeatedly — the KV state for that prefix can be computed once and shared. This changes admission cost: a request whose 4k-token prefix is already cached needs blocks only for its suffix.
+
+The scheduler should therefore consult the prefix cache before estimating cost, and prefer admitting requests with high reuse when memory is tight. At the fleet level the same logic applies to routing: sending a request to the replica holding its prefix can save more time than sending it to the least-loaded replica.
+
+The tension is real. Prefix-affinity routing concentrates load; load-based routing destroys reuse. The correct objective is predicted completion time, which includes both:
+
+$$
+\widehat{T}(r, \text{replica}) = T_{\text{queue}} + \frac{|p_r| - |p_r \cap \text{cache}|}{\text{prefill rate}} + \widehat{\ell_r} \cdot \text{TPOT}
+$$
+
+Route to the minimum. This naturally prefers cache hits when queues are comparable and abandons them when a replica is saturated.
+
+## Speculative decoding changes the accounting
+
+With speculation, each step proposes $k$ draft tokens and verifies them in one forward pass. Accepted tokens per step become variable, which breaks a scheduler that assumes one token per sequence per step.
+
+Two effects:
+
+- Memory grows by up to $k$ blocks per sequence per step, so reservation must account for the draft length.
+- Batch composition changes: speculation helps most at low batch sizes where the device is idle, and can hurt at high batch sizes where verification competes with real work.
+
+An adaptive scheduler lowers $k$ as batch size rises, and to zero under saturation. Fixed speculation depth is a throughput regression under load.
+
+## Instrumentation
+
+The metrics that make scheduler behavior legible:
+
+| Metric                          | What it reveals                   |
+| ------------------------------- | --------------------------------- |
+| Batch size, decode rows only    | Whether batching is working       |
+| Prefill tokens per step         | Chunk budget utilization          |
+| Step time distribution          | Whether chunking bounded the step |
+| Queue depth and wait time       | Admission pressure                |
+| Preemption rate, by mechanism   | Over-optimistic reservation       |
+| Blocks free / reserved / shared | Cache accounting                  |
+| Prefix hit tokens               | Reuse actually realized           |
+| Requests rejected vs. timed out | Whether shedding is working       |
+
+Averages hide the failures. Step time in particular should be a histogram — a mean of 25 ms with a p99 of 400 ms is a chunked-prefill misconfiguration, and the mean will never show it.
+
+## Failure modes
+
+**Convoy from a single long prompt.** Without chunked prefill, one 128k prompt stalls every stream on the replica. Visible as a step-time spike correlated with prompt length.
+
+**Admission thrash.** Requests admitted, preempted, re-admitted. Throughput drops while utilization looks high, because the device is busy recomputing.
+
+**Cache-hit blindness.** Routing ignores prefix locality, so a workload with a large shared system prompt pays full prefill on every request. Often a 2–5x cost difference in agent workloads.
+
+**Sampling parameter bleed.** A batched sampler that reads one temperature or one stop-sequence set applies it to every request. Silent, and only visible in output quality.
+
+**Unbounded queues.** Accepting everything under overload maximizes timeouts and wastes every unit of prefill compute spent on requests nobody is waiting for anymore.
+
+The scheduler is where model-independent throughput comes from. Two deployments of the same model on the same hardware can differ by several times in serving cost, and the difference is usually here rather than in the kernels.
+
+## References
+
+[^1]: Gyeong-In Yu et al., "Orca: A Distributed Serving System for Transformer-Based Generative Models," OSDI, 2022. [https://www.usenix.org/conference/osdi22/presentation/yu](https://www.usenix.org/conference/osdi22/presentation/yu)
+
+[^2]: Amey Agrawal et al., "Taming Throughput-Latency Tradeoff in LLM Inference with Sarathi-Serve," OSDI, 2024. [https://arxiv.org/abs/2403.02310](https://arxiv.org/abs/2403.02310)
+
+[^3]: Woosuk Kwon et al., "Efficient Memory Management for Large Language Model Serving with PagedAttention," SOSP, 2023. [https://arxiv.org/abs/2309.06180](https://arxiv.org/abs/2309.06180)

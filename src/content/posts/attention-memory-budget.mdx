@@ -1,0 +1,139 @@
+---
+title: 'MHA, MQA, GQA, MLA: Attention as a Memory Budget Decision'
+pubDate: 2026-07-23
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Derive KV cache cost per token across attention variants and see why key-value head count is chosen before quality is measured.'
+topics: ['Attention', 'GQA', 'Architecture']
+---
+
+import KVBudgetLadder from '../../components/viz/KVBudgetLadder.astro'
+
+Attention variants are usually presented as a quality question: how much accuracy does sharing key-value heads cost? In practice the causality runs the other way. A serving target implies a KV cache budget per token, the budget implies a key-value head count, and quality is what gets measured afterwards to confirm the choice was survivable.
+
+Understanding the arithmetic makes several otherwise arbitrary-looking architecture decisions legible.
+
+<KVBudgetLadder />
+
+## The equation everything follows from
+
+For a decoder with $L$ layers, $H_{kv}$ key-value heads, head dimension $d_h$, and $b$ bytes per scalar, cached bytes per token are:
+
+$$
+m = 2 L H_{kv} d_h b
+$$
+
+The 2 is keys and values. Note what is absent: the number of _query_ heads. Query projections are computed and consumed within a step and never cached. This asymmetry is the entire design space.
+
+For a 70B-class model — $L = 80$, $H_q = 64$, $d_h = 128$, FP16 — full multi-head attention gives:
+
+$$
+m = 2 \times 80 \times 64 \times 128 \times 2 = 2{,}621{,}440 \text{ bytes} \approx 2.5 \text{ MiB per token}
+$$
+
+A 32k-token context is 80 GiB of cache for one sequence. On an 80 GiB device also holding 140 GiB of weights across a tensor-parallel group, this is not a tuning problem; it is an infeasibility.
+
+## Sharing key-value heads
+
+**Multi-query attention** (MQA) takes the extreme position: all query heads attend to a single shared key-value head.[^1] $H_{kv} = 1$, so cache drops by a factor of $H_q$ — 64x in the example, from 2.5 MiB to 40 KiB per token.
+
+**Grouped-query attention** (GQA) interpolates: $H_q$ query heads are partitioned into $G$ groups, each sharing one key-value head.[^2] $H_{kv} = G$, and $G = H_q$ recovers MHA while $G = 1$ recovers MQA.
+
+$$
+\text{cache ratio} = \frac{G}{H_q}
+$$
+
+The GQA paper's central practical finding is that an existing MHA checkpoint can be converted by mean-pooling the key and value projections within each group and then uptraining on a small fraction of the original compute — roughly 5% — reaching quality close to the original MHA model while serving at near-MQA speed. That result is why GQA became the default rather than a from-scratch design choice: it is a conversion, not a retraining.
+
+$G = 8$ is the common landing point across model families. It gives an 8x cache reduction at $H_q = 64$ with quality loss that is small on most benchmarks.
+
+## What sharing actually costs
+
+The naive intuition — fewer key-value heads means less capacity — is roughly right but misplaced in where the damage appears.
+
+Aggregate benchmark scores move very little between MHA and GQA at $G = 8$. What degrades measurably is long-context retrieval: tasks requiring exact recall of a specific span from far back in the context. Each query head under MQA attends to the same key space, so heads lose the ability to specialize their retrieval patterns independently. Induction-style heads that copy from earlier positions are exactly the mechanism this constrains.
+
+This means the evaluation that matters is not average benchmark score. It is needle-in-haystack retrieval at the target context length, and multi-hop tasks that require holding several distinct references at once. A model that looks fine at 4k can fail at 128k for reasons that only this evaluation surfaces.
+
+MQA also shows measurable training instability at scale, which is part of why GQA displaced it even where the cache savings would have been welcome.
+
+## Multi-head latent attention
+
+MLA, introduced in the DeepSeek-V2 line, attacks the same problem differently.[^3] Instead of sharing key-value heads, it caches a low-rank latent from which keys and values are reconstructed.
+
+Down-project the hidden state to a compressed latent, cache only that, and up-project inside the attention computation:
+
+$$
+c_t = W_{DKV} h_t \in \mathbb{R}^{d_c}, \qquad d_c \ll H_q d_h
+$$
+
+$$
+k_t = W_{UK} c_t, \qquad v_t = W_{UV} c_t
+$$
+
+Cached bytes per token become $L d_c b$ rather than $2 L H_{kv} d_h b$. With $d_c$ set to a few multiples of $d_h$, this lands near or below aggressive GQA while retaining per-head diversity, because each head still gets its own up-projection.
+
+The up-projection matrices can be absorbed into the query and output projections algebraically, so the reconstruction does not add a separate matrix multiply at inference. That absorption is what makes MLA practical rather than a memory-for-compute trade.
+
+Rotary position embeddings complicate this. RoPE applies a position-dependent rotation to keys, which does not commute with the up-projection, so the absorption trick breaks. The published solution is a decoupled design: a small portion of each head carries RoPE directly and is cached separately, while the bulk stays in the latent. It is genuinely more complex than GQA, and that complexity is the main reason adoption has been narrower despite the better frontier.
+
+## Comparison
+
+| Variant         | $H_{kv}$ | Cache ratio         | Per-head diversity         | Complexity             |
+| --------------- | -------- | ------------------- | -------------------------- | ---------------------- |
+| MHA             | $H_q$    | 1                   | Full                       | Baseline               |
+| GQA, $G$ groups | $G$      | $G / H_q$           | Within groups only         | Trivial                |
+| MQA             | 1        | $1 / H_q$           | None                       | Trivial                |
+| MLA             | —        | $d_c / (2 H_q d_h)$ | Retained via up-projection | High, RoPE interaction |
+
+## Working backwards from a serving target
+
+The design procedure is mechanical once the target is stated.
+
+Given device memory $M$, tensor-parallel degree $P$, weight bytes $W$, target concurrency $n$, and target context $S$:
+
+$$
+H_{kv} \leq \frac{P \cdot M - W - M_{\text{workspace}}}{2 L d_h b \cdot n \cdot S}
+$$
+
+```python
+def max_kv_heads(device_bytes, tp, weight_bytes, workspace,
+                 layers, head_dim, dtype_bytes, concurrency, context):
+    free = tp * device_bytes - weight_bytes - workspace
+    per_token_per_head = 2 * layers * head_dim * dtype_bytes
+    return free // (per_token_per_head * concurrency * context)
+```
+
+Round down to a power of two that divides $H_q$, and that is the group count. If it comes out below 1, the target is infeasible and something else has to give — context length, concurrency, cache precision, or the model.
+
+Two adjustments are usually available before changing the architecture. Quantizing the cache to FP8 halves $b$, which is equivalent to doubling the allowed head count and is often the cheaper move. And sliding-window attention on a subset of layers bounds $S$ for those layers, which can be a larger saving than any head-count change.
+
+## Interactions
+
+**Cache quantization composes but not freely.** GQA at $G=8$ plus FP8 cache gives 16x over MHA at FP16. But fewer key-value heads means each cached value carries more of the model's retrieval capacity, so quantization error has more leverage. Measure the combination, not each independently.
+
+**Kernel efficiency changes with $G$.** With few key-value heads, the same K and V are read by many query heads, which is a favorable access pattern — the shared data stays in on-chip memory. A well-written GQA kernel is faster per token than an MHA kernel beyond the cache saving. A kernel that materializes the shared heads per query head instead throws that away.
+
+**Tensor parallelism has a floor.** Key-value heads are partitioned across ranks. With $G = 8$ and $P = 16$, ranks either duplicate heads or sit idle. Aggressive GQA and aggressive tensor parallelism conflict, and the resolution is usually to duplicate — which silently negates part of the memory saving.
+
+**Speculative decoding amplifies the win.** Verification processes several draft tokens per step, so per-token cache cost multiplies. A smaller cache makes deeper speculation affordable.
+
+## Evaluating a choice
+
+The protocol that catches what benchmarks miss:
+
+1. **Retrieval at target context.** Needle-in-haystack at the maximum supported length, with the needle placed across the full range of depths. Report worst position, not average.
+2. **Multi-reference tasks.** Questions requiring several distinct spans simultaneously — this is where reduced head diversity shows up first.
+3. **Long-form coherence.** Generation quality at long output lengths, where cache degradation compounds.
+4. **Realized concurrency.** Measured, not computed: fragmentation and workspace mean the theoretical number is optimistic.
+5. **Goodput at the SLO.** The number that translates the architecture choice into cost.
+
+The last one is the point of the exercise. A 5% relative drop on a retrieval benchmark that buys 8x concurrency is usually the right trade, and stating it that way — rather than as a quality regression to be avoided — is how the decision should be framed.
+
+## References
+
+[^1]: Noam Shazeer, "Fast Transformer Decoding: One Write-Head is All You Need," arXiv, 2019. [https://arxiv.org/abs/1911.02150](https://arxiv.org/abs/1911.02150)
+
+[^2]: Joshua Ainslie et al., "GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints," EMNLP, 2023. [https://arxiv.org/abs/2305.13245](https://arxiv.org/abs/2305.13245)
+
+[^3]: DeepSeek-AI, "DeepSeek-V2: A Strong, Economical, and Efficient Mixture-of-Experts Language Model," arXiv, 2024. [https://arxiv.org/abs/2405.04434](https://arxiv.org/abs/2405.04434)
