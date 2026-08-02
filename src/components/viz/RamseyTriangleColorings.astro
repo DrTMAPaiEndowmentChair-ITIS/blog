@@ -1,0 +1,215 @@
+<figure class="viz ramsey-tri-viz" aria-labelledby="ramsey-tri-title">
+  <figcaption id="ramsey-tri-title">
+    <strong>Two colours run out of room at six vertices</strong>
+    <span>R<sub>2</sub>(3) = 6: five vertices can be coloured without a monochromatic triangle, six cannot.</span>
+  </figcaption>
+
+  <div class="panels">
+    <section class="panel">
+      <span class="tag">K<sub>5</sub> — a good colouring</span>
+      <svg viewBox="0 0 200 200" role="img" aria-labelledby="ramsey-k5-desc">
+        <title id="ramsey-k5-desc">
+          The complete graph on five vertices, two-coloured so that colour one forms the outer
+          pentagon and colour two forms the inner pentagram. Neither colour class contains a
+          triangle.
+        </title>
+        <g class="c-two">
+          <path d="M100 30L141.1 156.6"></path>
+          <path d="M166.6 78.4L58.9 156.6"></path>
+          <path d="M141.1 156.6L33.4 78.4"></path>
+          <path d="M58.9 156.6L100 30"></path>
+          <path d="M33.4 78.4L166.6 78.4"></path>
+        </g>
+        <g class="c-one">
+          <path d="M100 30L166.6 78.4"></path>
+          <path d="M166.6 78.4L141.1 156.6"></path>
+          <path d="M141.1 156.6L58.9 156.6"></path>
+          <path d="M58.9 156.6L33.4 78.4"></path>
+          <path d="M33.4 78.4L100 30"></path>
+        </g>
+        <g class="nodes">
+          <circle cx="100" cy="30" r="5"></circle>
+          <circle cx="166.6" cy="78.4" r="5"></circle>
+          <circle cx="141.1" cy="156.6" r="5"></circle>
+          <circle cx="58.9" cy="156.6" r="5"></circle>
+          <circle cx="33.4" cy="78.4" r="5"></circle>
+        </g>
+      </svg>
+      <small>Each colour class is a five-cycle. A five-cycle has no triangle, so no colour wins.</small>
+    </section>
+
+    <section class="panel">
+      <span class="tag">K<sub>6</sub> — every colouring fails</span>
+      <svg viewBox="0 0 200 200" role="img" aria-labelledby="ramsey-k6-desc">
+        <title id="ramsey-k6-desc">
+          The complete graph on six vertices with the same two-colouring extended by a central
+          vertex. Three edges of colour one meet at the centre, forcing a monochromatic triangle,
+          which is highlighted.
+        </title>
+        <path class="highlight" d="M100 100L100 30L166.6 78.4Z"></path>
+        <g class="c-two">
+          <path d="M100 30L141.1 156.6"></path>
+          <path d="M166.6 78.4L58.9 156.6"></path>
+          <path d="M141.1 156.6L33.4 78.4"></path>
+          <path d="M58.9 156.6L100 30"></path>
+          <path d="M33.4 78.4L166.6 78.4"></path>
+          <path d="M100 100L58.9 156.6"></path>
+          <path d="M100 100L33.4 78.4"></path>
+        </g>
+        <g class="c-one">
+          <path d="M100 30L166.6 78.4"></path>
+          <path d="M166.6 78.4L141.1 156.6"></path>
+          <path d="M141.1 156.6L58.9 156.6"></path>
+          <path d="M58.9 156.6L33.4 78.4"></path>
+          <path d="M33.4 78.4L100 30"></path>
+          <path d="M100 100L100 30"></path>
+          <path d="M100 100L166.6 78.4"></path>
+          <path d="M100 100L141.1 156.6"></path>
+        </g>
+        <g class="nodes">
+          <circle cx="100" cy="30" r="5"></circle>
+          <circle cx="166.6" cy="78.4" r="5"></circle>
+          <circle cx="141.1" cy="156.6" r="5"></circle>
+          <circle cx="58.9" cy="156.6" r="5"></circle>
+          <circle cx="33.4" cy="78.4" r="5"></circle>
+          <circle cx="100" cy="100" r="5"></circle>
+        </g>
+      </svg>
+      <small>
+        The sixth vertex sends five edges into two colours, so some colour takes at least three.
+        Here colour one closes a triangle.
+      </small>
+    </section>
+  </div>
+
+  <div class="legend">
+    <span><i class="swatch one" aria-hidden="true"></i>colour one</span>
+    <span><i class="swatch two" aria-hidden="true"></i>colour two</span>
+    <span><i class="swatch tri" aria-hidden="true"></i>monochromatic triangle</span>
+    <em>R<sub>k</sub>(3) asks the same question with k colours instead of two.</em>
+  </div>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  .panels {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem;
+  }
+  .panel {
+    display: grid;
+    align-content: start;
+    gap: 0.6rem;
+    min-width: 0;
+    padding: 0.9rem;
+    border-top: 2px solid var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .tag {
+    color: var(--text-tertiary);
+    font: 0.62rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  svg {
+    display: block;
+    width: 100%;
+    max-width: 15rem;
+    margin: 0 auto;
+  }
+  path {
+    fill: none;
+    vector-effect: non-scaling-stroke;
+  }
+  .c-one path {
+    stroke: var(--text-primary);
+    stroke-width: 1.8;
+  }
+  .c-two path {
+    stroke: var(--text-tertiary);
+    stroke-dasharray: 4 4;
+    stroke-width: 1.6;
+  }
+  .highlight {
+    fill: var(--text-primary);
+    opacity: 0.14;
+    stroke: none;
+  }
+  .nodes circle {
+    fill: var(--bg);
+    stroke: var(--text-primary);
+    stroke-width: 1.6;
+  }
+  small {
+    color: var(--text-secondary);
+    font: 0.66rem/1.5 var(--mono);
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1.1rem;
+    margin-top: 0.9rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-secondary);
+    font: 0.66rem/1.45 var(--mono);
+  }
+  .legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .swatch {
+    display: inline-block;
+    width: 1.4rem;
+    height: 0;
+  }
+  .swatch.one {
+    border-top: 2px solid var(--text-primary);
+  }
+  .swatch.two {
+    border-top: 2px dashed var(--text-tertiary);
+  }
+  .swatch.tri {
+    height: 0.7rem;
+    background: var(--text-primary);
+    opacity: 0.14;
+  }
+  .legend em {
+    color: var(--text-tertiary);
+    font-style: normal;
+    margin-left: auto;
+  }
+  @container (max-width: 520px) {
+    .panels {
+      grid-template-columns: 1fr;
+    }
+    .legend em {
+      margin-left: 0;
+    }
+  }
+</style>

@@ -1,0 +1,205 @@
+<figure class="viz lattice-viz" aria-labelledby="lattice-hardness-title">
+  <figcaption id="lattice-hardness-title">
+    <strong>Where n<sup>1/400</sup> sits on the CVP approximation axis</strong>
+    <span>
+      Hardness gets easier to prove as the approximation factor grows. The interesting factors for
+      cryptography are far to the right.
+    </span>
+  </figcaption>
+
+  <div class="line">
+    <svg viewBox="0 0 700 190" role="img" aria-labelledby="lattice-axis-title">
+      <title id="lattice-axis-title">
+        A number line of approximation factors for the Euclidean closest vector problem, from
+        constant factors through the square-root barrier to the polynomial factors used by
+        cryptography
+      </title>
+
+      <rect class="band" x="332" y="92" width="166" height="16" />
+      <text class="band-label" x="415" y="80">open</text>
+
+      <path class="axis" d="M36 100 H676" />
+      <path class="axis-head" d="M676 100 l-9 -5 v10 z" />
+      <text class="axis-note" x="356" y="184">approximation factor γ(n), increasing →</text>
+
+      <g class="tick">
+        <path d="M70 92 v16" />
+        <text class="value" x="70" y="72">O(1)</text>
+        <text class="status hard" x="70" y="126">NP-hard</text>
+        <text class="cite" x="70" y="144">ABSS 1997</text>
+      </g>
+
+      <g class="tick">
+        <path d="M196 92 v16" />
+        <text class="value" x="196" y="72">n^(a/log log n)</text>
+        <text class="status hard" x="196" y="126">NP-hard</text>
+        <text class="cite" x="196" y="144">DKRS 2003</text>
+      </g>
+
+      <g class="tick current">
+        <path d="M332 86 v28" />
+        <text class="value" x="332" y="60">n^(1/400)</text>
+        <text class="status hard" x="332" y="132">NP-hard, deterministic</text>
+        <text class="cite" x="332" y="150">this result, no PCP</text>
+      </g>
+
+      <g class="tick">
+        <path d="M498 92 v16" />
+        <text class="value" x="498" y="72">C·n^(1/2)</text>
+        <text class="status soft" x="498" y="126">in NP ∩ coNP</text>
+        <text class="cite" x="498" y="144">Aharonov–Regev 2005</text>
+      </g>
+
+      <g class="tick">
+        <path d="M632 92 v16" />
+        <text class="value" x="632" y="72">poly(n)</text>
+        <text class="status soft" x="632" y="126">no NP-hardness expected</text>
+        <text class="cite" x="632" y="144">regime used by LWE</text>
+      </g>
+    </svg>
+  </div>
+
+  <dl class="reading">
+    <div>
+      <dt>What moved</dt>
+      <dd>
+        The exponent of n became a fixed positive constant instead of one tending to zero.
+      </dd>
+    </div>
+    <div>
+      <dt>What did not</dt>
+      <dd>
+        NP-hardness at factor C·n<sup>1/2</sup> would collapse NP and coNP, so the exponent cannot
+        reach 1/2.
+      </dd>
+    </div>
+    <div>
+      <dt>Distance to cryptography</dt>
+      <dd>
+        Lattice schemes rest on average-case problems at larger polynomial factors, not on
+        worst-case NP-hardness.
+      </dd>
+    </div>
+  </dl>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  .line {
+    padding: 0.9rem 0.5rem;
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--text-secondary);
+    background: var(--bg);
+  }
+  svg {
+    display: block;
+    width: 100%;
+  }
+  path {
+    fill: none;
+    vector-effect: non-scaling-stroke;
+  }
+  .axis {
+    stroke: var(--text-secondary);
+    stroke-width: 1;
+  }
+  .axis-head {
+    fill: var(--text-secondary);
+    stroke: none;
+  }
+  .band {
+    fill: var(--border);
+    stroke: none;
+  }
+  .band-label,
+  .axis-note {
+    fill: var(--text-tertiary);
+    font: 0.6rem var(--mono);
+    text-anchor: middle;
+    letter-spacing: 0.04em;
+  }
+  .tick path {
+    stroke: var(--text-tertiary);
+    stroke-width: 1;
+  }
+  .current path {
+    stroke: var(--text-primary);
+    stroke-width: 2;
+  }
+  text {
+    text-anchor: middle;
+  }
+  .value {
+    fill: var(--text-secondary);
+    font: 0.63rem var(--mono);
+  }
+  .current .value {
+    fill: var(--text-primary);
+    font-weight: 600;
+  }
+  .status {
+    font: 0.58rem var(--mono);
+  }
+  .hard {
+    fill: var(--text-primary);
+  }
+  .soft {
+    fill: var(--text-tertiary);
+  }
+  .cite {
+    fill: var(--text-tertiary);
+    font: 0.55rem var(--mono);
+  }
+  .reading {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    margin: 1rem 0 0;
+  }
+  .reading div {
+    display: grid;
+    gap: 0.3rem;
+    min-width: 0;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+  }
+  dt,
+  dd {
+    margin: 0;
+    font: 0.67rem/1.5 var(--mono);
+  }
+  dt {
+    color: var(--text-tertiary);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  dd {
+    color: var(--text-secondary);
+  }
+  @container (max-width: 560px) {
+    .reading {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

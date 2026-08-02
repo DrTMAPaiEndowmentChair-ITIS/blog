@@ -1,0 +1,177 @@
+---
+const stages = [
+  {
+    step: '1',
+    when: '~May 2026',
+    who: 'Internal OpenAI reasoning model',
+    what: 'Produces a counterexample argument',
+    detail:
+      'A general-purpose reasoning model, not a mathematics-specialised system. Reported to succeed on roughly half of attempts at maximum token budget.',
+    status: 'machine output'
+  },
+  {
+    step: '2',
+    when: '20 May 2026',
+    who: 'OpenAI writeup',
+    what: 'Published as a preprint on openai.com',
+    detail:
+      'States: there is an absolute constant delta > 0 and infinitely many n with at least n^(1+delta) unit distances. The constant is not made explicit.',
+    status: 'informal prose'
+  },
+  {
+    step: '3',
+    when: '20 May 2026',
+    who: 'Nine mathematicians',
+    what: 'Human-verified digest and reflections',
+    detail:
+      'Alon, Bloom, Gowers, Litt, Sawin, Shankar, Tsimerman, Wang and Matchett Wood compress the argument and locate its ancestry in Golod-Shafarevich, Hajir-Maire-Ramakrishna and Ellenberg-Venkatesh.',
+    status: 'referee-grade reading'
+  },
+  {
+    step: '4',
+    when: '20 May 2026',
+    who: 'Will Sawin, independently',
+    what: 'Makes the exponent explicit',
+    detail:
+      'A separate preprint proves more than n^1.014 unit-distance pairs, using the same Golod-Shafarevich route to number fields of large degree and small discriminant.',
+    status: 'human extension'
+  },
+  {
+    step: '5',
+    when: 'June 2026',
+    who: 'Certificate optimisation, Aleph Prover',
+    what: 'Sharper constants, then a Lean 4 check',
+    detail:
+      'Search over explicit prime certificates pushes delta past 0.03. A separate formalisation reaches a machine-checked proof of about 33,000 lines, conditional on two classical theorems still unformalised in Mathlib.',
+    status: 'partially formal'
+  }
+]
+---
+
+<figure class="viz pipeline-viz" aria-labelledby="unit-distance-pipeline-title">
+  <figcaption id="unit-distance-pipeline-title">
+    <strong>From model output to machine-checked artefact</strong>
+    <span>
+      The result was announced and refereed on the same day, then sharpened and formalised over
+      the following six weeks.
+    </span>
+  </figcaption>
+
+  <ol class="stages">
+    {
+      stages.map((s) => (
+        <li>
+          <div class="head">
+            <span class="step">{s.step}</span>
+            <span class="when">{s.when}</span>
+            <span class="status">{s.status}</span>
+          </div>
+          <strong>{s.what}</strong>
+          <em>{s.who}</em>
+          <p>{s.detail}</p>
+        </li>
+      ))
+    }
+  </ol>
+
+  <p class="foot">
+    No stage is redundant. Step 3 is what turned an unrefereed PDF into something a
+    combinatorialist could act on; step 5 is what makes the argument auditable without trusting
+    any human reading at all.
+  </p>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  .stages {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.6rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .stages li {
+    display: grid;
+    align-content: start;
+    gap: 0.4rem;
+    min-width: 0;
+    padding: 0.8rem 0.75rem;
+    border-top: 2px solid var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35rem 0.5rem;
+  }
+  .step {
+    color: var(--text-primary);
+    font: 600 0.62rem var(--mono);
+  }
+  .when {
+    color: var(--text-tertiary);
+    font: 0.62rem var(--mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .status {
+    padding: 0.1rem 0.35rem;
+    border: 1px solid var(--border);
+    color: var(--text-tertiary);
+    font: 0.58rem var(--mono);
+  }
+  .stages strong {
+    font: 600 0.78rem/1.35 var(--sans);
+  }
+  .stages em {
+    color: var(--text-secondary);
+    font: 0.66rem/1.4 var(--mono);
+    font-style: normal;
+  }
+  .stages p {
+    margin: 0.1rem 0 0;
+    color: var(--text-secondary);
+    font: 0.64rem/1.55 var(--mono);
+  }
+  .foot {
+    margin: 1rem 0 0;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-secondary);
+    font: 0.68rem/1.6 var(--mono);
+  }
+  @container (max-width: 780px) {
+    .stages {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @container (max-width: 480px) {
+    .stages {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -1,0 +1,211 @@
+---
+const results = [
+  {
+    n: '1',
+    name: 'Cohn–Elkies sphere-packing LP',
+    field: 'Fourier analysis / discrete geometry',
+    kind: 'Rate determined',
+    note: 'Exact exponential decay rate, matching upper and lower bounds.',
+  },
+  {
+    n: '2',
+    name: 'Binary and spherical codes',
+    field: 'Coding theory',
+    kind: 'Exponent improved',
+    note: 'Strict improvement over MRRW and KL at every fixed distance.',
+  },
+  {
+    n: '3',
+    name: 'Non-sofic group',
+    field: 'Group theory',
+    kind: 'Existence settled',
+    note: 'An explicit group with no finite permutation approximations.',
+  },
+  {
+    n: '4',
+    name: 'Connes rigidity',
+    field: 'Operator algebras',
+    kind: 'Conjecture disproved',
+    note: 'Infinitely many groups sharing one group von Neumann algebra.',
+  },
+  {
+    n: '5',
+    name: 'Permanent circuits and formulas',
+    field: 'Algebraic complexity',
+    kind: 'Lower bound raised',
+    note: 'Superlinear gate bound and a quartic formula-size bound.',
+  },
+  {
+    n: '6',
+    name: 'Quantum parallel repetition',
+    field: 'Quantum complexity',
+    kind: 'Generality extended',
+    note: 'Exponential decay for all finite two-player entangled games.',
+  },
+  {
+    n: '7',
+    name: 'Closest vector problem',
+    field: 'Lattices / cryptography',
+    kind: 'Hardness strengthened',
+    note: 'Polynomial approximation factor without invoking the PCP theorem.',
+  },
+  {
+    n: '8',
+    name: 'Ehrhart volume conjecture',
+    field: 'Convex geometry',
+    kind: 'Sharp bound proved',
+    note: 'The conjectured extremal volume, in every dimension.',
+  },
+  {
+    n: '9',
+    name: 'Multicolor Ramsey numbers',
+    field: 'Ramsey theory',
+    kind: 'Growth class fixed',
+    note: 'Superexponential lower bound closes an exponential-to-factorial gap.',
+  },
+  {
+    n: '10',
+    name: 'Compactness and degeneracy',
+    field: 'Extremal graph theory',
+    kind: 'Conjecture disproved',
+    note: 'Two separate bipartite constructions, two refuted conjectures.',
+  },
+]
+---
+
+<figure class="viz results-map" aria-labelledby="tenadv-map-title">
+  <figcaption id="tenadv-map-title">
+    <strong>Ten results, six kinds of advance</strong>
+    <span
+      >Four chapters refute or settle a stated question. Six move a quantitative bound that had not
+      moved.</span
+    >
+  </figcaption>
+
+  <div class="grid" role="table" aria-label="The ten results by field and kind of advance">
+    <div class="head" role="row">
+      <span role="columnheader">#</span>
+      <span role="columnheader">Result</span>
+      <span role="columnheader">Field</span>
+      <span role="columnheader">Kind of advance</span>
+    </div>
+
+    {
+      results.map((r) => (
+        <div class="row" role="row">
+          <span class="idx" role="cell">{r.n}</span>
+          <span class="name" role="cell">
+            <strong>{r.name}</strong>
+            <small>{r.note}</small>
+          </span>
+          <span class="field" role="cell">
+            {r.field}
+          </span>
+          <span class="kind" role="cell">
+            {r.kind}
+          </span>
+        </div>
+      ))
+    }
+  </div>
+
+  <p class="foot">
+    Every chapter states a theorem about an object or a bound. None of them reports a score on a
+    fixed problem set.
+  </p>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  .grid {
+    display: grid;
+    border-top: 2px solid var(--text-secondary);
+  }
+  .head,
+  .row {
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1.5fr) minmax(0, 0.9fr) minmax(0, 0.75fr);
+    gap: 0.75rem;
+    align-items: start;
+    padding: 0.7rem 0.1rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .head span {
+    color: var(--text-tertiary);
+    font: 0.62rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .idx {
+    color: var(--text-tertiary);
+    font: 0.7rem var(--mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .name {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 0;
+  }
+  .name strong {
+    font: 600 0.82rem/1.35 var(--sans);
+  }
+  .name small {
+    color: var(--text-secondary);
+    font: 0.65rem/1.5 var(--mono);
+  }
+  .field {
+    color: var(--text-secondary);
+    font: 0.68rem/1.45 var(--mono);
+  }
+  .kind {
+    align-self: start;
+    padding: 0.2rem 0.45rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-primary);
+    font: 0.63rem/1.4 var(--mono);
+    letter-spacing: 0.02em;
+  }
+  .foot {
+    margin: 0.95rem 0 0;
+    color: var(--text-secondary);
+    font: 0.68rem/1.55 var(--mono);
+  }
+  @container (max-width: 620px) {
+    .head {
+      display: none;
+    }
+    .row {
+      grid-template-columns: 1.9rem minmax(0, 1fr);
+      row-gap: 0.4rem;
+    }
+    .field,
+    .kind {
+      grid-column: 2;
+    }
+    .kind {
+      justify-self: start;
+    }
+  }
+</style>

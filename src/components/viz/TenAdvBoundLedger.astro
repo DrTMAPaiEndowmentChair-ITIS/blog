@@ -1,0 +1,220 @@
+---
+const rows = [
+  {
+    topic: 'Sphere-packing exponent',
+    before: 'Δ_d ≤ 2^(−0.59905576…d)  (Kabatianskii–Levenshtein)',
+    after: 'Δ_d ≤ 2^(−(0.6044…+o(1))d), and the LP can do no better',
+    since: 'unimproved since 1978',
+  },
+  {
+    topic: 'Binary code rate',
+    before: 'optimized MRRW exponent, for each fixed δ ∈ (0, 1/2)',
+    after: 'strictly below MRRW at every such δ',
+    since: 'unimproved since 1977',
+  },
+  {
+    topic: 'Multicolor Ramsey',
+    before: 'R_k(3) ≥ 380^(k/5) − O(1)  (exponential)',
+    after: 'R_k(3) ≥ (ck^(1/3)/log k)^k, so R_k(3) = k^Θ(k)',
+    since: 'question posed by 1990',
+  },
+  {
+    topic: 'Ehrhart volume',
+    before: 'vol(K) ≤ 4^n e^(−cn)',
+    after: 'vol(K) ≤ (n+1)^n/n!, the sharp bound',
+    since: 'conjectured 1964',
+  },
+  {
+    topic: 'Entangled parallel repetition',
+    before: 'polynomial decay in general; exponential only for anchored games',
+    after: 'exponential decay for every finite two-player entangled game',
+    since: 'open since Raz 1995',
+  },
+  {
+    topic: 'Closest vector hardness',
+    before: 'polynomial factors via the PCP theorem',
+    after: 'n^(1/400) by a direct 3SAT reduction, no PCP theorem',
+    since: 'new proof route',
+  },
+]
+---
+
+<figure class="viz bound-ledger" aria-labelledby="tenadv-ledger-title">
+  <figcaption id="tenadv-ledger-title">
+    <strong>What actually moved</strong>
+    <span
+      >Six of the ten chapters replace a specific published bound. The previous entry in each row is
+      the standing record, not a strawman.</span
+    >
+  </figcaption>
+
+  <div class="axis-panel">
+    <svg viewBox="0 0 360 96" role="img" aria-labelledby="tenadv-axis-title">
+      <title id="tenadv-axis-title"
+        >The sphere-packing exponent moves from 0.599 to 0.6044 on a narrow axis</title
+      >
+      <path class="axis" d="M30 62h300"></path>
+      <path class="tick" d="M30 56v12"></path>
+      <path class="tick" d="M330 56v12"></path>
+      <text class="tick-label" x="30" y="82">0.598</text>
+      <text class="tick-label" x="330" y="82" text-anchor="end">0.606</text>
+
+      <path class="marker old" d="M101 30v32"></path>
+      <circle class="dot" cx="101" cy="62" r="3.5"></circle>
+      <text class="pt" x="101" y="24" text-anchor="middle">0.59906 (1978)</text>
+
+      <path class="marker new" d="M270 30v32"></path>
+      <circle class="dot" cx="270" cy="62" r="3.5"></circle>
+      <text class="pt strongtext" x="270" y="24" text-anchor="middle">0.6044 (2026)</text>
+    </svg>
+    <span class="scale-note"
+      >Exponent α in Δ_d ≤ 2^(−αd). A larger α is a stronger bound; the gain compounds with
+      dimension.</span
+    >
+  </div>
+
+  <dl class="ledger">
+    {
+      rows.map((r) => (
+        <div class="entry">
+          <dt>
+            {r.topic}
+            <em>{r.since}</em>
+          </dt>
+          <dd class="before">
+            <span>previous</span>
+            {r.before}
+          </dd>
+          <dd class="after">
+            <span>this paper</span>
+            {r.after}
+          </dd>
+        </div>
+      ))
+    }
+  </dl>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  .axis-panel {
+    padding: 0.85rem 0.75rem 0.6rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  svg {
+    display: block;
+    width: 100%;
+  }
+  path {
+    fill: none;
+    vector-effect: non-scaling-stroke;
+  }
+  .axis,
+  .tick {
+    stroke: var(--border);
+  }
+  .marker {
+    stroke: var(--text-tertiary);
+    stroke-dasharray: 3 4;
+  }
+  .marker.new {
+    stroke: var(--text-primary);
+    stroke-dasharray: none;
+  }
+  .dot {
+    fill: var(--text-primary);
+  }
+  text {
+    fill: var(--text-secondary);
+    font: 0.66rem var(--mono);
+  }
+  .tick-label {
+    fill: var(--text-tertiary);
+    font-size: 0.6rem;
+  }
+  .strongtext {
+    fill: var(--text-primary);
+    font-weight: 600;
+  }
+  .scale-note {
+    display: block;
+    margin-top: 0.35rem;
+    color: var(--text-tertiary);
+    font: 0.62rem/1.5 var(--mono);
+  }
+  .ledger {
+    display: grid;
+    gap: 0;
+    margin: 1.1rem 0 0;
+    border-top: 2px solid var(--text-secondary);
+  }
+  .entry {
+    display: grid;
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr) minmax(0, 1.15fr);
+    gap: 0.75rem;
+    align-items: start;
+    padding: 0.75rem 0.1rem;
+    border-bottom: 1px solid var(--border);
+  }
+  dt {
+    display: grid;
+    gap: 0.25rem;
+    margin: 0;
+    font: 600 0.8rem/1.35 var(--sans);
+  }
+  dt em {
+    color: var(--text-tertiary);
+    font: 0.62rem/1.4 var(--mono);
+    font-style: normal;
+  }
+  dd {
+    display: grid;
+    gap: 0.28rem;
+    margin: 0;
+    min-width: 0;
+    font: 0.68rem/1.55 var(--mono);
+    overflow-wrap: anywhere;
+  }
+  dd span {
+    color: var(--text-tertiary);
+    font-size: 0.6rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .before {
+    color: var(--text-tertiary);
+  }
+  .after {
+    color: var(--text-primary);
+    padding-left: 0.6rem;
+    border-left: 2px solid var(--text-secondary);
+  }
+  @container (max-width: 640px) {
+    .entry {
+      grid-template-columns: 1fr;
+      row-gap: 0.5rem;
+    }
+  }
+</style>

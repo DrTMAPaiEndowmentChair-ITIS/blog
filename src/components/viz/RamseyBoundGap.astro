@@ -1,0 +1,208 @@
+<figure class="viz ramsey-gap-viz" aria-labelledby="ramsey-gap-title">
+  <figcaption id="ramsey-gap-title">
+    <strong>The old lower bound had a vanishing exponent</strong>
+    <span>Write the bounds as R = k^(θk) and plot θ. An exponential bound gives θ → 0.</span>
+  </figcaption>
+
+  <div class="chart">
+    <svg viewBox="0 0 400 240" role="img" aria-labelledby="ramsey-gap-chart">
+      <title id="ramsey-gap-chart">
+        Exponent θ in R_k(3) = k^(θk) plotted against the number of colours on a logarithmic
+        axis. The factorial upper bound rises toward 1, the classical exponential lower bound
+        decays toward 0, and the new lower bound climbs toward 1/3.
+      </title>
+
+      <path class="axis" d="M50 30v170h330"></path>
+
+      <path class="gridline" d="M50 30h330"></path>
+      <path class="gridline" d="M50 143.3h330"></path>
+
+      <text class="tick" x="44" y="33">1</text>
+      <text class="tick" x="44" y="146">1/3</text>
+      <text class="tick" x="44" y="203">0</text>
+
+      <text class="tick x" x="50" y="215">10</text>
+      <text class="tick x" x="140" y="215">1e4</text>
+      <text class="tick x" x="230" y="215">1e7</text>
+      <text class="tick x" x="320" y="215">1e10</text>
+
+      <text class="axis-label x-label" x="215" y="232">number of colours k</text>
+      <text class="axis-label y-label" x="16" y="115">exponent θ</text>
+
+      <path
+        class="band"
+        d="M50 200L80 199.7L110 191L140 184.4L200 175.7L290 168.2L380 163.8L380 36.1L290 38.2L200 42.2L140 48.5L110 54.6L80 66.9L50 103.8Z"
+      ></path>
+
+      <path
+        class="curve upper"
+        d="M50 103.8L80 66.9L110 54.6L140 48.5L200 42.2L290 38.2L380 36.1"
+      ></path>
+      <path
+        class="curve new"
+        d="M50 200L80 199.7L110 191L140 184.4L200 175.7L290 168.2L380 163.8"
+      ></path>
+      <path
+        class="curve old"
+        d="M50 112.3L80 156.1L110 170.8L140 178.1L200 185.4L290 190.3L380 192.7"
+      ></path>
+
+      <text class="curve-label" x="196" y="34">upper: θ → 1</text>
+      <text class="curve-label" x="196" y="139">new lower: θ → 1/3</text>
+      <text class="curve-label" x="196" y="200">old lower: θ → 0</text>
+    </svg>
+    <span class="note">Leading-order shapes with absolute constants suppressed</span>
+  </div>
+
+  <dl class="bounds">
+    <div>
+      <dt>Upper bound (classical)</dt>
+      <dd>R<sub>k</sub>(3) ≤ (e − 1/6)·k! + 1 for k ≥ 4</dd>
+      <dd class="reading">k<sup>(1+o(1))k</sup> — factorial growth</dd>
+    </div>
+    <div>
+      <dt>Lower bound (before)</dt>
+      <dd>R<sub>k</sub>(3) ≥ 380<sup>k/5</sup> − O(1)</dd>
+      <dd class="reading">purely exponential — θ decays like 1/log k</dd>
+    </div>
+    <div class="result">
+      <dt>Lower bound (this work)</dt>
+      <dd>R<sub>k</sub>(3) ≥ (c·k<sup>1/3</sup> / log k)<sup>k</sup></dd>
+      <dd class="reading">k<sup>(1/3−o(1))k</sup> — superexponential, so R<sub>k</sub>(3) = k<sup>Θ(k)</sup></dd>
+    </div>
+  </dl>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  .chart {
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  svg {
+    display: block;
+    width: 100%;
+  }
+  path {
+    fill: none;
+    vector-effect: non-scaling-stroke;
+  }
+  .axis {
+    stroke: var(--border);
+  }
+  .gridline {
+    stroke: var(--border);
+    stroke-dasharray: 2 5;
+  }
+  .band {
+    fill: var(--text-primary);
+    opacity: 0.07;
+    stroke: none;
+  }
+  .curve {
+    stroke-width: 2;
+    stroke-linejoin: round;
+  }
+  .upper {
+    stroke: var(--text-primary);
+  }
+  .new {
+    stroke: var(--text-primary);
+    stroke-dasharray: 7 4;
+  }
+  .old {
+    stroke: var(--text-tertiary);
+    stroke-dasharray: 2 4;
+  }
+  text {
+    fill: var(--text-secondary);
+    font: 0.62rem var(--mono);
+  }
+  .tick {
+    fill: var(--text-tertiary);
+    font-size: 0.58rem;
+    text-anchor: end;
+  }
+  .tick.x {
+    text-anchor: middle;
+  }
+  .axis-label {
+    fill: var(--text-tertiary);
+    font-size: 0.58rem;
+    letter-spacing: 0.04em;
+    text-anchor: middle;
+    text-transform: uppercase;
+  }
+  .y-label {
+    transform: rotate(-90deg);
+    transform-origin: 16px 115px;
+  }
+  .note {
+    display: block;
+    color: var(--text-tertiary);
+    font: 0.62rem var(--mono);
+    text-align: right;
+  }
+  .bounds {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.7rem;
+    margin: 0.9rem 0 0;
+  }
+  .bounds div {
+    display: grid;
+    align-content: start;
+    gap: 0.35rem;
+    min-width: 0;
+    padding: 0.8rem 0.75rem;
+    border-top: 2px solid var(--border);
+    background: var(--bg);
+  }
+  .bounds .result {
+    border-top-color: var(--text-primary);
+  }
+  dt {
+    color: var(--text-tertiary);
+    font: 0.62rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  dd {
+    margin: 0;
+    font: 0.72rem/1.45 var(--mono);
+  }
+  .reading {
+    color: var(--text-secondary);
+    font-size: 0.66rem;
+  }
+  @container (max-width: 520px) {
+    .bounds {
+      grid-template-columns: 1fr;
+    }
+    .curve-label {
+      display: none;
+    }
+  }
+</style>

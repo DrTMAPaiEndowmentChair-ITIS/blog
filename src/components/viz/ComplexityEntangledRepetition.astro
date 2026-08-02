@@ -1,0 +1,262 @@
+<figure class="viz repetition-viz" aria-labelledby="entangled-repetition-title">
+  <figcaption id="entangled-repetition-title">
+    <strong>Repeating an entangled game drives its value down exponentially</strong>
+    <span>
+      Two players, no communication, one shared quantum state. The open question was the rate of
+      decay, not its direction.
+    </span>
+  </figcaption>
+
+  <div class="panels">
+    <section class="panel">
+      <header>
+        <span>One round</span>
+        <strong>The two-prover protocol</strong>
+      </header>
+      <svg viewBox="0 0 340 200" role="img" aria-labelledby="protocol-title">
+        <title id="protocol-title">
+          A referee sends questions x and y to two separated players who share entanglement and
+          return answers a and b
+        </title>
+        <g class="frame">
+          <rect x="115" y="12" width="110" height="34" rx="2" />
+          <rect x="14" y="96" width="96" height="34" rx="2" />
+          <rect x="230" y="96" width="96" height="34" rx="2" />
+        </g>
+        <text class="box-label" x="170" y="29">referee</text>
+        <text class="box-label" x="62" y="113">Alice</text>
+        <text class="box-label" x="278" y="113">Bob</text>
+
+        <g class="flow">
+          <path d="M132 48 L74 92" marker-end="url(#cmplx-arrow)" />
+          <path d="M208 48 L266 92" marker-end="url(#cmplx-arrow)" />
+          <path d="M92 92 L150 50" marker-end="url(#cmplx-arrow)" />
+          <path d="M248 92 L190 50" marker-end="url(#cmplx-arrow)" />
+        </g>
+        <text class="edge" x="86" y="66">x ~ µ</text>
+        <text class="edge" x="252" y="66">y ~ µ</text>
+        <text class="edge" x="140" y="82">a</text>
+        <text class="edge" x="200" y="82">b</text>
+
+        <path class="link" d="M62 138 L62 160 L278 160 L278 138" />
+        <text class="quantum" x="170" y="176">shared entangled state |ψ⟩ — no signalling</text>
+        <text class="verdict" x="170" y="194">win iff V(x, y, a, b) = 1</text>
+
+        <defs>
+          <marker
+            id="cmplx-arrow"
+            viewBox="0 0 8 8"
+            refX="6"
+            refY="4"
+            markerWidth="5"
+            markerHeight="5"
+            orient="auto"
+          >
+            <path class="arrowhead" d="M0 0 L8 4 L0 8 z" />
+          </marker>
+        </defs>
+      </svg>
+    </section>
+
+    <section class="panel">
+      <header>
+        <span>n copies in parallel</span>
+        <strong>Value of the repeated game</strong>
+      </header>
+      <svg viewBox="0 0 340 200" role="img" aria-labelledby="decay-title">
+        <title id="decay-title">
+          Schematic comparison of polynomial and exponential decay of the entangled value under
+          n-fold parallel repetition
+        </title>
+        <path class="axis" d="M44 18 v157 h280" />
+        <text class="axis-label y-label" x="18" y="96">ω*(G⊗ⁿ)</text>
+        <text class="axis-label" x="180" y="196">number of parallel copies n</text>
+
+        <path class="curve slow" d="M52 42 C 118 84, 190 102, 322 120" />
+        <path class="curve fast" d="M52 42 C 80 122, 104 166, 152 172 L322 175" />
+
+        <circle class="dot" cx="52" cy="42" r="3" />
+        <text class="note" x="60" y="34">ω*(G) = 1 − ε</text>
+        <text class="note slow-note" x="212" y="108">Yuen 2016: polynomial</text>
+        <text class="note fast-note" x="176" y="150">this result: exponential</text>
+      </svg>
+      <dl>
+        <div>
+          <dt>Scope</dt>
+          <dd>every finite two-player one-round entangled game</dd>
+        </div>
+        <div>
+          <dt>Earlier exponential results</dt>
+          <dd>XOR, unique, projection, free, and anchored games</dd>
+        </div>
+      </dl>
+    </section>
+  </div>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  .panels {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  .panel {
+    display: grid;
+    align-content: start;
+    gap: 0.8rem;
+    min-width: 0;
+    padding: 0.95rem;
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--text-secondary);
+    background: var(--bg);
+  }
+  header {
+    display: grid;
+    gap: 0.32rem;
+  }
+  header span {
+    color: var(--text-tertiary);
+    font: 0.62rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  header strong {
+    font: 600 0.88rem/1.3 var(--sans);
+  }
+  svg {
+    display: block;
+    width: 100%;
+  }
+  path {
+    fill: none;
+    vector-effect: non-scaling-stroke;
+  }
+  .frame rect {
+    fill: var(--astro-code-background);
+    stroke: var(--text-secondary);
+    stroke-width: 1;
+  }
+  .box-label {
+    fill: var(--text-primary);
+    font: 600 0.7rem var(--mono);
+    dominant-baseline: central;
+    text-anchor: middle;
+  }
+  .flow path {
+    stroke: var(--text-secondary);
+    stroke-width: 1;
+  }
+  .arrowhead {
+    fill: var(--text-secondary);
+    stroke: none;
+  }
+  .edge {
+    fill: var(--text-tertiary);
+    font: 0.6rem var(--mono);
+    dominant-baseline: central;
+    text-anchor: middle;
+  }
+  .link {
+    stroke: var(--text-primary);
+    stroke-width: 1.5;
+    stroke-dasharray: 3 4;
+  }
+  .quantum,
+  .verdict {
+    font: 0.6rem var(--mono);
+    dominant-baseline: central;
+    text-anchor: middle;
+  }
+  .quantum {
+    fill: var(--text-secondary);
+  }
+  .verdict {
+    fill: var(--text-tertiary);
+  }
+  .axis {
+    stroke: var(--border);
+  }
+  .axis-label {
+    fill: var(--text-tertiary);
+    font: 0.58rem var(--mono);
+    letter-spacing: 0.04em;
+    text-anchor: middle;
+  }
+  .y-label {
+    transform: rotate(-90deg);
+    transform-origin: 18px 96px;
+  }
+  .curve {
+    stroke: var(--text-primary);
+    stroke-width: 2;
+  }
+  .slow {
+    stroke: var(--text-tertiary);
+    stroke-dasharray: 4 4;
+  }
+  .dot {
+    fill: var(--text-primary);
+  }
+  .note {
+    fill: var(--text-secondary);
+    font: 0.6rem var(--mono);
+  }
+  .slow-note {
+    fill: var(--text-tertiary);
+    text-anchor: end;
+  }
+  .fast-note {
+    fill: var(--text-primary);
+  }
+  dl {
+    display: grid;
+    gap: 0.6rem;
+    margin: 0;
+  }
+  dl div {
+    display: grid;
+    gap: 0.2rem;
+    padding-top: 0.55rem;
+    border-top: 1px solid var(--border);
+  }
+  dt,
+  dd {
+    margin: 0;
+    font: 0.67rem/1.45 var(--mono);
+  }
+  dt {
+    color: var(--text-tertiary);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  dd {
+    color: var(--text-secondary);
+  }
+  @container (max-width: 560px) {
+    .panels {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

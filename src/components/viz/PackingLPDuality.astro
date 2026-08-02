@@ -1,0 +1,196 @@
+<figure class="viz packing-lp-viz" aria-labelledby="packing-lp-title">
+  <figcaption id="packing-lp-title">
+    <strong>The Cohn–Elkies program is squeezed from both sides</strong>
+    <span
+      >Sign conditions on an admissible pair, sketched schematically. Any such pair bounds the
+      packing density from above; the uncertainty argument bounds every such pair from below.</span
+    >
+  </figcaption>
+
+  <div class="pair">
+    <div class="chart">
+      <svg viewBox="0 0 180 122" role="img" aria-labelledby="packing-lp-space">
+        <title id="packing-lp-space">Spatial profile f, negative beyond radius one</title>
+        <path class="axis" d="M20 14v90h152"></path>
+        <path class="zero" d="M20 70h152"></path>
+        <path class="marker" d="M84 18v86"></path>
+        <path class="curve" d="M24 22C50 26 72 58 84 70C100 86 120 88 158 84"></path>
+        <circle cx="24" cy="22" r="2.5"></circle>
+        <text x="30" y="20">f(0) &gt; 0</text>
+        <text class="tick" x="84" y="116">|x| = 1</text>
+        <text class="tick" x="140" y="63">f &le; 0</text>
+      </svg>
+      <span class="cap">spatial profile</span>
+    </div>
+
+    <div class="chart">
+      <svg viewBox="0 0 180 122" role="img" aria-labelledby="packing-lp-freq">
+        <title id="packing-lp-freq">Fourier transform, nonnegative everywhere</title>
+        <path class="axis" d="M20 14v90h152"></path>
+        <path class="zero" d="M20 92h152"></path>
+        <path class="curve" d="M24 46C42 40 52 34 66 36C88 40 100 84 158 90"></path>
+        <circle cx="24" cy="46" r="2.5"></circle>
+        <text x="30" y="30">f&#770;(0) &gt; 0</text>
+        <text class="tick" x="120" y="70">f&#770; &ge; 0</text>
+        <text class="tick" x="96" y="116">frequency radius |&xi;|</text>
+      </svg>
+      <span class="cap">Fourier profile</span>
+    </div>
+  </div>
+
+  <ol class="sandwich">
+    <li class="primal">
+      <span>Primal, construct</span>
+      <strong>Every admissible f gives an upper bound</strong>
+      <small
+        >A Mellin-modified Gaussian yields a Fourier pair whose sign conditions begin at radius
+        (1/&pi; + o(1))&radic;d.</small
+      >
+    </li>
+    <li class="value">
+      <span>Value</span>
+      <strong>LP<sub>d</sub><sup>1/d</sup> &rarr; &radic;(e / 2&pi;)</strong>
+      <small>Stirling converts the radius asymptotics into the density exponent.</small>
+    </li>
+    <li class="dual">
+      <span>Dual, obstruct</span>
+      <strong>No admissible f can do better</strong>
+      <small
+        >Rescale f so f(0) = f&#770;(0); then g = f&#770; &minus; f is anti-self-Fourier, vanishes at
+        0, and has exponentially little mass inside radius c&radic;d for c &lt; 1/&pi;.</small
+      >
+    </li>
+  </ol>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-tertiary);
+    font: 0.72rem/1.5 var(--mono);
+  }
+  .pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  .chart {
+    padding: 0.6rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  svg {
+    display: block;
+    width: 100%;
+  }
+  path {
+    fill: none;
+    vector-effect: non-scaling-stroke;
+  }
+  .axis {
+    stroke: var(--border);
+  }
+  .zero {
+    stroke: var(--text-tertiary);
+    stroke-dasharray: 2 4;
+  }
+  .marker {
+    stroke: var(--text-tertiary);
+    stroke-dasharray: 3 4;
+  }
+  .curve {
+    stroke: var(--text-primary);
+    stroke-width: 2;
+  }
+  circle {
+    fill: var(--text-primary);
+  }
+  text {
+    fill: var(--text-secondary);
+    font: 0.6rem var(--mono);
+  }
+  .tick {
+    fill: var(--text-tertiary);
+    text-anchor: middle;
+  }
+  .cap {
+    display: block;
+    margin-top: 0.3rem;
+    color: var(--text-tertiary);
+    font: 0.62rem var(--mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .sandwich {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    margin: 1rem 0 0;
+    padding: 0;
+    border: 1px solid var(--border);
+    list-style: none;
+  }
+  .sandwich li {
+    display: grid;
+    align-content: start;
+    gap: 0.45rem;
+    padding: 0.9rem;
+    border-right: 1px solid var(--border);
+  }
+  .sandwich li:last-child {
+    border-right: 0;
+  }
+  .value {
+    background: var(--bg);
+  }
+  .sandwich span {
+    color: var(--text-tertiary);
+    font: 0.62rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .sandwich strong {
+    font: 600 0.84rem/1.4 var(--sans);
+  }
+  .value strong {
+    font-family: var(--mono);
+  }
+  .sandwich small {
+    color: var(--text-secondary);
+    font: 0.68rem/1.5 var(--mono);
+  }
+  @container (max-width: 620px) {
+    .sandwich {
+      grid-template-columns: 1fr;
+    }
+    .sandwich li {
+      border-right: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .sandwich li:last-child {
+      border-bottom: 0;
+    }
+  }
+  @container (max-width: 420px) {
+    .pair {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

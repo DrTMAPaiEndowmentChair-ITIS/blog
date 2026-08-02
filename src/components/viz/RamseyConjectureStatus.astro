@@ -1,0 +1,189 @@
+<figure class="viz ramsey-status-viz" aria-labelledby="ramsey-status-title">
+  <figcaption id="ramsey-status-title">
+    <strong>Two extremal conjectures, two constructed counterexamples</strong>
+    <span>Each row states the claim, the object that refutes it, and the gap the object opens.</span>
+  </figcaption>
+
+  <div class="board">
+    <div class="head" aria-hidden="true">
+      <span></span>
+      <span>Compactness (Erdős–Simonovits)</span>
+      <span>Degeneracy (Erdős)</span>
+    </div>
+
+    <div class="row">
+      <span class="label">The claim</span>
+      <section>
+        <strong>A family behaves like one of its members</strong>
+        <small>
+          For a finite family 𝓕 of graphs each containing a cycle, some F ∈ 𝓕 satisfies ex(n, F) ≤
+          C·ex(n, 𝓕).
+        </small>
+      </section>
+      <section>
+        <strong>Degeneracy fixes the exponent</strong>
+        <small>Every fixed bipartite r-degenerate graph H satisfies ex(n, H) = O(n<sup>2−1/r</sup>).</small>
+      </section>
+    </div>
+
+    <div class="row">
+      <span class="label">Read as</span>
+      <section>
+        <small>Forbidding a family can only beat the best single member by a constant factor.</small>
+      </section>
+      <section>
+        <small>A sparse local structure should force a low global edge density.</small>
+      </section>
+    </div>
+
+    <div class="row">
+      <span class="label">Counterexample</span>
+      <section>
+        <strong>A family built from subdivided K<sub>3,k</sub></strong>
+        <small>
+          𝓕 = &#123;C<sub>4</sub>, C<sub>6</sub>&#125; together with admissible quotients of two templates, all connected and
+          bipartite.
+        </small>
+      </section>
+      <section>
+        <strong>A layered 2-degenerate graph</strong>
+        <small>
+          Each layer adjoins one vertex per pair of vertices in the layer below, keeping H
+          connected, bipartite and 2-degenerate.
+        </small>
+      </section>
+    </div>
+
+    <div class="row">
+      <span class="label">Lower bound from</span>
+      <section>
+        <small>
+          Incidence graphs of generalized quadrangles, one field characteristic per forbidden
+          graph F.
+        </small>
+      </section>
+      <section>
+        <small>
+          A bipartite Hamming-ball graph with vertices independently retained, plus a
+          second-moment count.
+        </small>
+      </section>
+    </div>
+
+    <div class="row">
+      <span class="label">Upper bound from</span>
+      <section><small>Counting short paths in any 𝓕-free host graph.</small></section>
+      <section>
+        <small>
+          Not needed: an entropy potential rises by a fixed amount per layer, so H cannot embed.
+        </small>
+      </section>
+    </div>
+
+    <div class="row verdict">
+      <span class="label">Separation</span>
+      <section>
+        <strong>ex(n, 𝓕) = O(n<sup>4/3−1/48</sup>) while ex(n, F) = Ω(n<sup>4/3</sup>) for every F</strong>
+        <small>A polynomial gap, not a constant factor. Compactness fails.</small>
+      </section>
+      <section>
+        <strong>ex(n, H) ≥ c·n<sup>3/2+ε</sup> for a 2-degenerate H</strong>
+        <small>Above the predicted n<sup>3/2</sup> by a polynomial factor. The r = 2 case fails.</small>
+      </section>
+    </div>
+  </div>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  .board {
+    display: grid;
+    gap: 0.55rem;
+  }
+  .head,
+  .row {
+    display: grid;
+    grid-template-columns: minmax(6rem, 0.55fr) repeat(2, minmax(0, 1fr));
+    gap: 0.55rem;
+  }
+  .head span {
+    padding: 0 0.75rem 0.2rem;
+    color: var(--text-primary);
+    font: 600 0.66rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .label {
+    align-self: start;
+    padding: 0.8rem 0.75rem 0.8rem 0;
+    color: var(--text-tertiary);
+    font: 0.62rem/1.4 var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .row section {
+    display: grid;
+    align-content: start;
+    gap: 0.4rem;
+    min-width: 0;
+    padding: 0.8rem 0.75rem;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .verdict section {
+    border-top: 2px solid var(--text-primary);
+  }
+  .row strong {
+    font: 600 0.76rem/1.4 var(--sans);
+  }
+  .row small {
+    color: var(--text-secondary);
+    font: 0.66rem/1.5 var(--mono);
+  }
+  @container (max-width: 560px) {
+    .head {
+      display: none;
+    }
+    .row {
+      grid-template-columns: 1fr;
+      gap: 0.35rem;
+    }
+    .label {
+      padding: 0.4rem 0 0;
+    }
+    .row section::before {
+      color: var(--text-tertiary);
+      content: attr(data-side);
+      font: 0.6rem var(--mono);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .row section:first-of-type::before {
+      content: 'Compactness';
+    }
+    .row section:last-of-type::before {
+      content: 'Degeneracy';
+    }
+  }
+</style>

@@ -1,0 +1,205 @@
+---
+const rungs = [
+  {
+    step: 'Rung 1',
+    label: 'A theorem statement exists',
+    establishes: 'The claim is precise enough to be wrong.',
+    leaves: 'Nothing about whether the argument holds.',
+    status: 'met',
+  },
+  {
+    step: 'Rung 2',
+    label: 'A written proof is released',
+    establishes: 'Every step is inspectable by a specialist.',
+    leaves: 'Length hides error; a gap can survive a first reading.',
+    status: 'met',
+  },
+  {
+    step: 'Rung 3',
+    label: 'A proof assistant checks the argument',
+    establishes: 'The formal derivation compiles against the stated hypotheses.',
+    leaves: 'Whether the formal statement is the intended statement.',
+    status: 'met',
+  },
+  {
+    step: 'Rung 4',
+    label: 'Named specialists read the manuscript',
+    establishes: 'Someone with field context found the framing sound.',
+    leaves: 'Acknowledged readers are not referees and did not sign off.',
+    status: 'partial',
+  },
+  {
+    step: 'Rung 5',
+    label: 'Journal peer review completes',
+    establishes: 'An adversarial reading under editorial responsibility.',
+    leaves: 'Review catches errors unevenly and takes years.',
+    status: 'pending',
+  },
+  {
+    step: 'Rung 6',
+    label: 'The field builds on the result',
+    establishes: 'The proof survives reuse, simplification, and extension.',
+    leaves: 'Only time supplies this.',
+    status: 'pending',
+  },
+]
+---
+
+<figure class="viz claim-ladder" aria-labelledby="tenadv-claim-title">
+  <figcaption id="tenadv-claim-title">
+    <strong>Strength of claim, rung by rung</strong>
+    <span
+      >Formal verification is a strong rung and a narrow one. It answers correctness, not
+      significance, and not statement fidelity.</span
+    >
+  </figcaption>
+
+  <ol class="ladder">
+    {
+      rungs.map((r) => (
+        <li class={`rung is-${r.status}`}>
+          <span class="step">{r.step}</span>
+          <strong>{r.label}</strong>
+          <p class="yes">{r.establishes}</p>
+          <p class="no">{r.leaves}</p>
+          <span class="status">
+            {r.status === 'met'
+              ? 'reached'
+              : r.status === 'partial'
+                ? 'partly reached'
+                : 'not yet reached'}
+          </span>
+        </li>
+      ))
+    }
+  </ol>
+
+  <div class="legend">
+    <span>proof compiles</span>
+    <i aria-hidden="true">→</i>
+    <span>statement is the intended one</span>
+    <i aria-hidden="true">→</i>
+    <strong>the field accepts it</strong>
+  </div>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  .ladder {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.6rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .rung {
+    display: grid;
+    align-content: start;
+    gap: 0.4rem;
+    min-width: 0;
+    padding: 0.85rem 0.8rem;
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--text-tertiary);
+    background: var(--bg);
+  }
+  .rung.is-met {
+    border-top-color: var(--text-primary);
+  }
+  .rung.is-partial {
+    border-top-style: dashed;
+    border-top-color: var(--text-secondary);
+  }
+  .rung.is-pending {
+    border-top-style: dotted;
+  }
+  .step {
+    color: var(--text-tertiary);
+    font: 0.61rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .rung strong {
+    font: 600 0.82rem/1.35 var(--sans);
+  }
+  p {
+    margin: 0;
+    font: 0.66rem/1.5 var(--mono);
+  }
+  .yes {
+    color: var(--text-secondary);
+  }
+  .no {
+    padding-top: 0.4rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-tertiary);
+  }
+  .status {
+    margin-top: 0.15rem;
+    color: var(--text-tertiary);
+    font: 0.6rem var(--mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .rung.is-met .status {
+    color: var(--text-primary);
+  }
+  .legend {
+    display: grid;
+    grid-template-columns: auto auto auto auto auto;
+    align-items: center;
+    justify-content: start;
+    gap: 0.6rem;
+    margin-top: 1rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-secondary);
+    font: 0.67rem/1.45 var(--mono);
+  }
+  .legend i {
+    color: var(--text-tertiary);
+    font-style: normal;
+  }
+  .legend strong {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  @container (max-width: 720px) {
+    .ladder {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @container (max-width: 460px) {
+    .ladder {
+      grid-template-columns: 1fr;
+    }
+    .legend {
+      grid-template-columns: 1fr;
+      justify-items: start;
+    }
+    .legend i {
+      display: none;
+    }
+  }
+</style>

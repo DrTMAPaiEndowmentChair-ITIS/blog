@@ -1,0 +1,153 @@
+---
+title: 'The Unit Distance Problem: What a Model Actually Proved'
+pubDate: 2026-08-07
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'A reasoning model disproved a 1946 Erdős conjecture in May 2026. Separating the mathematical content from the claims made about it.'
+topics: ['Reasoning', 'Mathematics', 'Verification', 'Evaluation']
+---
+
+import UnitDistanceGrid from '../../components/viz/UnitDistanceGrid.astro'
+import UnitDistanceBounds from '../../components/viz/UnitDistanceBounds.astro'
+import UnitDistancePipeline from '../../components/viz/UnitDistancePipeline.astro'
+import UnitDistanceClaims from '../../components/viz/UnitDistanceClaims.astro'
+
+Place $n$ points in the plane. Count the pairs that are exactly one unit apart. Call the largest possible count $u(n)$.
+
+Paul Erdős asked how fast $u(n)$ grows in 1946.[^1] The question needs no background to state and no notation beyond a ruler. It has been open ever since.
+
+On 20 May 2026 OpenAI published a proof, produced by an internal reasoning model, that Erdős's own answer to the question was wrong.[^2] The result is real and the mathematics is now checked several ways over. Most of what was said about it in the following fortnight was not.
+
+## The problem is easy to state and hard for a specific reason
+
+Distance is a rigid constraint. Fix two points at distance 1; the set of points at distance 1 from both is at most two points. So unit distances cannot pile up locally the way, say, collinearity can. Any configuration with many unit distances has to distribute the coincidences globally, across the whole point set, and that is where the difficulty lives.
+
+Erdős's own construction is the $\sqrt{n} \times \sqrt{n}$ integer grid, rescaled so that many integer pairs $(a,b)$ share the same value of $a^2 + b^2$. The number of such representations grows, but only barely, and the resulting count is
+
+$$
+u(n) \;\ge\; n^{1 + c/\log\log n}
+$$
+
+for a constant $c > 0$.[^1] The exponent exceeds 1 but tends to 1 as $n$ grows. In eighty years nobody improved on it.
+
+<UnitDistanceGrid />
+
+## Two bounds moving toward each other, slowly
+
+There are two separate questions, and conflating them is the most common error in coverage of this result.
+
+The **upper bound** question asks what a proof forbids. Erdős gave $O(n^{3/2})$. Spencer, Szemerédi and Trotter brought it to $O(n^{4/3})$ in 1984, and that has stood for forty-two years.[^3]
+
+The **lower bound** question asks what a construction achieves. That is the grid bound above.
+
+Erdős conjectured that the truth was at the bottom: that $u(n) = n^{1+o(1)}$, that the grid was essentially optimal, and that the $O(n^{4/3})$ upper bound was the artefact. Nearly all subsequent effort went into pushing the upper bound down toward the grid, because that is where the answer was assumed to be.
+
+The May 2026 result moved the lower bound. It exhibits an infinite family of point sets with
+
+$$
+u(n) \;\ge\; n^{1+\delta}
+$$
+
+for an absolute constant $\delta > 0$ and infinitely many $n$.[^2] Since $\delta$ is fixed rather than shrinking with $n$, this contradicts $n^{1+o(1)}$ directly. The conjecture is false. The upper bound was not improved, and the gap between the two bounds is now wider than it was before, in the sense that the plausible location of the answer has expanded rather than contracted.
+
+<UnitDistanceBounds />
+
+Reporting that described this as "solving" the unit distance problem inverted what happened. The problem is more open than it was on 19 May.
+
+## What the model produced
+
+The construction does not come from discrete geometry. It comes from algebraic number theory.
+
+The route, as reconstructed by the mathematicians who read it, is to build number fields of large degree with small discriminant and many primes of small norm, and to extract a point configuration from the resulting lattice. The tool for producing such fields is the Golod–Shafarevich criterion, which guarantees that certain class field towers are infinite. The nine-author companion note attributes the essential ideas, in retrospect, to Golod–Shafarevich, to Hajir–Maire–Ramakrishna, and to Ellenberg–Venkatesh.[^4]
+
+This is the interesting part of the story. Golod–Shafarevich towers were developed in the 1960s to answer a question about class field towers that has nothing to do with points in a plane. Using them to build unit-distance configurations requires knowing both bodies of work well enough to see that one supplies what the other needs — and then being willing to grind through a long calculation whose payoff is uncertain.
+
+Jacob Tsimerman, one of the verifiers, has said publicly that he had considered a strategy of this shape and abandoned it, because such techniques consume a great deal of time and frequently do not work.[^5] That is a precise description of where the model had an advantage: not insight, but breadth of recall plus indifference to sunk cost.
+
+Scott Aaronson, who reported the account of the run from Lijie Chen, described it as essentially one-shot: the problem was handed over, the model thought, and it emitted a several-page argument that held up under expert analysis.[^6] Separately, OpenAI has indicated the model solved the problem roughly half the time at maximum token budget, which means the single successful run was drawn from a distribution that also contains failures.[^5]
+
+## How it was checked
+
+The verification chain is unusually well documented, and worth walking through because it is the part that generalises.
+
+<UnitDistancePipeline />
+
+Four things happened, in order.
+
+The nine-author note — Alon, Bloom, Gowers, Litt, Sawin, Shankar, Tsimerman, Wang and Matchett Wood — appeared the same day, presenting "a short, digested, human-verified version" of the argument along with reflections on it.[^4] That is an extraordinarily strong referee panel assembled in under a day.
+
+Will Sawin, independently and also on 20 May, posted a preprint making the exponent explicit: there are point sets with more than $n^{1.014}$ unit distances, via the same Golod–Shafarevich route.[^7] The frequently quoted figure of $\delta \approx 0.014$ is Sawin's, not the model's. The model's $\delta$ was inexplicit.
+
+Explicit certificate optimisation followed. Work in June searching over prime sets pushed the achievable $\delta$ past $0.015$ and then above $0.03$, with contemporaneous MathOverflow discussion reporting better still.[^8] These are engineering improvements on a fixed method, not new ideas.
+
+Formalisation came last. On 26 June, Logical Intelligence reported a Lean 4 proof produced by their Aleph Prover system: roughly 33,000 lines across 252 Mathlib modules, re-checked with two independent Lean kernels.[^9] It is conditional. The Golod–Shafarevich inequality and Shafarevich's rank-relation bound are not in Mathlib and were taken as axioms, with mathematicians confirming the statements matched textbook references. The process involved a human review pass between two prover iterations. So the answer to "was it formalised" is yes, a month later, by a different group, modulo two classical inputs.
+
+## Separating this from adjacent episodes
+
+Three distinct things have been called "AI solves an Erdős problem" in the past year, and they are not the same kind of event.
+
+**Erdős Problem #728**, resolved in January 2026, is the cleanest formal case: GPT-5.2 Pro generated an argument, Harmonic's Aristotle formalised it in Lean, and the Lean proof was translated back into readable mathematics for arXiv.[^10] The result concerns a logarithmic-gap phenomenon in factorial divisibility. It is genuinely new, fully machine-checked, and far less famous than the unit distance problem.
+
+**The Erdős problems database episodes** of late 2025 were something else again. Models were credited with resolving open problems when what they had actually done was locate an existing proof in the literature that the database's maintainers had not indexed. That is a useful capability and not a mathematical discovery.
+
+**The unit distance result** is a third category: a new construction in a famous problem, produced informally, refereed by humans first and formalised later. It has the highest mathematical stakes and the weakest a-priori verification guarantee of the three.
+
+<UnitDistanceClaims />
+
+## The objections that survive scrutiny
+
+Several critiques were raised in May and June. Some hold up.
+
+**Selection effects are unmeasured.** OpenAI has not published failure rates, attempt counts, or compute. A model that produces one correct famous-problem proof out of some unreported number of attempts across some unreported number of problems is a different object from one that produces correct proofs reliably, and the public record does not distinguish them.[^11] Aaronson makes the same point about problem selection: human effort concentrated on proving Erdős right, leaving the counterexample direction comparatively unexplored.[^6]
+
+**Verification capacity is the bottleneck, not generation.** Thomas Bloom's formulation is the sharp one: "It could be right. It could be nonsense. Who's going to be able to check this?"[^11] The unit distance proof got nine of the world's relevant experts within a day because it was a famous problem announced by a major lab. That does not scale. A hundred such claims a month would exhaust the referee pool for exactly the problems where refereeing matters most.
+
+**Attribution has no mechanism.** Melanie Matchett Wood's observation is that a model has read every paper, and there is no principled way for it to credit the prior work it is drawing on.[^11] The nine-author note had to reconstruct the intellectual ancestry after the fact.
+
+**The institutional response was immediate.** The Leiden Declaration, published 2 June 2026, called for oversight of AI in mathematical research and had gathered around 1,590 signatures within three days.[^11] A July essay by Jun-Yong Park argues the deeper risk is that human capacity to verify, interpret and challenge research-level mathematics is itself eroding, and proposes that AI systems be required to present decision-critical claims in machine-checkable form.[^12] Whatever one makes of the framing, the proposal is concrete: formalisation converts the verification bottleneck from a scarce-expert problem into a compute problem.
+
+The critiques that do not hold up are the ones asserting the mathematics is wrong or trivial. Gowers said that if a human had submitted this to the *Annals*, he would have recommended acceptance without hesitation.[^13] Litt called it the first autonomously produced AI result he found interesting in itself.[^13] Matchett Wood, one of the sceptics on the broader questions, called it a beautiful piece of mathematics.[^11]
+
+## What this does and does not predict
+
+The honest reading is narrow and still significant.
+
+The task had properties that favour a model: a crisply stated target, a verifiable output, a cross-field connection requiring recall across two literatures that few individuals hold simultaneously, and a long unpleasant computation that a human would rationally decline to start. Not every open problem has this shape. Most do not.
+
+But the shape is not rare either, and it was not previously thought to be reachable. Cross-domain technique transfer is a large fraction of what mathematical progress consists of, and it is exactly the part that scales with breadth of reading rather than depth of a single specialism.
+
+Three things follow for anyone building or evaluating these systems.
+
+Reported successes without denominators are not evidence about capability. Publish attempt counts and failure modes, or expect the result to be discounted.
+
+Formalisation is the only verification method that scales with output volume. It arrived a month late here, incomplete, from a third party. Treating it as the default deliverable rather than a follow-up changes the economics of the whole pipeline.
+
+And the useful unit of analysis is not "the model solved it" but the full chain: generation, human digestion, independent refinement, formalisation. Every stage in that chain did work that the others could not have done. The construction came from a model. The explicit exponent came from Sawin. The confidence came from nine people reading carefully. The audit trail came from Lean. Reporting that collapses this into a single claim about autonomy describes something that did not occur.
+
+## References
+
+[^1]: Paul Erdős, "On sets of distances of $n$ points," American Mathematical Monthly, 1946. [https://www.renyi.hu/~p_erdos/1946-03.pdf](https://www.renyi.hu/~p_erdos/1946-03.pdf)
+
+[^2]: OpenAI, "An OpenAI model has disproved a central conjecture in discrete geometry," 20 May 2026. [https://openai.com/index/model-disproves-discrete-geometry-conjecture/](https://openai.com/index/model-disproves-discrete-geometry-conjecture/)
+
+[^3]: Joel Spencer, Endre Szemerédi and William Trotter, "Unit distances in the Euclidean plane," in *Graph Theory and Combinatorics*, 1984.
+
+[^4]: Noga Alon, Thomas F. Bloom, W. T. Gowers, Daniel Litt, Will Sawin, Arul Shankar, Jacob Tsimerman, Victor Wang and Melanie Matchett Wood, "Remarks on the disproof of the unit distance conjecture," arXiv, 20 May 2026. [https://arxiv.org/abs/2605.20695](https://arxiv.org/abs/2605.20695)
+
+[^5]: Timothy B. Lee, "OpenAI's math breakthrough played to AI's strengths," Understanding AI, 2026. [https://www.understandingai.org/p/openais-milestone-math-breakthrough](https://www.understandingai.org/p/openais-milestone-math-breakthrough)
+
+[^6]: Scott Aaronson, "Dispatches from the possibly last days of human relevance," Shtetl-Optimized, 27 May 2026. [https://scottaaronson.blog/?p=9782](https://scottaaronson.blog/?p=9782)
+
+[^7]: Will Sawin, "An explicit lower bound for the unit distance problem," arXiv, 20 May 2026. [https://arxiv.org/abs/2605.20579](https://arxiv.org/abs/2605.20579)
+
+[^8]: Michael T. M. Emmerich, "Optimizing Explicit Unit-Distance Lower-Bound Certificates," arXiv, June 2026. [https://arxiv.org/abs/2606.03419](https://arxiv.org/abs/2606.03419)
+
+[^9]: Logical Intelligence, "Aleph Prover uses formal methods to verify the Erdős disproof in Lean 4," 26 June 2026. [https://logicalintelligence.com/blog/aleph-prover-erdos-disproof-lean-4-formal-methods](https://logicalintelligence.com/blog/aleph-prover-erdos-disproof-lean-4-formal-methods)
+
+[^10]: "Resolution of Erdős Problem #728: a writeup of Aristotle's Lean proof," arXiv, January 2026. [https://arxiv.org/abs/2601.07421](https://arxiv.org/abs/2601.07421)
+
+[^11]: Science News, "An AI math breakthrough sparks calls for new guardrails," 2026. [https://www.sciencenews.org/article/ai-guardrails-erdos-math-problem](https://www.sciencenews.org/article/ai-guardrails-erdos-math-problem)
+
+[^12]: Jun-Yong Park, "Automation Without Understanding," arXiv, 7 July 2026. [https://arxiv.org/abs/2607.06377](https://arxiv.org/abs/2607.06377)
+
+[^13]: The Conversation, "An AI solution to an 80-year-old problem has shocked mathematicians," 2026. [https://theconversation.com/an-ai-solution-to-an-80-year-old-problem-has-shocked-mathematicians-283686](https://theconversation.com/an-ai-solution-to-an-80-year-old-problem-has-shocked-mathematicians-283686)

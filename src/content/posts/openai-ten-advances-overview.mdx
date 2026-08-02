@@ -1,0 +1,133 @@
+---
+title: "Ten Advances: What OpenAI's Math Results Do and Do Not Show"
+pubDate: 2026-08-02
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'A walk through the ten mathematics and theoretical computer science results OpenAI released, the statements they actually prove, and how to read the verification claims.'
+topics: ['Mathematics', 'Reasoning', 'Evaluation', 'Verification']
+---
+
+import TenAdvResultsMap from '../../components/viz/TenAdvResultsMap.astro'
+import TenAdvBoundLedger from '../../components/viz/TenAdvBoundLedger.astro'
+import TenAdvClaimLadder from '../../components/viz/TenAdvClaimLadder.astro'
+
+On 1 August 2026 OpenAI published a 247-page document titled *Ten Advances in Mathematics and Theoretical Computer Science*. Its first sentence sets the frame: "We present a collection of results obtained by an internal OpenAI model, spanning mathematics and theoretical computer science."[^1] Ten chapters follow, each a self-contained paper with its own abstract, references, and acknowledgments.
+
+The interesting question is not whether this is impressive. It is what class of claim is being made, and what evidence would settle it.
+
+> A benchmark score is a measurement on a fixed problem set. A theorem is a claim about every instance, forever, checkable by anyone.
+
+<TenAdvResultsMap />
+
+## The framing OpenAI chose
+
+Three choices in the release shape how it should be read.
+
+The paper credits no human authors. The mathematical arguments are attributed to the system; OpenAI states it prepared the manuscripts and takes responsibility for correctness, on the reasoning that claiming human authorship would misrepresent where the arguments came from. Press coverage identifies the system as an internal version of Astra, the company's next major model.[^2]
+
+Each argument is accompanied by a Lean 4 formalization, released alongside the paper, plus a model-written document reconstructing how each proof came together from the reasoning traces.[^2] Simon Willison, who covered the release, notes the gap that remains: the prompts are not published, and neither is the count of problems on which the same spend produced nothing.[^2]
+
+The acknowledgments name individual mathematicians who read individual chapters — Sorin Popa on the Connes chapter, and Henry Bradford, Michael Chapman, Alon Dogon, and Francesco Fournier-Facio on the non-sofic chapter.[^1] They are thanked as readers, not listed as authors and not described as referees. That distinction matters, and I will come back to it.
+
+## The ten results
+
+**1. Sphere packing.** Let $\Delta_d$ be the maximal sphere-packing density in $\mathbb{R}^d$ and $\mathrm{LP}_d$ the bound from the Cohn–Elkies linear program. The paper proves $\mathrm{LP}_d^{1/d}\to\sqrt{e/(2\pi)}$, giving $\Delta_d\le 2^{-(\alpha_*+o(1))d}$ with $\alpha_*=\tfrac12\log_2(2\pi/e)=0.6044\ldots$ The previous general exponent, from Kabatianskii and Levenshtein in 1978, was $0.59905576\ldots$ The matching lower bound is the sharper part: no Cohn–Elkies auxiliary function can do better, so the method is now exhausted.
+
+**2. Codes.** For every fixed relative distance $0<\delta<1/2$, a two-point linear-programming certificate strictly improves the optimized McEliece–Rodemich–Rumsey–Welch exponent for binary codes; for every fixed maximum inner product $0<s<1$ it strictly improves the optimized Kabatianskii–Levenshtein exponent for spherical codes. These are the first improvements to the two general high-dimensional exponents since 1977 and 1978. As $s\to 1$ the spherical construction recovers the packing exponent of Chapter 1.
+
+**3. Sofic groups.** A countable group is sofic if finite pieces of its multiplication table can be approximated by permutations of finite sets. Weiss asked in 2000 whether a non-sofic group exists. The paper proves that the unit group $L_{\mathbb{F}_2}(1,2)^\times$ of the binary Leavitt algebra is not sofic, using Kun's expander decomposition for property-(T) groups and a contradiction routed through Thompson's group $V$. Earlier routes to a non-sofic group all required an unproved stability hypothesis; this one does not.
+
+**4. Connes rigidity.** Connes conjectured that the group von Neumann algebra $L(G)$ of an ICC property-(T) group determines $G$. The paper constructs finitely generated ICC property-(T) groups $\Lambda,\Gamma_0,\Gamma_1,\ldots$, pairwise nonisomorphic, with $L(\Gamma_n)\cong L(\Lambda)$ for all $n$, where $\Gamma_n$ contains a copy of $\Gamma_0$ of index $24^n$. The pair $\Lambda,\Gamma_0$ already refutes the conjecture; the infinite family additionally answers Popa's finite-to-one question negatively and shows his countability bound is sharp.
+
+**5. Permanent lower bounds.** For exact symbolic computation of $\mathrm{per}_n$ over $\mathbb{C}$: division-free arithmetic circuits with unrestricted reuse require $\Omega(n^2\log\log n)$ gates, and arithmetic formulas require $\Omega(n^4/\log n)$ variable-labeled leaves even when division is allowed. The chapter also explains why both arguments use properties specific to the permanent and do not transfer to the determinant — which is the honest caveat, since the determinant has polynomial-size circuits.
+
+**6. Quantum parallel repetition.** For every finite two-player one-round game $G$ with entangled value $\omega^*(G)=1-\varepsilon<1$ and answer alphabets $A,B$,
+
+$$
+\omega^*(G^{\otimes n})\le\exp\!\left(-c_{qs}\,\frac{\varepsilon^{13}}{\varepsilon+\log(|A||B|)}\,n\right)
+$$
+
+for a universal constant $c_{qs}>0$. This is the quantum analogue of Raz's 1995 theorem. Yuen had proved polynomial decay in general; Bavarian, Vidick, and Yuen had proved exponential decay only for anchored games, obtained by modifying the original game. The new ingredient is a postselection-stable sampleability estimate that avoids an inverse dependence on the conditioning event's probability.
+
+**7. Closest vector problem.** A deterministic polynomial-time many-one reduction from 3SAT to $\mathrm{GapCVP}^{(2)}_{n^{1/400}}$, with $n^{1/200}$ for binary nearest codeword and syndrome decoding and $n^{1/(200p)}$ for the closest vector problem in every fixed rational $\ell_p$ norm. The exponent $1/400$ is small; the structural point is that the reduction is direct and invokes neither the PCP theorem nor the Projection Games Conjecture.
+
+**8. Ehrhart's conjecture.** If $K\subset\mathbb{R}^n$ is a full-dimensional compact convex body with barycenter $0$ and $\mathrm{int}(K)\cap\mathbb{Z}^n=\{0\}$, then $\mathrm{vol}(K)\le (n+1)^n/n!$. This is the sharp bound Ehrhart conjectured in 1964, attained by a translated dilate of the standard simplex. The previous general bound was of the form $4^n e^{-cn}$. The paper does not determine whether the simplex is the only equality case.
+
+**9. Multicolor Ramsey.** There is an absolute $c>0$ with $R_k(3)\ge(ck^{1/3}/\log k)^k$ for every $k\ge2$. The previous record was $380^{k/5}-O(1)$, merely exponential; the classical upper bound is factorial. The new bound gives $k^{(1/3-o(1))k}\le R_k(3)\le k^{(1+o(1))k}$, so $R_k(3)=k^{\Theta(k)}$, and as a corollary the Shannon capacity of graphs with independence number 2 is unbounded.
+
+**10. Extremal graph theory.** Two constructions refuting two conjectures. A finite family $\mathcal{F}$ of connected bipartite graphs, each containing a cycle, with $\mathrm{ex}(n,\mathcal{F})=O(n^{4/3-1/48})$ while $\mathrm{ex}(n,F)=\Omega(n^{4/3})$ for every $F\in\mathcal{F}$, disproving the Erdős–Simonovits compactness conjecture. And a fixed connected bipartite 2-degenerate $H$ with $\mathrm{ex}(n,H)\ge cn^{3/2+\varepsilon}$, disproving Erdős's degeneracy conjecture, which predicted $O(n^{2-1/r})$ for $r$-degenerate bipartite graphs.
+
+<TenAdvBoundLedger />
+
+## This is not a benchmark score
+
+Benchmark reporting and theorem reporting fail in different directions, and the failure modes do not overlap.
+
+| Property         | Benchmark score                          | Theorem in this paper                     |
+| ---------------- | ---------------------------------------- | ----------------------------------------- |
+| Ground truth     | A held-out answer key                    | A derivation from stated hypotheses       |
+| Contamination    | Plausible and hard to rule out           | The statement was open; no key existed    |
+| Reproducibility  | Rerun the harness                        | Read the proof, or recompile the Lean     |
+| Failure          | Score is inflated                        | Proof has a gap and the claim collapses   |
+| Saturation       | Ceiling at 100%                          | No ceiling; the next bound is open        |
+| What it predicts | Behavior on similar items                | Nothing directly about the next problem   |
+
+The contamination point deserves emphasis, because it is where the October 2025 episode went wrong. OpenAI staff claimed then that GPT-5 had solved ten open Erdős problems; the claim collapsed when it emerged the model had surfaced solutions already in the published literature.[^3] That failure was a retrieval failure dressed as a discovery, and it is exactly the failure a benchmark cannot detect and a theorem statement can. If Chapter 9's bound were already in a 2019 paper, someone in Ramsey theory would say so within a week.
+
+The last row is the one people skip. Ten theorems tell you the system produced ten proofs. They do not tell you the success rate, the compute distribution, or what the tenth-percentile attempt looked like. Willison's unanswered question — how many problems absorbed the same spend and yielded nothing — is the denominator, and without it the numerator is not a rate.[^2]
+
+## What verification covers
+
+A Lean certificate is a strong form of evidence and a narrow one.
+
+<TenAdvClaimLadder />
+
+Formalization establishes that a derivation compiles: given the formal hypotheses, the formal conclusion follows, with no appeal to a reader's charity about an omitted step. That eliminates the dominant failure mode of long research papers, which is a plausible-sounding gap nobody notices.
+
+It does not establish three other things. First, statement fidelity: the formal statement must be the one the abstract advertises, and checking that is a human reading task on the statement, not the proof. Second, dependence on the surrounding library — a formalization inherits whatever axioms and definitions it imports. Third, significance. No proof assistant can tell you whether $\Omega(n^2\log\log n)$ gates for the permanent is a step toward separating VP from VNP or a barrier-bound curiosity.
+
+This is why the earlier May 2026 result was packaged differently. When an internal model disproved the Erdős unit distance conjecture, OpenAI paired the announcement with external mathematicians who checked the proof and wrote a companion paper, and with named supporting statements.[^4] External review was the credibility mechanism because the result was not formalized. Here, formalization does part of that work and named readers do the rest — a weaker arrangement on the human side, a stronger one on the mechanical side.
+
+## What a professional objection looks like
+
+The objections worth taking seriously are not "an AI cannot do mathematics." They are procedural.
+
+**Acknowledged readers are not referees.** A specialist who reads a manuscript and offers comments has not signed a report, has no editorial obligation, and typically has not checked every lemma. Presenting a list of thanked names as review is a category error, and the paper does not make that claim — but coverage of it can.
+
+**Publication bypasses the review it substitutes for.** The Leiden Declaration, published in June 2026 by an international group of mathematicians and endorsed by the International Mathematical Union, raises exactly this: the reliability of AI-generated proofs, attribution when a proprietary model is involved, and the strain on peer review and publication norms.[^5] It recommends disclosure and preserved review rather than prohibition, and gathered over a thousand signatures within a day.
+
+**Attribution runs one way.** Each chapter builds on decades of named work — Delsarte's programs, Kun's expander decomposition, Yuen's dependency-breaking framework, Berman and Berndtsson's transport argument. The results are extensions of a literature that the system was trained on and that the paper cites but whose authors did not consent to that use. This is the sharpest version of the Leiden concern.
+
+**Reproducibility is partial.** Lean sources are public; the model, the prompts, the search procedure, and the failure log are not. Someone can confirm the theorems without being able to reproduce the process that found them. Those are different scientific claims and they are being reported as one.
+
+The mathematicians reacting publicly split along predictable lines. Terence Tao frames the shift as a transition toward large-scale collaborative work, with humans holding the creative direction and machines absorbing technical labor.[^2] Others describe something closer to displacement; Kirwin Hampshire's essay "The Dark Night of Mathematics" is the widely circulated version of that response.[^2] Both readings are compatible with the same ten theorems.
+
+## What generalizes
+
+Strip away the specific chapters and four things transfer.
+
+**Verifiable domains are where autonomous search pays.** A proof assistant is an oracle that returns a hard yes or no. Search against a hard oracle can run long without drifting, which is not true of search against a learned reward model. The economics reported here — modest per-problem spend against problems open for decades — hold only where such an oracle exists.
+
+**The bottleneck moves to problem selection.** Ten results across nine subfields means someone chose ten problems that were open, tractable, and cleanly statable. That selection is the scarce input, and it is human.
+
+**The denominator is the missing metric.** Any serious claim about research capability needs attempts, successes, and cost per attempt across a preregistered problem list. Ten curated successes is a lower bound on capability and gives no upper bound at all.
+
+**Institutional review has not caught up.** Formal verification and journal peer review answer different questions, and neither substitutes for the other. A result can compile in Lean and still be unabsorbed by its field five years later, which is the state most of these ten results are currently in.
+
+The honest summary: ten specific, precisely stated, machine-checked improvements to problems that had resisted human effort for decades, released without the process infrastructure that normally accompanies claims of this weight. Both halves of that sentence are load-bearing.
+
+## The rest of this series
+
+Four companion posts go deeper on individual threads from this release: the sphere-packing and coding-theory chapters and why an exponent that stood since 1978 moved; the non-sofic group construction and what it settles in group theory; the complexity-theory chapters on the permanent, parallel repetition, and lattice hardness; and the verification pipeline itself — Lean certificates, what they prove, and what peer review still has to do.
+
+## References
+
+[^1]: OpenAI, "Ten Advances in Mathematics and Theoretical Computer Science," 2026. [https://cdn.openai.com/pdf/ten-proofs-oai.pdf](https://cdn.openai.com/pdf/ten-proofs-oai.pdf)
+
+[^2]: Simon Willison, "Ten advances in mathematics and theoretical computer science," simonwillison.net, 2026. [https://simonwillison.net/2026/Aug/1/ten-advances-in-mathematics/](https://simonwillison.net/2026/Aug/1/ten-advances-in-mathematics/)
+
+[^3]: Julie Bort, "OpenAI claims it solved an 80-year-old math problem — for real this time," TechCrunch, 2026. [https://techcrunch.com/2026/05/20/openai-claims-it-solved-an-80-year-old-math-problem-for-real-this-time/](https://techcrunch.com/2026/05/20/openai-claims-it-solved-an-80-year-old-math-problem-for-real-this-time/)
+
+[^4]: OpenAI, "An OpenAI model has disproved a central conjecture in discrete geometry," 2026. [https://openai.com/index/model-disproves-discrete-geometry-conjecture/](https://openai.com/index/model-disproves-discrete-geometry-conjecture/)
+
+[^5]: "Leiden Declaration on Artificial Intelligence and Mathematics," 2026. [https://www.universiteitleiden.nl/en/news/2026/06/leiden-declaration-warns-ai-is-challenging-the-core-values-of-mathematics](https://www.universiteitleiden.nl/en/news/2026/06/leiden-declaration-warns-ai-is-challenging-the-core-values-of-mathematics)

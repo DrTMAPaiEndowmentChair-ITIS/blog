@@ -1,0 +1,179 @@
+---
+const xs = [-2, -1, 0, 1, 2, 3]
+const ys = [-2, -1, 0, 1, 2]
+
+const px = (x: number) => 100 + 34 * x
+const py = (y: number) => 140 - 34 * y
+
+const points = ys.flatMap((y) =>
+  xs.map((x) => {
+    const inside = x >= -1 && y >= -1 && x + y <= 1
+    const boundary = inside && (x === -1 || y === -1 || x + y === 1)
+    const kind = x === 0 && y === 0 ? 'interior' : boundary ? 'boundary' : 'outside'
+    return { key: `${x},${y}`, cx: px(x), cy: py(y), kind }
+  })
+)
+
+const history = [
+  { bound: '4ⁿ', source: 'Milman–Pajor symmetrization with Minkowski' },
+  { bound: '4ⁿ e⁻ᶜ√ⁿ', source: 'thin-shell estimates' },
+  { bound: '4ⁿ exp(−cn / (log n)⁸)', source: 'isotropic-constant bounds' },
+  { bound: '4ⁿ e⁻ᶜⁿ', source: 'combined with the solution of slicing' },
+  { bound: '(n + 1)ⁿ / n!', source: 'sharp, attained by the centered simplex' }
+]
+---
+
+<figure class="viz ehrhart-viz" aria-labelledby="ehrhart-title">
+  <figcaption id="ehrhart-title">
+    <strong>The extremal body is a dilated, shifted simplex</strong>
+    <span
+      >Drawn exactly for n = 2: the triangle 3&Delta;<sub>2</sub> &minus; (1, 1) has barycenter 0,
+      no other interior lattice point, and area 9/2 = (n + 1)<sup>n</sup>/n!.</span
+    >
+  </figcaption>
+
+  <div class="panels">
+    <div class="chart">
+      <svg viewBox="18 58 198 168" role="img" aria-labelledby="ehrhart-figure">
+        <title id="ehrhart-figure">
+          Integer lattice with the extremal triangle, its barycenter, and its boundary lattice
+          points
+        </title>
+
+        <g class="grid">
+          {xs.map((x) => <path d={`M${px(x)} 66V214`} />)}
+          {ys.map((y) => <path d={`M26 ${py(y)}H208`} />)}
+        </g>
+
+        <path class="body" d="M66 174H168L66 72Z"></path>
+
+        {points.map((p) => <circle class={p.kind} cx={p.cx} cy={p.cy} r={p.kind === 'interior' ? 4.5 : 2.4} />)}
+
+        <path class="cross" d="M92 140h16M100 132v16"></path>
+        <text x="108" y="130">barycenter = only interior lattice point</text>
+        <text class="dim" x="72" y="192">vertices at (&minus;1,&minus;1), (2,&minus;1), (&minus;1,2)</text>
+      </svg>
+    </div>
+
+    <ol class="history">
+      {
+        history.map((row, index) => (
+          <li class={index === history.length - 1 ? 'sharp' : undefined}>
+            <strong>{row.bound}</strong>
+            <small>{row.source}</small>
+          </li>
+        ))
+      }
+    </ol>
+  </div>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-tertiary);
+    font: 0.72rem/1.5 var(--mono);
+  }
+  .panels {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(12rem, 0.85fr);
+    gap: 1rem;
+  }
+  .chart {
+    padding: 0.6rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  svg {
+    display: block;
+    width: 100%;
+  }
+  path {
+    fill: none;
+    vector-effect: non-scaling-stroke;
+  }
+  .grid path {
+    stroke: var(--border);
+  }
+  .body {
+    fill: var(--astro-code-background);
+    stroke: var(--text-primary);
+    stroke-width: 2;
+  }
+  .cross {
+    stroke: var(--text-primary);
+  }
+  circle.outside {
+    fill: var(--text-tertiary);
+    opacity: 0.5;
+  }
+  circle.boundary {
+    fill: var(--text-secondary);
+  }
+  circle.interior {
+    fill: var(--text-primary);
+  }
+  text {
+    fill: var(--text-secondary);
+    font: 0.6rem var(--mono);
+  }
+  .dim {
+    fill: var(--text-tertiary);
+    font-size: 0.55rem;
+  }
+  .history {
+    display: grid;
+    align-content: start;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--border);
+    list-style: none;
+  }
+  .history li {
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.65rem 0.8rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .history li:last-child {
+    border-bottom: 0;
+  }
+  .history strong {
+    font: 600 0.78rem var(--mono);
+  }
+  .history small {
+    color: var(--text-tertiary);
+    font: 0.66rem/1.45 var(--mono);
+  }
+  .sharp {
+    background: var(--bg);
+  }
+  .sharp strong {
+    color: var(--text-primary);
+  }
+  .sharp small {
+    color: var(--text-secondary);
+  }
+  @container (max-width: 560px) {
+    .panels {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
