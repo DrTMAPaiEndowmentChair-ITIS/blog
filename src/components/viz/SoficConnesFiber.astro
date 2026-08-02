@@ -1,0 +1,206 @@
+<figure class="viz connes-fiber" aria-labelledby="connes-fiber-title">
+  <figcaption id="connes-fiber-title">
+    <strong>The fiber of the group-factor functor over L(Λ)</strong>
+    <span>What property (T ) was expected to guarantee, and what it actually guarantees.</span>
+  </figcaption>
+
+  <div class="panels">
+    <section class="before">
+      <span>Expected</span>
+      <strong>One group per factor</strong>
+      <svg viewBox="0 0 200 120" role="img" aria-labelledby="connes-before-desc">
+        <title id="connes-before-desc">A single group mapping to a single II-1 factor</title>
+        <rect class="node" x="6" y="50" width="72" height="24" rx="2"></rect>
+        <text class="node-label" x="42" y="66">G</text>
+        <path class="arrow" d="M84 62h56"></path>
+        <path class="head" d="M134 58l8 4-8 4z"></path>
+        <rect class="node target" x="146" y="50" width="48" height="24" rx="2"></rect>
+        <text class="node-label" x="170" y="66">L(G)</text>
+        <text class="cap" x="6" y="104">injective on ICC property-(T) groups</text>
+      </svg>
+      <p>
+        Property (T ) is a rigidity property: it forbids almost-invariant vectors, and Connes's
+        classification had shown that dropping it collapses every amenable ICC group onto one
+        hyperfinite factor. Rigidity was expected to invert the collapse.
+      </p>
+    </section>
+
+    <section class="after">
+      <span>Actual</span>
+      <strong>A countably infinite fiber</strong>
+      <svg viewBox="0 0 200 120" role="img" aria-labelledby="connes-after-desc">
+        <title id="connes-after-desc">Infinitely many groups mapping to one II-1 factor</title>
+        <rect class="node" x="6" y="6" width="72" height="18" rx="2"></rect>
+        <text class="node-label small" x="42" y="19">Λ</text>
+        <rect class="node" x="6" y="30" width="72" height="18" rx="2"></rect>
+        <text class="node-label small" x="42" y="43">Γ₀</text>
+        <rect class="node" x="6" y="54" width="72" height="18" rx="2"></rect>
+        <text class="node-label small" x="42" y="67">Γ₁</text>
+        <rect class="node" x="6" y="78" width="72" height="18" rx="2"></rect>
+        <text class="node-label small" x="42" y="91">Γ₂</text>
+        <text class="cap" x="30" y="112">⋮</text>
+        <path
+          class="arrow"
+          d="M84 15C112 15 118 62 140 62M84 39C112 39 122 62 140 62M84 63h56M84 87C112 87 122 62 140 62"
+        ></path>
+        <path class="head" d="M134 58l8 4-8 4z"></path>
+        <rect class="node target" x="146" y="50" width="48" height="24" rx="2"></rect>
+        <text class="node-label" x="170" y="66">L(Λ)</text>
+      </svg>
+      <p>
+        All of Λ, Γ₀, Γ₁, … are finitely generated ICC property-(T ) groups, pairwise
+        nonisomorphic, pairwise commensurable, with one common group von Neumann algebra. Γ₀ sits
+        inside Γ<sub>n</sub> with index 2<sup>4n</sup>.
+      </p>
+    </section>
+  </div>
+
+  <dl class="verdicts" aria-label="Status of the surrounding questions">
+    <div>
+      <dt>Connes's rigidity conjecture</dt>
+      <dd class="no">false — the pair Λ, Γ₀ already suffices</dd>
+    </div>
+    <div>
+      <dt>Popa: are the fibers finite?</dt>
+      <dd class="no">no — this fiber is countably infinite</dd>
+    </div>
+    <div>
+      <dt>Popa: are the fibers countable?</dt>
+      <dd class="yes">yes, and the bound is now sharp</dd>
+    </div>
+    <div>
+      <dt>W*-superrigid property-(T ) groups</dt>
+      <dd class="yes">still exist — property (T ) is just not sufficient</dd>
+    </div>
+  </dl>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  .panels {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  .panels section {
+    display: grid;
+    align-content: start;
+    gap: 0.5rem;
+    min-width: 0;
+    padding: 0.9rem;
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--text-tertiary);
+    background: var(--bg);
+  }
+  .after {
+    border-top-color: var(--text-primary);
+  }
+  .panels span {
+    color: var(--text-tertiary);
+    font: 0.62rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .panels strong {
+    font: 600 0.88rem/1.3 var(--sans);
+  }
+  .panels p {
+    margin: 0;
+    color: var(--text-secondary);
+    font: 0.68rem/1.55 var(--mono);
+  }
+  svg {
+    display: block;
+    width: 100%;
+    margin: 0.3rem 0;
+  }
+  .node {
+    fill: none;
+    stroke: var(--text-tertiary);
+  }
+  .target {
+    stroke: var(--text-primary);
+    stroke-width: 1.5;
+  }
+  .node-label {
+    fill: var(--text-primary);
+    font: 0.72rem var(--mono);
+    text-anchor: middle;
+  }
+  .node-label.small {
+    font-size: 0.62rem;
+  }
+  .arrow {
+    fill: none;
+    stroke: var(--text-secondary);
+    vector-effect: non-scaling-stroke;
+  }
+  .head {
+    fill: var(--text-secondary);
+    stroke: none;
+  }
+  .cap {
+    fill: var(--text-tertiary);
+    font: 0.58rem var(--mono);
+  }
+  .verdicts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.7rem 1rem;
+    margin-top: 1.1rem;
+    padding-top: 0.95rem;
+    margin-bottom: 0;
+    border-top: 1px solid var(--border);
+  }
+  .verdicts div {
+    display: grid;
+    gap: 0.22rem;
+    min-width: 0;
+  }
+  dt,
+  dd {
+    margin: 0;
+    font: 0.67rem/1.5 var(--mono);
+  }
+  dt {
+    color: var(--text-tertiary);
+  }
+  dd {
+    color: var(--text-secondary);
+    padding-left: 0.6rem;
+  }
+  dd.no {
+    border-left: 2px solid var(--text-primary);
+    color: var(--text-primary);
+  }
+  dd.yes {
+    border-left: 2px solid var(--border);
+  }
+  @container (max-width: 560px) {
+    .panels,
+    .verdicts {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

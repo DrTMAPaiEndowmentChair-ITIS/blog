@@ -1,0 +1,181 @@
+---
+title: 'Circuits, Games, and Lattices: Three Complexity Results'
+pubDate: 2026-08-05
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Read three theoretical computer science results together: superquadratic circuit lower bounds for the permanent, exponential parallel repetition for every entangled game, and fixed-polynomial hardness for the closest vector problem.'
+topics: ['Complexity theory', 'Arithmetic circuits', 'Quantum games', 'Lattices', 'Cryptography']
+---
+
+import ComplexityCircuitVsFormula from '../../components/viz/ComplexityCircuitVsFormula.astro'
+import ComplexityEntangledRepetition from '../../components/viz/ComplexityEntangledRepetition.astro'
+import ComplexityLatticeHardnessLine from '../../components/viz/ComplexityLatticeHardnessLine.astro'
+
+Chapters 5, 6, and 7 of OpenAI's *Ten Advances in Mathematics and Theoretical Computer Science* form the theoretical computer science cluster of that collection.[^1] They concern three different models of computation: algebraic circuits, interactive proofs with entangled provers, and worst-case approximation hardness for lattice problems.
+
+The three results share a shape. In each case a qualitative statement was already believed, a weaker quantitative version was already known, and the contribution is to close the gap between them by a specific amount. None of the three closes it entirely.
+
+## Arithmetic circuits compute polynomials, not functions
+
+An arithmetic circuit over $\mathbb{C}$ is a directed acyclic graph. Input gates carry variables or constants, internal gates are binary $+$, $-$, or $\times$, and one gate is the output. Size is the number of internal gates. A gate may feed its result to any number of later gates, so a subexpression computed once can be reused freely.
+
+An arithmetic formula is the same object restricted to a tree. Fan-out is one. Two uses of the same intermediate polynomial require two separate subformulas, each paid for in full. The natural size measure is the number of leaves, and the sharper measure used here is $L_{\mathrm{var}}(\Phi)$, the number of leaves labeled by variables, counting repeated occurrences separately.
+
+<ComplexityCircuitVsFormula />
+
+The polynomial under study is the permanent of an $n \times n$ matrix of algebraically independent variables:
+
+$$
+\operatorname{per}_n(X) = \sum_{\sigma \in S_n} \prod_{i=1}^{n} x_{i,\sigma(i)}
+$$
+
+Its monomials enumerate perfect matchings in the complete bipartite graph on rows and columns. The determinant differs only by the signs $\operatorname{sgn}(\sigma)$, and that difference is decisive: the determinant has polynomial-size arithmetic circuits, while the permanent is complete for Valiant's class VNP.[^2] Whether the permanent has polynomial-size circuits is the algebraic counterpart of P versus NP, and it is the central open problem of algebraic complexity theory.
+
+Progress on it has been slow in a specific way. The permanent depends on all $N = n^2$ variables, and combining $n^2$ distinct inputs with binary gates needs at least $n^2 - 1$ of them. That elementary counting argument was, for general division-free circuits, essentially the best available. The classical formula lower bound was $\Omega(n^3)$, due to Kalorkoti.[^3]
+
+Chapter 5 improves both.
+
+$$
+C(\operatorname{per}_n) \;\ge\; \frac{n^{2}}{144}\bigl(\log_2 \log_2 n - 3\bigr)
+\qquad (n \ge 2^{16})
+$$
+
+so $C(\operatorname{per}_n) = \Omega(n^2 \log\log n)$ and the ratio $C(\operatorname{per}_n)/n^2$ diverges. This is the first superquadratic bound for unrestricted division-free circuits computing the permanent. For formulas:
+
+$$
+L_{\mathrm{var}}(\Phi) \;\ge\; \frac{n^{4}}{128 \log_2 n},
+\qquad
+G(\Phi) \;\ge\; \frac{n^{4}}{256 \log_2 n}
+\qquad (n \ge 32)
+$$
+
+with the same asymptotic $\Omega(n^4/\log n)$ holding for formulas that use division, provided every denominator is a nonzero rational function; only the constants change.
+
+In terms of the input count $N = n^2$, the circuit bound reads $\Omega(N \log\log N)$ and the formula bounds read $\Omega(N^2/\log N)$. Both are still polynomially far from the superpolynomial separation that permanent-versus-determinant demands.
+
+## Why the two proofs are different arguments
+
+The circuit bound is geometric. Reverse-mode differentiation computes the full gradient of a size-$L$ circuit using at most $3L$ multiplications, which is exactly the sharing that a formula cannot do. If the gradient map is a homogeneous degree-$(d-1)$ map $\mathbb{C}^k \to \mathbb{C}^k$ whose only zero is the origin, its generic fiber has $(d-1)^k$ points, while Bézout's inequality bounds the isolated solutions of the gate equations by $2^{3L}$. Comparing the two gives
+
+$$
+L \;\ge\; \frac{k \log_2 (d-1)}{3}
+$$
+
+To use this one needs a specialization of the permanent whose critical locus has codimension $\Theta(n^2)$ while its degree $d$ still grows with $n$. Chapter 5 builds one from sums of subpermanents, controlling the critical locus through shared power sums and elementary symmetric functions of the columns.
+
+The formula bound is algebraic instead. It marks a matching of matrix entries, expands the permanent in those variables, and counts algebraically independent coefficients. For the permanent, a matching of only $O(\log n)$ entries already contributes $\Omega(n^2)$ independent coefficients, and independent coefficients must be charged to distinct occurrences of the marked variables. Summing over entry-disjoint matchings gives the quartic bound.
+
+Both arguments are explicitly permanent-specific, and the paper is direct about the obstruction. For the determinant, a Schur complement identity compresses the coefficients of a marked $k$-entry block into a field generated by $O(k^2)$ elements, so the transcendence degree obeys $\operatorname{td}_Y(\det X) \le n|Y|$ and the method tops out at a cubic bound. On the circuit side, every homogeneous affine specialization of $\det_n$ has $\operatorname{codim}\operatorname{Crit}(P) \le n-1$, which caps the certificate at $O(n \log n)$ — below the trivial $n^2 - 1$ counting bound. The technique does not leak to the determinant.
+
+## A two-player game is a soundness question
+
+A finite two-player one-round game is a tuple $G = (X, Y, A, B, \mu, V)$. A referee samples $(x,y) \sim \mu$, sends $x$ to Alice and $y$ to Bob, receives answers $a \in A$ and $b \in B$, and accepts if $V(x,y,a,b) = 1$. The players agree on a strategy in advance but cannot communicate after seeing their questions. The maximum acceptance probability is the classical value $\omega(G)$.
+
+An entangled game keeps the same questions, answers, and predicate, but lets the players share a bipartite quantum state before the questions arrive. Each measures their half according to their own question. The supremum of winning probabilities over all finite-dimensional shared states and local measurements is the entangled value $\omega^*(G)$.
+
+<ComplexityEntangledRepetition />
+
+Parallel repetition is the standard way to amplify soundness. In $G^{\otimes n}$ the referee samples $n$ independent question pairs and accepts only if every coordinate is won. The subtlety is that although the referee's coordinates are independent, the players' are not: Alice's answer in coordinate $i$ may depend on her entire question tuple. Playing coordinates independently only gives the lower bound $\omega^*(G^{\otimes n}) \ge \omega^*(G)^n$; the work is in the matching upper bound.
+
+Raz proved the classical case: every finite two-player game with $\omega(G) < 1$ satisfies $\omega(G^{\otimes n}) \le \exp(-c_G n)$.[^4] Holenstein later gave an information-theoretic proof based on correlated sampling and improved the dependence on the soundness gap.[^5]
+
+The entangled analogue was noted as open by 2004 and stayed open. Exponential decay was proved for structured families — XOR games, unique games, projection games, free games — and Bavarian, Vidick, and Yuen obtained exponential decay by first *transforming* a game into an anchored one.[^6] That is enough for hardness amplification but is not a repetition theorem about the original game. For arbitrary games, the strongest general statement was Yuen's, and it decayed only polynomially:[^7]
+
+$$
+\omega^*(G^{\otimes n}) \;\le\; \frac{c \, s_G \log n}{\varepsilon^{17} \, n^{1/4}}
+$$
+
+Chapter 6 replaces that with exponential decay, for every finite game, unmodified.
+
+$$
+\omega^*(G^{\otimes n}) \;\le\; \exp\!\left(-c_{\mathrm{qs}} \, \frac{\varepsilon^{13}}{\varepsilon + \log(|A||B|)} \, n\right),
+\qquad \varepsilon = 1 - \omega^*(G) > 0
+$$
+
+for a universal constant $c_{\mathrm{qs}} > 0$. The exponent $13$ is not claimed to be optimal; it inherits the loss in a standard quantum correlated-sampling lemma. The claim being made is about the *rate*, not the constant.
+
+The proof keeps Yuen's conditioning-and-rounding template. Assume a repeated strategy beats the bound; a greedy conditioning lemma selects a small core $D \subsetneq [n]$ with $|D| \le \log(1/\vartheta)/\delta$ such that, conditioned on winning every coordinate in $D$, an average remaining coordinate is won with probability at least $1 - \delta$. The conditioned coordinate is then rounded back into a legal single-copy strategy that beats $\omega^*(G)$, a contradiction.
+
+The obstacle in the quantum setting was always that step. Conditioning on winning all $n$ coordinates is conditioning on an event of exponentially small probability, and the available quantum sampleability estimates degraded inversely with that probability — which is precisely why the classical argument yielded only polynomial decay when transplanted. The new ingredient is a postselection-stable sampleability lemma with no such inverse dependence.
+
+## Lattice hardness at a fixed polynomial factor
+
+The closest vector problem takes a full-rank integer basis $B \in \mathbb{Z}^{n \times n}$ and a target $t$, and asks for the lattice point nearest to $t$:
+
+$$
+\operatorname{dist}_2\bigl(t, \mathcal{L}(B)\bigr) = \min_{z \in \mathbb{Z}^n} \lVert t - Bz \rVert_2
+$$
+
+The approximate promise version $\mathrm{GapCVP}^{(2)}_{\gamma}$ takes an additional radius $r$ and asks to distinguish $\operatorname{dist}_2(t,\mathcal{L}(B)) \le r$ from $\operatorname{dist}_2(t,\mathcal{L}(B)) > \gamma(n) \, r$, with either answer permitted in between. Larger $\gamma$ makes the problem easier, so hardness results get harder to prove as $\gamma$ grows.
+
+Chapter 7 gives a deterministic polynomial-time many-one reduction from 3SAT:
+
+$$
+\varphi \text{ satisfiable} \implies \operatorname{dist}_2(t, \mathcal{L}(B)) \le r,
+\qquad
+\varphi \text{ unsatisfiable} \implies \operatorname{dist}_2(t, \mathcal{L}(B)) > n^{1/400} \, r
+$$
+
+so $\mathrm{GapCVP}^{(2)}_{n^{1/400}}$ is NP-hard. The same construction yields factor $n^{1/200}$ for binary nearest codeword and syndrome decoding, and $n^{1/(200p)}$ for closest vector in every fixed rational $\ell_p$ norm, $p \ge 1$.
+
+The exponent looks small, and it is. What makes it interesting is that it is a *constant*. The previous best, from Dinur, Kindler, Raz, and Safra, was NP-hardness within $n^{a/\log\log n}$ for some absolute $a > 0$.[^8] That factor grows faster than any fixed power of $\log n$, but its exponent tends to zero, so it never certifies hardness within $n^c$ for any fixed $c > 0$. Moving from a vanishing exponent to a fixed one is the actual content.
+
+The reduction factors as
+
+```text
+3SAT  ->  binary nearest codeword  ->  Euclidean CVP
+```
+
+The second arrow is the standard dimension-preserving reduction. The first is the new work: assignments are encoded as Reed–Solomon evaluation tables over a characteristic-two field, with power-sum and shifted-moment constraints forcing low degree, and the resulting binary affine system $Hx = b$ is lifted to an integer lattice by coordinatewise reduction modulo two. Soundness recovers a satisfying assignment from any low-weight solution by reconstructing separable root sets over a rational function field.
+
+Notably, this uses no randomization, no PCP theorem, and no Projection Games Conjecture — earlier fixed-polynomial lattice inapproximability results were conditional on the latter. The price is size: the field satisfies $q = \Theta(N^{200})$ and the lattice rank $n \le 40N^{401}$.
+
+## How far this is from cryptography
+
+<ComplexityLatticeHardnessLine />
+
+It is worth being precise about what this does and does not say for post-quantum cryptography.
+
+Lattice problems became cryptographically load-bearing through Ajtai's worst-case to average-case connection, the Goldreich–Goldwasser–Halevi constructions, and Regev's learning with errors, and that line now underpins NIST's standardized key encapsulation and signature schemes. But those schemes rest on structured or average-case assumptions at polynomial approximation factors. They do not rest on the worst-case NP-hardness of CVP, and a hardness result at $n^{1/400}$ does not strengthen them.
+
+There is also a ceiling. Aharonov and Regev showed that for some absolute $C > 0$,
+
+$$
+\mathrm{GapCVP}^{(2)}_{C\sqrt{n}} \in \mathrm{NP} \cap \mathrm{coNP}
+$$
+
+so NP-hardness at the square-root scale would imply $\mathrm{NP} = \mathrm{coNP}$.[^9] The exponent therefore cannot pass $1/2$ by these means. Determining the largest $c \in [1/400, 1/2)$ for which $\mathrm{GapCVP}^{(2)}_{n^c}$ is NP-hard is left open.
+
+So the honest summary is a narrow one: a barrier that used to sit at a vanishing exponent now sits at $1/400$, unconditionally and deterministically, and the region between there and $1/2$ is unexplored.
+
+## What the three have in common
+
+Each result takes a statement everyone expected to be true and supplies a quantitative certificate for part of it.
+
+| Chapter | Was known                                     | Now known                              | Still open                                |
+| ------- | --------------------------------------------- | -------------------------------------- | ----------------------------------------- |
+| 5       | $\Omega(n^2)$ circuits, $\Omega(n^3)$ formulas | $\Omega(n^2\log\log n)$, $\Omega(n^4/\log n)$ | Superpolynomial bounds; permanent vs determinant |
+| 6       | Polynomial decay for all entangled games      | Exponential decay for all finite games | Optimal dependence on $\varepsilon$; more than two players |
+| 7       | NP-hardness within $n^{a/\log\log n}$         | NP-hardness within $n^{1/400}$         | The exponent between $1/400$ and $1/2$    |
+
+The gaps that remain are larger than the gaps that closed. That is the normal condition of these problems, and it is the reason the exact constants in each theorem — $144$, $13$, $400$ — are worth reading as measurements rather than as decoration.
+
+## References
+
+[^1]: OpenAI, "Ten Advances in Mathematics and Theoretical Computer Science," 2026. [https://cdn.openai.com/pdf/ten-proofs-oai.pdf](https://cdn.openai.com/pdf/ten-proofs-oai.pdf)
+
+[^2]: Leslie G. Valiant, "Completeness Classes in Algebra," STOC, 1979. [https://doi.org/10.1145/800135.804419](https://doi.org/10.1145/800135.804419)
+
+[^3]: K. Kalorkoti, "A Lower Bound for the Formula Size of Rational Functions," SIAM Journal on Computing, 1985. [https://doi.org/10.1137/0214051](https://doi.org/10.1137/0214051)
+
+[^4]: Ran Raz, "A Parallel Repetition Theorem," SIAM Journal on Computing, 1998. [https://doi.org/10.1137/S0097539795280895](https://doi.org/10.1137/S0097539795280895)
+
+[^5]: Thomas Holenstein, "Parallel Repetition: Simplification and the No-Signaling Case," Theory of Computing, 2009. [https://doi.org/10.4086/toc.2009.v005a008](https://doi.org/10.4086/toc.2009.v005a008)
+
+[^6]: Mohammad Bavarian, Thomas Vidick, and Henry Yuen, "Anchored Parallel Repetition for Nonlocal Games," arXiv, 2015. [https://arxiv.org/abs/1509.07466](https://arxiv.org/abs/1509.07466)
+
+[^7]: Henry Yuen, "A Parallel Repetition Theorem for All Entangled Games," ICALP, 2016. [https://arxiv.org/abs/1604.04340](https://arxiv.org/abs/1604.04340)
+
+[^8]: Irit Dinur, Guy Kindler, Ran Raz, and Shmuel Safra, "Approximating CVP to Within Almost-Polynomial Factors is NP-Hard," Combinatorica, 2003. [https://doi.org/10.1007/s00493-003-0019-y](https://doi.org/10.1007/s00493-003-0019-y)
+
+[^9]: Dorit Aharonov and Oded Regev, "Lattice Problems in NP ∩ coNP," Journal of the ACM, 2005. [https://doi.org/10.1145/1089023.1089025](https://doi.org/10.1145/1089023.1089025)

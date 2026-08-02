@@ -1,0 +1,165 @@
+---
+title: 'Three Bounds in the Geometry of Numbers'
+pubDate: 2026-08-03
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'A reading of three chapters from OpenAI Ten Advances: the exact strength of the Cohn-Elkies linear program, exponential improvements to binary and spherical code bounds, and the sharp inequality in Ehrhart volume conjecture.'
+topics: ['Sphere packing', 'Coding theory', 'Convex geometry', 'Fourier analysis']
+---
+
+import PackingExponentGain from '../../components/viz/PackingExponentGain.astro'
+import PackingLPDuality from '../../components/viz/PackingLPDuality.astro'
+import PackingEhrhartSimplex from '../../components/viz/PackingEhrhartSimplex.astro'
+
+In August 2026 OpenAI published a collection of ten results in mathematics and theoretical computer science, each with a Lean certificate.[^1] Three of the chapters sit in the same corner of the subject: the geometry of numbers, where the objects are lattices, packings, codes, and convex bodies, and the technique of choice is a linear program over Fourier-positive test functions.
+
+Chapters 1, 2, and 8 improve three bounds that had stood for a long time. Two of them dated from 1977 and 1978. The third was a conjecture of Ehrhart from 1964. This post explains what each problem asks, what was previously known, and the shape of the arguments.
+
+## Sphere packing in high dimensions
+
+Let $\Delta_d$ be the largest density achievable by a packing of congruent balls in $\mathbb R^d$. Lower bounds are easy and weak: random constructions give roughly $2^{-d}$. Upper bounds are hard, and for fifty years the best general one came from Kabatianskii and Levenshtein, who proved $\Delta_d \le 2^{-(0.59905576\ldots + o(1))d}$.
+
+The dominant tool for upper bounds is a linear program introduced by Gorbachev and, independently, Cohn and Elkies.[^2] Fix the Fourier convention $\hat f(\xi)=\int f(x)e^{-2\pi i x\cdot\xi}\,dx$ and let $v_d$ be the volume of the unit ball. Define the admissible class
+
+$$
+\mathcal A_d=\bigl\{f\in\mathcal S(\mathbb R^d;\mathbb R)\;:\;\hat f(0)>0,\ \hat f\ge 0 \text{ on } \mathbb R^d,\ f\le 0 \text{ on } \{|x|\ge 1\}\bigr\}
+$$
+
+and the resulting bound
+
+$$
+\mathrm{LP}_d=\frac{v_d}{2^d}\inf_{f\in\mathcal A_d}\frac{f(0)}{\hat f(0)},
+\qquad \Delta_d\le \mathrm{LP}_d .
+$$
+
+Every admissible $f$ is a certificate. Poisson summation turns the two sign conditions into an inequality about any packing at all: the spatial condition kills contributions from distinct centers, and the Fourier condition makes the remaining sum nonnegative. This is the framework in which Viazovska settled dimension 8 and, with collaborators, dimension 24, by producing exactly optimal "magic" functions.
+
+<PackingLPDuality />
+
+What nobody knew was how strong the program is in general. Cohn and Zhao showed it is at least as strong as the Kabatianskii-Levenshtein bound.[^3] Whether it is strictly stronger in the exponent was open, though Afkhami-Jeddi, Cohn, Hartman, de Laat, and Tajdini conjectured the answer while studying the modular bootstrap.
+
+Chapter 1 proves that conjecture.
+
+$$
+\limsup_{d\to\infty}\Delta_d^{1/d}\ \le\ \lim_{d\to\infty}\mathrm{LP}_d^{1/d}=\sqrt{\frac{e}{2\pi}}
+$$
+
+Written as an exponent, $\Delta_d\le 2^{-(\alpha_*+o(1))d}$ with $\alpha_*=\tfrac12\log_2(2\pi/e)=0.6044\ldots$, against the classical $0.59905576\ldots$. Intervening work had improved only lower-order factors, so this is the first change to the exponent since 1978.
+
+<PackingExponentGain />
+
+The result is two-sided, and the second half matters as much as the first. The limit is an equality, so no Cohn-Elkies auxiliary function can ever do better. The linear program is now a closed question at the level of exponents, and further progress on sphere packing must come from somewhere else.
+
+## Sign uncertainty as the underlying obstruction
+
+The lower bound on $\mathrm{LP}_d$ runs through an uncertainty principle. For $g\in L^1(\mathbb R^d;\mathbb R)$ with $\hat g=\varsigma g$, $\varsigma\in\{-1,+1\}$, let $r(g)$ be the smallest $R$ beyond which $g\ge 0$, and set
+
+$$
+A_\varsigma(d)=\inf\bigl\{r(g)\;:\;0\neq g\in L^1(\mathbb R^d;\mathbb R),\ \hat g=\varsigma g,\ g(0)=0\bigr\}.
+$$
+
+A self-dual function that vanishes at the origin cannot become nonnegative too soon. The $+1$ case is the Bourgain-Clozel-Kahane problem; the $-1$ case was introduced by Cohn and Gonçalves and tied to sphere packing.[^4] Chapter 1 settles both asymptotically.
+
+$$
+\lim_{d\to\infty}\frac{A_+(d)}{\sqrt d}=\lim_{d\to\infty}\frac{A_-(d)}{\sqrt d}=\frac1\pi
+$$
+
+The link to packing is a two-line construction. Given admissible $F$, rescale by $a=(\hat F(0)/F(0))^{1/d}$ so that $h(x)=F(ax)$ satisfies $h(0)=\hat h(0)$. Then $g=\hat h-h$ is anti-self-Fourier, vanishes at the origin, and is nonnegative outside the ball of radius $1/a$. Since $\int g=0$, half of its total mass is negative, and all of that negative mass sits inside that ball. A Mellin-transform estimate shows a radial eigenfunction with $g(0)=0$ has exponentially little $L^1$ mass inside radius $c\sqrt d$ for any $c<1/\pi$, which forces $1/a\ge(1/\pi-o(1))\sqrt d$. The matching upper bound modifies the Mellin transform of a Gaussian to build a Fourier pair whose sign conditions begin at $(1/\pi+o(1))\sqrt d$. Stirling's formula converts radii into densities.
+
+The two constants are asymptotically equal but not equal: the paper records $A_+(d)<A_-(d)$ in every dimension.
+
+## Binary and spherical codes
+
+Chapter 2 attacks the discrete analogues and arrives at the same exponent by a different road.
+
+A binary code $C\subseteq\{0,1\}^n$ with minimum Hamming distance $d$ has size at most $A_2(n,d)$; a spherical code $C\subseteq S^{n-1}$ with pairwise inner products at most $s$ has size at most $A(n,s)$. The asymptotic rates are
+
+$$
+R_2(\delta)=\limsup_{n\to\infty}\frac1n\log_2 A_2(n,\lceil\delta n\rceil),
+\qquad
+R_{\mathrm{sph}}(s)=\limsup_{n\to\infty}\frac1n\log_2 A(n,s).
+$$
+
+The standing records were the second McEliece-Rodemich-Rumsey-Welch bound $M_2(\delta)$ from 1977 and the Kabatianskii-Levenshtein bound $B_{\mathrm{KL}}(s)$ from 1978. Both come from Delsarte's two-point linear program: a polynomial $F=\sum_j f_j P_j$ in the appropriate orthogonal basis, with $f_0>0$, $f_j\ge 0$, and $F\le 0$ at every permitted inner product, certifies $|C|\le F(1)/f_0$.
+
+The new idea is to change what sits at each code point. In the classical construction each retained harmonic space contributes one vector per code point. Here a $d_E$-dimensional subspace is attached to each point $x$ inside a common $D$-dimensional ambient space, moving with the point under the symmetry group, so that the overlap $\operatorname{tr}(P_xP_y)$ remains a scalar function of distance. Writing $\Lambda$ for the largest eigenvalue of the associated weighted transition matrix, the projection bound reads
+
+$$
+|C|\le \frac{1-s}{\Lambda-s}\cdot\frac{D}{d_E}\qquad(\Lambda>s).
+$$
+
+An exponentially large projection rank $d_E$ divides straight into the bound, provided $\Lambda$ stays clear of the threshold. The transition matrices come from representation graphs: tridiagonal in the binary case, and in the spherical case weighted graphs whose vertices are indexed by Young diagrams, with $r$ rows for the subspace at each code point and one more row for the ambient representation. That hierarchy level $r$ is the new parameter.
+
+For binary codes the improvement is stated as a strict inequality against the fully optimized classical exponent, using an explicit variational quantity $\kappa_{\mathrm{bin}}$:
+
+$$
+R_2(\delta)\le \kappa_{\mathrm{bin}}(\delta)<M_2(\delta)\qquad\text{for every fixed } 0<\delta<1/2.
+$$
+
+The classical bounds are boundary cases of the enlarged problem, obtained by setting the attached harmonic degrees to zero. For spherical codes the hierarchy is strictly monotone at every level:
+
+$$
+R_{\mathrm{sph}}(s)\le\inf_{r\ge0}\overline\kappa_r(s)<\overline\kappa_1(s)<\overline\kappa_{\mathrm{row}}(s)<\overline\kappa_0(s)=B_{\mathrm{KL}}(s).
+$$
+
+Level $r=0$ is exactly the classical construction. Every subsequent level strictly improves it, for every fixed $s\in(0,1)$.
+
+Because a packing bound follows from a spherical-code bound by hemisphere projection, the hierarchy also produces
+
+$$
+\Delta_n\le 2^{-(\lambda_*+o(1))n},\qquad \lambda_*=\tfrac12\log_2\frac{2\pi}{e},
+$$
+
+which is the Chapter 1 exponent, recovered as the small-angle limit $s\uparrow1$. Two independent methods, one Euclidean and Fourier-analytic, one spherical and representation-theoretic, meeting at the same constant is the strongest available evidence that the constant is the right one.
+
+## Ehrhart's volume conjecture
+
+Chapter 8 is a different kind of problem with the same flavour: a convexity bound forced by a lattice condition.
+
+Ehrhart asked in 1964 how large a convex body can be if its barycenter is its only interior lattice point. The natural candidate is the dilated, shifted simplex $(n+1)\Delta_n-(1,\ldots,1)$, and the conjecture is that it is extremal.
+
+$$
+K\subset\mathbb R^n \text{ compact convex, barycenter } 0,\ \operatorname{int}(K)\cap\mathbb Z^n=\{0\}
+\ \Longrightarrow\
+\operatorname{vol}(K)\le\frac{(n+1)^n}{n!}
+$$
+
+<PackingEhrhartSimplex />
+
+Ehrhart proved it in the plane and for simplices in every dimension. For general centered bodies, Milman-Pajor symmetrization with Minkowski's theorem gives $\operatorname{vol}(K)\le 4^n$, and a sequence of refinements shaved subexponential and then exponential factors off that, the last of them leaning on Klartag and Lehec's resolution of Bourgain's slicing problem.[^5] Since $(n+1)^n/n!$ grows like $e^n$ up to polynomial factors, all of those bounds were exponentially far from sharp.
+
+The proof is complex-analytic. A theorem of Berman and Berndtsson supplies a smooth convex potential $\varphi$ whose gradient transports $e^{-\varphi(x)}dx$ to Lebesgue measure on $K$.[^6] Pulled back to $X=(\mathbb C^*)^n$ through logarithmic radii, the weighted holomorphic space $\mathcal H_k$ has Laurent monomial basis indexed by $\mathbb Z^n\cap\operatorname{int}(kK)$, so the hypothesis that $0$ is the only interior lattice point says precisely that $\mathcal H_1=\mathbb C$.
+
+That is the pivot. Filtering an orthonormal basis by vanishing order at $p=(1,\ldots,1)$ produces a ray of potentials $(\psi_t)_{t\ge0}$ with $\psi_0=\varphi$, and one studies
+
+$$
+Z(t)=\frac1{\operatorname{vol}(K)}\int_X e^{-\psi_t}\,d\nu,\qquad L(t)=-\log Z(t).
+$$
+
+Berndtsson's positivity theorem makes $L$ convex, because $\mathcal H_1=\mathbb C$ keeps the relevant Bergman kernel equal to $1/(\operatorname{vol}(K)Z(t))$. Counting how many linear conditions vanishing to a given order imposes bounds the initial slope from below; a local Schwarz estimate on a ball of radius proportional to $e^{-t/2}$ bounds it from above. With $c_K=(n!\operatorname{vol}(K))^{1/n}$,
+
+$$
+\frac{n}{n+1}\,c_K\ \le\ L'(0^+)\ \le\ n,
+$$
+
+so $c_K\le n+1$, which is the theorem. The equality refinement, that every extremizer is a unimodular image of the centered simplex, is not settled here.
+
+## What the cluster has in common
+
+All three arguments convert a combinatorial or geometric constraint into a positivity condition on an analytic object, then extract a sharp constant from the exact asymptotics of that object. In Chapter 1 the object is a Fourier eigenfunction and the constant falls out of Mellin analysis of a modified Gaussian. In Chapter 2 it is a family of projections indexed by Young diagrams and the constant is the top eigenvalue of a weighted graph. In Chapter 8 it is a Bergman kernel and the constant is a slope pinned between a dimension count and a Schwarz estimate.
+
+Two of the three come with matching lower bounds, which is the more consequential structural fact. The Cohn-Elkies program cannot be pushed further, and the spherical hierarchy converges to the same wall. Anyone hoping to move the sphere-packing exponent again now knows which tools are exhausted.
+
+## References
+
+[^1]: OpenAI, "Ten Advances in Mathematics and Theoretical Computer Science," 2026. [https://openai.com/index/ten-advances-in-mathematics/](https://openai.com/index/ten-advances-in-mathematics/)
+
+[^2]: Henry Cohn and Noam Elkies, "New upper bounds on sphere packings I," Annals of Mathematics, 2003. [https://arxiv.org/abs/math/0110009](https://arxiv.org/abs/math/0110009)
+
+[^3]: Henry Cohn and Yufei Zhao, "Sphere packing bounds via spherical codes," Duke Mathematical Journal, 2014. [https://arxiv.org/abs/1212.5966](https://arxiv.org/abs/1212.5966)
+
+[^4]: Henry Cohn and Felipe Gonçalves, "An optimal uncertainty principle in twelve dimensions via modular forms," Inventiones mathematicae, 2019. [https://arxiv.org/abs/1712.04438](https://arxiv.org/abs/1712.04438)
+
+[^5]: Boaz Klartag and Joseph Lehec, "Affirmative Resolution of Bourgain's Slicing Problem using Guan's Bound," arXiv, 2024. [https://arxiv.org/abs/2412.15044](https://arxiv.org/abs/2412.15044)
+
+[^6]: Robert Berman and Bo Berndtsson, "Real Monge-Ampère equations and Kähler-Ricci solitons on toric log Fano varieties," Annales de la faculté des sciences de Toulouse, 2013. [https://arxiv.org/abs/1207.6128](https://arxiv.org/abs/1207.6128)

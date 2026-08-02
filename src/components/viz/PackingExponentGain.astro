@@ -1,0 +1,177 @@
+<figure class="viz packing-exponent-viz" aria-labelledby="packing-exponent-title">
+  <figcaption id="packing-exponent-title">
+    <strong>The first improvement to the general packing exponent since 1978</strong>
+    <span
+      >Both bounds are exponential in the dimension, so a small exponent gap compounds. The line
+      is exact arithmetic on the two exponents, not a fit.</span
+    >
+  </figcaption>
+
+  <div class="panels">
+    <div class="chart">
+      <svg viewBox="0 0 360 216" role="img" aria-labelledby="packing-exponent-chart">
+        <title id="packing-exponent-chart">
+          Bits of density saved by the new exponent, plotted against dimension
+        </title>
+
+        <path class="grid" d="M52 128h288M52 76h288M52 24h288"></path>
+        <path class="axis" d="M52 24v156h288"></path>
+
+        <text class="tick" x="46" y="183">0</text>
+        <text class="tick" x="46" y="131">4</text>
+        <text class="tick" x="46" y="79">8</text>
+        <text class="tick" x="46" y="27">12</text>
+
+        <text class="tick x" x="52" y="194">0</text>
+        <text class="tick x" x="124" y="194">500</text>
+        <text class="tick x" x="196" y="194">1000</text>
+        <text class="tick x" x="268" y="194">1500</text>
+        <text class="tick x" x="340" y="194">2000</text>
+
+        <text class="axis-label y-label" x="14" y="102">bits saved</text>
+        <text class="axis-label" x="152" y="210">dimension d</text>
+
+        <path class="gain" d="M52 180L340 41"></path>
+
+        <path class="marker" d="M196 111v69"></path>
+        <circle cx="196" cy="111" r="3.5"></circle>
+        <text class="note" x="204" y="106">d = 1000:</text>
+        <text class="note" x="204" y="120">5.3 bits, a factor of ~41</text>
+      </svg>
+    </div>
+
+    <dl class="legend">
+      <div>
+        <dt>Kabatianskii–Levenshtein, 1978</dt>
+        <dd>&Delta;<sub>d</sub> &le; 2<sup>&minus;0.5990558&hellip;d</sup></dd>
+      </div>
+      <div>
+        <dt>Cohn–Elkies exact rate, new</dt>
+        <dd>&Delta;<sub>d</sub> &le; 2<sup>&minus;0.6044&hellip;d</sup></dd>
+      </div>
+      <div>
+        <dt>Exponent gap</dt>
+        <dd>0.00534&hellip; bits per dimension</dd>
+      </div>
+      <div>
+        <dt>Limit value</dt>
+        <dd>LP<sub>d</sub><sup>1/d</sup> &rarr; &radic;(e / 2&pi;) = 0.6578&hellip;</dd>
+      </div>
+    </dl>
+  </div>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-tertiary);
+    font: 0.72rem/1.5 var(--mono);
+  }
+  .panels {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(11rem, 0.65fr);
+    gap: 1rem;
+  }
+  .chart {
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  svg {
+    display: block;
+    width: 100%;
+  }
+  path {
+    fill: none;
+    vector-effect: non-scaling-stroke;
+  }
+  .axis {
+    stroke: var(--border);
+  }
+  .grid {
+    stroke: var(--border);
+    stroke-dasharray: 2 5;
+  }
+  .gain {
+    stroke: var(--text-primary);
+    stroke-width: 2;
+  }
+  .marker {
+    stroke: var(--text-tertiary);
+    stroke-dasharray: 3 4;
+  }
+  circle {
+    fill: var(--text-primary);
+  }
+  text {
+    fill: var(--text-secondary);
+    font: 0.62rem var(--mono);
+  }
+  .tick {
+    fill: var(--text-tertiary);
+    text-anchor: end;
+  }
+  .tick.x {
+    text-anchor: middle;
+  }
+  .axis-label {
+    fill: var(--text-tertiary);
+    font-size: 0.58rem;
+    letter-spacing: 0.04em;
+    text-anchor: middle;
+    text-transform: uppercase;
+  }
+  .y-label {
+    transform: rotate(-90deg);
+    transform-origin: 14px 102px;
+  }
+  .legend {
+    display: grid;
+    align-content: start;
+    gap: 0.7rem;
+    margin: 0;
+    border-top: 2px solid var(--text-secondary);
+    padding-top: 0.9rem;
+  }
+  .legend div {
+    display: grid;
+    gap: 0.25rem;
+  }
+  .legend div + div {
+    border-top: 1px solid var(--border);
+    padding-top: 0.7rem;
+  }
+  dt,
+  dd {
+    margin: 0;
+    font: 0.68rem/1.45 var(--mono);
+  }
+  dt {
+    color: var(--text-tertiary);
+  }
+  dd {
+    color: var(--text-primary);
+  }
+  @container (max-width: 560px) {
+    .panels {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

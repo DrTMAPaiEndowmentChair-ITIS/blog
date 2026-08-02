@@ -1,0 +1,234 @@
+<figure class="viz sofic-approx" aria-labelledby="sofic-approx-title">
+  <figcaption id="sofic-approx-title">
+    <strong>What a sofic approximation has to do</strong>
+    <span>Two conditions on permutations of a finite set, both required in the limit.</span>
+  </figcaption>
+
+  <div class="conditions">
+    <section>
+      <span>Condition 1 — multiplication</span>
+      <strong>p(gh) agrees with p(g)p(h) at almost every point</strong>
+      <small>The disagreement set shrinks to a vanishing fraction of the model set.</small>
+      <svg viewBox="0 0 200 92" role="img" aria-labelledby="sofic-mult-desc">
+        <title id="sofic-mult-desc">Two permutation arrays whose images coincide except at one point</title>
+        <g class="row-label"><text x="0" y="24">p(gh)</text><text x="0" y="66">p(g)p(h)</text></g>
+        <g class="cells">
+          <rect x="52" y="10" width="18" height="18"></rect>
+          <rect x="74" y="10" width="18" height="18"></rect>
+          <rect x="96" y="10" width="18" height="18"></rect>
+          <rect x="118" y="10" width="18" height="18" class="bad"></rect>
+          <rect x="140" y="10" width="18" height="18"></rect>
+          <rect x="162" y="10" width="18" height="18"></rect>
+          <rect x="52" y="52" width="18" height="18"></rect>
+          <rect x="74" y="52" width="18" height="18"></rect>
+          <rect x="96" y="52" width="18" height="18"></rect>
+          <rect x="118" y="52" width="18" height="18" class="bad"></rect>
+          <rect x="140" y="52" width="18" height="18"></rect>
+          <rect x="162" y="52" width="18" height="18"></rect>
+        </g>
+        <path class="link" d="M61 28v24M83 28v24M105 28v24M149 28v24M171 28v24"></path>
+        <path class="link-bad" d="M127 28v24"></path>
+        <text class="note" x="52" y="88">one mismatched point out of six</text>
+      </svg>
+    </section>
+
+    <section>
+      <span>Condition 2 — faithfulness</span>
+      <strong>Every g ≠ 1 moves almost every point</strong>
+      <small>Nonidentity elements must not be approximated by near-identity permutations.</small>
+      <svg viewBox="0 0 200 92" role="img" aria-labelledby="sofic-faith-desc">
+        <title id="sofic-faith-desc">A permutation moving five of six points, with one fixed point</title>
+        <g class="row-label"><text x="0" y="24">z</text><text x="0" y="66">p(g)z</text></g>
+        <g class="cells">
+          <rect x="52" y="10" width="18" height="18"></rect>
+          <rect x="74" y="10" width="18" height="18"></rect>
+          <rect x="96" y="10" width="18" height="18"></rect>
+          <rect x="118" y="10" width="18" height="18"></rect>
+          <rect x="140" y="10" width="18" height="18"></rect>
+          <rect x="162" y="10" width="18" height="18" class="bad"></rect>
+          <rect x="52" y="52" width="18" height="18"></rect>
+          <rect x="74" y="52" width="18" height="18"></rect>
+          <rect x="96" y="52" width="18" height="18"></rect>
+          <rect x="118" y="52" width="18" height="18"></rect>
+          <rect x="140" y="52" width="18" height="18"></rect>
+          <rect x="162" y="52" width="18" height="18" class="bad"></rect>
+        </g>
+        <path class="link" d="M61 28L83 52M83 28L105 52M105 28L127 52M127 28L149 52M149 28L61 52"></path>
+        <path class="link-bad" d="M171 28v24"></path>
+        <text class="note" x="52" y="88">one fixed point out of six</text>
+      </svg>
+    </section>
+  </div>
+
+  <div class="ladder" aria-label="Error budget along an approximating sequence">
+    <div class="head">
+      <span>model size</span>
+      <span>multiplication error</span>
+      <span>displacement</span>
+    </div>
+    <div class="rung">
+      <span class="n">|Y| = 12</span>
+      <div class="meter"><i style="width: 62%"></i></div>
+      <div class="meter"><i style="width: 40%"></i></div>
+    </div>
+    <div class="rung">
+      <span class="n">|Y| = 10<sup>3</sup></span>
+      <div class="meter"><i style="width: 24%"></i></div>
+      <div class="meter"><i style="width: 78%"></i></div>
+    </div>
+    <div class="rung">
+      <span class="n">|Y| = 10<sup>6</sup></span>
+      <div class="meter"><i style="width: 6%"></i></div>
+      <div class="meter"><i style="width: 96%"></i></div>
+    </div>
+    <div class="rung goal">
+      <span class="n">limit</span>
+      <div class="meter"><i style="width: 1%"></i></div>
+      <div class="meter"><i style="width: 100%"></i></div>
+    </div>
+  </div>
+
+  <p class="foot">
+    Schematic budgets. A group is sofic when some sequence drives the left column to 0 and the
+    right column to 1 for every fixed pair of elements.
+  </p>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  .conditions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  .conditions section {
+    display: grid;
+    align-content: start;
+    gap: 0.42rem;
+    min-width: 0;
+    padding: 0.85rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .conditions span {
+    color: var(--text-tertiary);
+    font: 0.62rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .conditions strong {
+    font: 600 0.8rem/1.35 var(--sans);
+  }
+  .conditions small {
+    color: var(--text-secondary);
+    font: 0.65rem/1.45 var(--mono);
+  }
+  svg {
+    display: block;
+    width: 100%;
+    margin-top: 0.4rem;
+  }
+  .cells rect {
+    fill: none;
+    stroke: var(--text-tertiary);
+  }
+  .cells rect.bad {
+    fill: var(--text-primary);
+    stroke: var(--text-primary);
+  }
+  path {
+    fill: none;
+    vector-effect: non-scaling-stroke;
+  }
+  .link {
+    stroke: var(--border);
+  }
+  .link-bad {
+    stroke: var(--text-primary);
+    stroke-dasharray: 3 3;
+  }
+  .row-label text {
+    fill: var(--text-tertiary);
+    font: 0.6rem var(--mono);
+  }
+  .note {
+    fill: var(--text-secondary);
+    font: 0.58rem var(--mono);
+  }
+  .ladder {
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 1.1rem;
+    padding-top: 0.95rem;
+    border-top: 1px solid var(--border);
+  }
+  .head,
+  .rung {
+    display: grid;
+    grid-template-columns: 7rem minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 0.7rem;
+  }
+  .head span {
+    color: var(--text-tertiary);
+    font: 0.6rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .n {
+    color: var(--text-secondary);
+    font: 0.68rem var(--mono);
+  }
+  .meter {
+    height: 0.75rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .meter i {
+    display: block;
+    height: 100%;
+    background: var(--text-secondary);
+  }
+  .goal .meter i {
+    background: var(--text-primary);
+  }
+  .goal .n {
+    color: var(--text-primary);
+  }
+  .foot {
+    margin: 0.9rem 0 0;
+    color: var(--text-tertiary);
+    font: 0.62rem/1.5 var(--mono);
+  }
+  @container (max-width: 520px) {
+    .conditions {
+      grid-template-columns: 1fr;
+    }
+    .head,
+    .rung {
+      grid-template-columns: 5rem minmax(0, 1fr) minmax(0, 1fr);
+      gap: 0.5rem;
+    }
+  }
+</style>

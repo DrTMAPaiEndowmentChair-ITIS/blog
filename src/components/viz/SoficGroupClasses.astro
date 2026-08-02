@@ -1,0 +1,195 @@
+<figure class="viz sofic-classes" aria-labelledby="sofic-classes-title">
+  <figcaption id="sofic-classes-title">
+    <strong>Where the counterexample sits</strong>
+    <span>Soficity absorbs every previously known source of finite approximation.</span>
+  </figcaption>
+
+  <div class="board">
+    <div class="nest" aria-label="Containment of group classes">
+      <div class="band all">
+        <span>all countable groups</span>
+        <div class="band sofic">
+          <span>sofic</span>
+          <div class="inner">
+            <div class="band am">
+              <span>amenable</span>
+              <em>Z, solvable groups</em>
+            </div>
+            <div class="band lef">
+              <span>LEF</span>
+              <div class="band rf">
+                <span>residually finite</span>
+                <em>free groups, SL<sub>n</sub>(Z)</em>
+              </div>
+              <em>exact finite chunks</em>
+            </div>
+          </div>
+          <em>closed under products, extensions by amenable groups, limits · BS(2,3) lives here</em>
+        </div>
+        <div class="outsider">
+          <span>not sofic</span>
+          <strong>L<sub>F₂</sub>(1,2)<sup>×</sup></strong>
+          <small>unit group of the binary Leavitt algebra</small>
+        </div>
+      </div>
+    </div>
+
+    <dl class="notes">
+      <div>
+        <dt>Amenable</dt>
+        <dd>Has an invariant finitely additive probability measure. Sofic by averaging Følner sets.</dd>
+      </div>
+      <div>
+        <dt>Residually finite</dt>
+        <dd>Every nonidentity element survives in some finite quotient.</dd>
+      </div>
+      <div>
+        <dt>LEF</dt>
+        <dd>Every finite chunk of the multiplication table embeds <em>exactly</em> into a finite group.</dd>
+      </div>
+      <div>
+        <dt>Sofic</dt>
+        <dd>Every finite chunk embeds <em>approximately</em>, into a symmetric group, in normalized Hamming distance.</dd>
+      </div>
+      <div class="hit">
+        <dt>Outside</dt>
+        <dd>Thompson's group V is finitely presented, infinite and simple, hence not LEF. Soficity of the Leavitt unit group would have forced V to be LEF.</dd>
+      </div>
+    </dl>
+  </div>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  .board {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(13rem, 0.85fr);
+    gap: 1rem;
+  }
+  .band {
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .band > span {
+    display: block;
+    margin-bottom: 0.55rem;
+    color: var(--text-tertiary);
+    font: 0.62rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .band > em {
+    display: block;
+    margin-top: 0.5rem;
+    color: var(--text-secondary);
+    font: italic 0.63rem/1.45 var(--mono);
+  }
+  .inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+    align-items: start;
+    gap: 0.6rem;
+  }
+  .all {
+    border-style: dashed;
+    background: none;
+  }
+  .sofic {
+    border-width: 2px;
+    border-color: var(--text-secondary);
+  }
+  .sofic > span,
+  .all > span {
+    color: var(--text-primary);
+  }
+  .outsider {
+    display: grid;
+    gap: 0.3rem;
+    margin-top: 0.7rem;
+    padding: 0.75rem;
+    border: 2px solid var(--text-primary);
+    background: var(--bg);
+  }
+  .outsider span {
+    color: var(--text-tertiary);
+    font: 0.62rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .outsider strong {
+    font: 600 0.95rem/1.3 var(--mono);
+  }
+  .outsider small {
+    color: var(--text-secondary);
+    font: 0.65rem/1.45 var(--mono);
+  }
+  .notes {
+    display: grid;
+    align-content: start;
+    gap: 0.7rem;
+    margin: 0;
+  }
+  .notes div {
+    display: grid;
+    gap: 0.2rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+  }
+  .notes div:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+  dt,
+  dd {
+    margin: 0;
+    font: 0.67rem/1.5 var(--mono);
+  }
+  dt {
+    color: var(--text-tertiary);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  dd {
+    color: var(--text-secondary);
+  }
+  dd em {
+    color: var(--text-primary);
+    font-style: italic;
+  }
+  .hit dt {
+    color: var(--text-primary);
+  }
+  @container (max-width: 560px) {
+    .board {
+      grid-template-columns: 1fr;
+    }
+    .band {
+      padding: 0.6rem;
+    }
+    .inner {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -1,0 +1,180 @@
+---
+title: 'Ramsey Numbers and Extremal Graphs: Two Combinatorics Results'
+pubDate: 2026-08-06
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'A superexponential lower bound settles the growth rate of multicolour Ramsey numbers, and two bipartite constructions refute the compactness and degeneracy conjectures.'
+topics: ['Combinatorics', 'Ramsey theory', 'Extremal graph theory', 'Proofs']
+---
+
+import RamseyTriangleColorings from '../../components/viz/RamseyTriangleColorings.astro'
+import RamseyBoundGap from '../../components/viz/RamseyBoundGap.astro'
+import RamseyConjectureStatus from '../../components/viz/RamseyConjectureStatus.astro'
+
+The last two chapters of OpenAI's collection of ten results sit in extremal combinatorics.[^1] They are the most classical problems in the set: one asks how many colours you need before a triangle becomes unavoidable, the other asks how many edges a graph can carry while avoiding a fixed subgraph.
+
+Both chapters answer questions that Erdős posed and, in two cases, attached prize money to. Neither answer is a small improvement to a constant. The Ramsey chapter closes a gap between an exponential lower bound and a factorial upper bound that had stood since the 1950s. The extremal chapter produces explicit graphs that falsify two conjectures about how extremal numbers should behave.
+
+## The multicolour Ramsey function
+
+Write $R_k(3)$ for the least $N$ such that every colouring of the edges of the complete graph $K_N$ with $k$ colours contains a monochromatic triangle. For $k = 2$ the answer is 6: the edges of $K_5$ split into an outer pentagon and an inner pentagram, each a five-cycle and therefore triangle-free, while no two-colouring of $K_6$ escapes.
+
+<RamseyTriangleColorings />
+
+The pigeonhole argument behind $K_6$ generalises. Pick a vertex, look at its $N-1$ edges, and note that some colour appears on at least $(N-1)/k$ of them. If that neighbourhood contains an edge of the same colour you have a triangle; otherwise you have reduced to a $(k-1)$-colour problem on a smaller vertex set. Iterating the recurrence gives the Erdős–Szekeres-style bound, which after successive refinements stands at
+
+$$
+R_k(3) \le \left(e - \tfrac{1}{6}\right)k! + 1 \qquad (k \ge 4).
+$$
+
+Factorial growth. Written in the form $R_k(3) = k^{\theta k}$, this says $\theta \to 1$.
+
+Lower bounds worked from the other side, by exhibiting triangle-free colourings. The standard tool is a product construction: a triangle-free $k$-colouring on $N_1$ vertices and a triangle-free $\ell$-colouring on $N_2$ vertices combine into a triangle-free $(k+\ell)$-colouring on $N_1 N_2$ vertices, so
+
+$$
+R_{k+\ell}(3) - 1 \ge \bigl(R_k(3) - 1\bigr)\bigl(R_\ell(3) - 1\bigr).
+$$
+
+Tensoring a good small colouring with itself is efficient, but it is inherently exponential: the best you can extract is $c^k$ for whatever base $c$ your seed colouring supplies. Decades of work on sum-free partitions and hand-found colourings pushed that base up, ending at $R_k(3) \ge 380^{k/5} - O(1)$.
+
+## The gap was not a constant factor
+
+An exponential lower bound against a factorial upper bound is a widening gap, not a stubborn constant. Fekete's lemma applied to the product construction shows the limit
+
+$$
+L = \lim_{k \to \infty} R_k(3)^{1/k}
+$$
+
+exists in $[1, \infty]$, and the open question was whether it is finite at all. Erdős offered \$250 for the value of $L$ and \$100 for deciding whether it is finite. Graham, Rothschild and Spencer recorded the superexponential growth question in their textbook; Conlon, Fox and Sudakov flagged the exponential-versus-factorial gap again in their survey.[^2]
+
+Plotting the exponent $\theta$ makes the shape of the gap visible. The old lower bound's exponent decays like $1/\log k$, so it certified nothing at all in the limit.
+
+<RamseyBoundGap />
+
+Chapter 9 proves the following.
+
+$$
+\textbf{Theorem. } \exists\, c > 0 \ \ \forall k \ge 2: \quad
+R_k(3) \;\ge\; \left(\frac{c\,k^{1/3}}{\log k}\right)^{\!k}.
+$$
+
+Combined with the factorial upper bound this gives
+
+$$
+k^{(1/3 - o(1))k} \;\le\; R_k(3) \;\le\; k^{(1 + o(1))k},
+\qquad\text{so}\qquad R_k(3) = k^{\Theta(k)} ,
+$$
+
+and in particular $L = +\infty$. The growth rate is now pinned to within a constant factor in the exponent's exponent, which is the coarse question that had been open. The exact constant — whether $\theta$ is $1/3$, $1$, or something between — remains open.
+
+## How the colouring is built
+
+The construction is recursive and its invariant is stronger than triangle-freeness: at stage $j$, each colour class is required to be properly $(j+1)$-colourable as a graph.
+
+Vertices are grouped into blocks. Each block carries a *palette* $P$, a subset of the available colours, recording exactly which colours are **missing** from that block; the rest are active there. Inside a block sits a relabelled copy of the previous stage's colouring, using only the active colours, so every active colour arrives with a proper vertex labelling.
+
+The work is in colouring edges between two blocks. Because the palettes were chosen by a maximal packing, distinct palettes differ in many colours in each direction, so for blocks $P \ne Q$ there are colours $a_1,\dots,a_s \in Q \setminus P$ and $b_1,\dots,b_s \in P \setminus Q$. A vertex's internal labels in those colours form a word in $[H]^s$. The choice of cross-edge colour is then made by a pair of fixed maps $f, g : [H]^s \to [H]^s$ with the property that for all words $x, y$ there is a coordinate $d$ with
+
+$$
+x_d = f(y)_d \quad\text{or}\quad y_d = g(x)_d .
+$$
+
+Such maps come from a *saturated matrix*: a random $s \times H^m$ matrix over $H$ colours in which any $m+1$ columns contain a row displaying every colour, which a union bound supplies for $m \asymp H\log H$ and $s \asymp H^2 \log^2 H$. This ingredient is adapted from work of Alon, Ben-Eliezer, Shangguan and Tamo on zero-error list decoding; the chapter's contribution is applying it to $R(3,\dots,3)$.
+
+Two consequences do the combinatorial work. Every cross-edge colour is active at exactly one endpoint's block and missing at the other, and the proper label at the active endpoint is determined by the opposite endpoint. Triangles spanning two blocks die because two same-coloured edges from an outside vertex force equal internal labels, so the edge between their endpoints cannot carry that colour. Triangles spanning three blocks die by a parity argument on symmetric differences: a colour would have to lie in $P \triangle Q$, $Q \triangle R$ and $P \triangle R$ simultaneously, which is impossible.
+
+Multiplying palette-family sizes over $H$ stages yields a triangle-free colouring with $k_H \asymp H^3 \log^3 H$ colours on at least $(c_0 H)^{k_H}$ vertices. Since $H \gg k^{1/3}/\log k$, that is the theorem.
+
+## A corollary about Shannon capacity
+
+The Ramsey–Shannon correspondence, implicit in Erdős, McEliece and Taylor and made explicit by Alon and Orlitsky, converts the bound into a statement about information theory.[^3] Given a triangle-free $k$-colouring of $K_N$, let $H_i$ be the graph of colour $i$ and take the complete join $G = H_1 \vee \cdots \vee H_k$. Then $\alpha(G) = 2$, while the $N$ diagonal words form an independent set in the $k$-fold strong power, so the Shannon capacity satisfies $\Theta(G) \ge N^{1/k}$.
+
+Setting $N = R_k(3) - 1$ and using $\lim_k R_k(3)^{1/k} = \infty$ produces graphs with independence number 2 and arbitrarily large Shannon capacity. Shannon capacity therefore cannot be bounded above by any function of the independence number.
+
+## Turán-type extremal numbers
+
+Chapter 10 changes the question. For a family $\mathcal{F}$ of graphs, the extremal number is
+
+$$
+\operatorname{ex}(n, \mathcal{F}) := \max\bigl\{\,|E(G)| : |V(G)| = n,\ G \text{ is } \mathcal{F}\text{-free}\,\bigr\},
+$$
+
+where $\mathcal{F}$-free means containing no member of $\mathcal{F}$ as a subgraph. For a single graph one writes $\operatorname{ex}(n, H)$. When $H$ is bipartite the answer is a polynomial $n^{2-\gamma}$ for some exponent, and determining those exponents is the central open programme of the subject.
+
+<RamseyConjectureStatus />
+
+## Compactness: does a family reduce to one member?
+
+Forbidding more graphs can only lower the extremal number. Erdős and Simonovits conjectured that it cannot lower it by much.[^4] The original formulation has easy counterexamples — the family $\{K_{1,2}, 2K_2\}$ has $\operatorname{ex}(n, \mathcal{F}) = 1$ while its members have extremal numbers $\lfloor n/2 \rfloor$ and $n-1$ — so the corrected statement restricts to families whose members all contain a cycle:
+
+> For every finite nonempty family $\mathcal{F}$ of graphs, each containing a cycle, do there exist $F \in \mathcal{F}$ and $C > 0$ with $\operatorname{ex}(n, F) \le C \operatorname{ex}(n, \mathcal{F})$ for all large $n$?
+
+The chapter answers no, and does so with a family whose members are all connected and bipartite.
+
+$$
+\textbf{Theorem. } \exists\ \mathcal{F} \text{ finite, connected, bipartite, each with a cycle:}\quad
+\operatorname{ex}(n, \mathcal{F}) = O\!\left(n^{4/3 - 1/48}\right),\quad
+\operatorname{ex}(n, F) = \Omega\!\left(n^{4/3}\right)\ \ (F \in \mathcal{F}).
+$$
+
+The construction takes $\mathcal{F} = \{C_4, C_6\} \cup \mathcal{J} \cup \mathcal{K}$. The two extra pieces come from templates built out of subdivided complete bipartite graphs — $S_k$ is $K_{3,k}$ with every edge replaced by a two-edge path — glued in the style of Bukh and Conlon's rooted-power construction, then closed under *admissible quotients*: identifications of vertices that respect the proper two-colouring and stay injective on distinguished subgraphs. Closing under quotients is what makes the family finite and what makes it hard to avoid.
+
+The two bounds come from opposite directions.
+
+- **Upper.** Counting short paths in any $\mathcal{F}$-free host graph forces $\operatorname{ex}(n, \mathcal{F}) = O(n^{21/16})$, and $21/16 = 4/3 - 1/48$.
+- **Lower.** For each individual $F \in \mathcal{F}$, the incidence graph of a generalized quadrangle is $F$-free and has $\Omega(n^{4/3})$ edges. Crucially, the field characteristic is allowed to depend on which $F$ is being avoided, so a single host does not have to work for the whole family.
+
+That asymmetry is the whole idea. Every member is individually easy to avoid at density $n^{4/3}$, but no single algebraic host avoids all of them at once, and the gap is polynomial rather than a constant factor.
+
+## Degeneracy: does local sparsity fix the exponent?
+
+A graph is $r$-degenerate if every nonempty subgraph has a vertex of degree at most $r$. Erdős conjectured in 1967 that this local sparsity determines the extremal exponent for bipartite graphs:
+
+$$
+H \text{ bipartite and } r\text{-degenerate} \;\Longrightarrow\; \operatorname{ex}(n, H) = O\!\left(n^{2 - 1/r}\right).
+$$
+
+The conjecture is true in several restricted settings — when one bipartition class has maximum degree at most $r$, for $r$-degenerate blow-ups of trees, and for grids at $r = 2$ — and Alon, Krivelevich and Sudakov proved the weaker general estimate $\operatorname{ex}(n, H) = O(n^{2 - 1/(4r)})$.[^5] A companion conjecture of Erdős asserted that $H$ is 2-degenerate *if and only if* $\operatorname{ex}(n, H) = O(n^{3/2})$; Janzer disproved the reverse implication in 2021 by building 3-regular bipartite graphs with extremal number $O(n^{4/3 + \eta})$, but the forward implication — the $r = 2$ case above — stayed open.[^6]
+
+Chapter 10 kills it.
+
+$$
+\textbf{Theorem. } \exists\ H \text{ connected, bipartite, 2-degenerate, and } c, \varepsilon > 0:\quad
+\operatorname{ex}(n, H) \ge c\,n^{3/2 + \varepsilon}\ \text{ for all large } n.
+$$
+
+The counterexample $H$ is built in layers. Start with a layer $V_0$ of $L_0$ vertices; for each subsequent layer, add one new vertex for every pair of vertices in the previous layer, joined to exactly those two parents. Every new vertex has degree 2 at birth, so $H$ is 2-degenerate, connected and bipartite by construction, with $s$ layers as a tunable depth.
+
+The lower bound comes from a random host. Take the two sides to be copies of $\{0,1\}^m$, join opposite vertices whose Hamming distance is at most $k = \lfloor \tau m \rfloor$, then independently retain each vertex with probability $p = 2^{-\beta m}$. A second-moment computation shows the sampled graph still has $\Omega(n^{3/2 + \varepsilon})$ edges for suitable $\tau$ and $\beta$, and padding extends it to every large order.
+
+Showing that $H$ does not embed is where the layered design pays off. Each candidate embedding is scored by an entropy potential: for a parent array $u$ and child array $z$, the quantity
+
+$$
+E(u,z) := \frac{1}{m}\sum_{j=1}^{m} H\bigl(Z_j \mid X_j, Y_j\bigr)
+$$
+
+measures how much conditional entropy a child bit carries given its two parent bits at a random coordinate. Low-entropy arrays are too numerous to survive sampling: a counting argument shows that arrays with $E(u,z) \le \beta - \delta$ are excluded with high probability, at every layer and on both sides. So any embedding must raise $E$ by a fixed amount per layer — and $E$ is bounded above by 1. After enough layers that is impossible, so $H$ has no copy in the host. Choosing the depth $s$ large enough to exhaust the potential is exactly the role of the parameter thresholds $A(\tau) < \beta < C(\tau)$.
+
+## The Erdős ledger
+
+Both of these chapters land on problems from Erdős's list, as does OpenAI's separately reported May 2026 result on the unit-distance problem in discrete geometry.[^7] That is not incidental. Erdős problems are unusually good targets for a search process: each is a self-contained combinatorial statement with a crisp yes-or-no answer, a documented history of partial results to calibrate against, and — in the counterexample direction — a certificate that is a finite object one can check.
+
+What the three results have in common on the mathematical side is that the winning move was construction rather than argument. A superexponential Ramsey lower bound is a colouring. A refutation of compactness is a family of graphs. A refutation of the degeneracy conjecture is one bipartite graph plus a random host. In each case the difficulty was in finding an object with several tightly coupled properties, not in reasoning about objects already in hand.
+
+The upper bounds, meanwhile, have barely moved. $R_k(3)$ is still bracketed between $k^{(1/3-o(1))k}$ and $k^{(1+o(1))k}$, and the value of $\lim_k R_k(3)^{1/k}$ — Erdős's \$250 question — is untouched. Deciding whether it is finite was the \$100 question, and that one is now answered.
+
+## References
+
+[^1]: OpenAI, "Ten Advances in Mathematics and Theoretical Computer Science," 2026. [https://cdn.openai.com/pdf/ten-proofs-oai.pdf](https://cdn.openai.com/pdf/ten-proofs-oai.pdf)
+
+[^2]: David Conlon, Jacob Fox, and Benny Sudakov, "Recent developments in graph Ramsey theory," Surveys in Combinatorics, 2015. [https://arxiv.org/abs/1501.02474](https://arxiv.org/abs/1501.02474)
+
+[^3]: Noga Alon and Alon Orlitsky, "Repeated communication and Ramsey graphs," IEEE Transactions on Information Theory, 1995. [https://ieeexplore.ieee.org/document/412701](https://ieeexplore.ieee.org/document/412701)
+
+[^4]: Paul Erdős and Miklós Simonovits, "Compactness results in extremal graph theory," Combinatorica, 1982. [https://link.springer.com/article/10.1007/BF02579234](https://link.springer.com/article/10.1007/BF02579234)
+
+[^5]: Noga Alon, Michael Krivelevich, and Benny Sudakov, "Turán numbers of bipartite graphs and related Ramsey-type questions," Combinatorics, Probability and Computing, 2003. [https://www.cs.tau.ac.il/~nogaa/PDFS/turanr3.pdf](https://www.cs.tau.ac.il/~nogaa/PDFS/turanr3.pdf)
+
+[^6]: Oliver Janzer, "Disproof of a conjecture of Erdős and Simonovits on the Turán number of graphs with minimum degree 3," International Mathematics Research Notices, 2023. [https://arxiv.org/abs/2109.06110](https://arxiv.org/abs/2109.06110)
+
+[^7]: OpenAI, "An OpenAI model has disproved a central conjecture in discrete geometry," 2026. [https://openai.com/index/model-disproves-discrete-geometry-conjecture/](https://openai.com/index/model-disproves-discrete-geometry-conjecture/)

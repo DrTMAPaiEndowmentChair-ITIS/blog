@@ -1,0 +1,145 @@
+---
+const rows = [
+  {
+    claim: 'An AI disproved an 80-year-old Erdős conjecture',
+    verdict: 'confirmed',
+    reality:
+      'The conjectured near-linear upper bound n^(1+o(1)) is false. Nine mathematicians read the argument and did not find a gap.'
+  },
+  {
+    claim: 'The unit distance problem is now solved',
+    verdict: 'false',
+    reality:
+      'The gap between the n^(1+delta) construction and the O(n^4/3) upper bound is wider than ever. The problem is more open, not less.'
+  },
+  {
+    claim: 'The model worked autonomously',
+    verdict: 'partly',
+    reality:
+      'The problem was chosen by humans from a curated list and the prompt suggested looking for a counterexample. Reports describe the argument itself as produced in a single run.'
+  },
+  {
+    claim: 'The proof was formally verified',
+    verdict: 'partly',
+    reality:
+      'A Lean 4 formalisation was completed a month later by a separate group, conditional on two classical theorems not yet in Mathlib.'
+  },
+  {
+    claim: 'The exponent is n^1.014',
+    verdict: 'not the model',
+    reality:
+      'The model gave an inexplicit delta > 0. The 1.014 figure is Will Sawin, in an independent preprint. Later certificate searches push it further.'
+  },
+  {
+    claim: 'It was peer reviewed',
+    verdict: 'pending',
+    reality:
+      'Expert scrutiny was immediate and public, but journal review had not concluded. Gowers said he would have recommended acceptance without hesitation.'
+  }
+]
+---
+
+<figure class="viz claims-viz" aria-labelledby="unit-distance-claims-title">
+  <figcaption id="unit-distance-claims-title">
+    <strong>What was claimed against what was confirmed</strong>
+    <span>Six statements that circulated in May 2026, graded against the primary sources.</span>
+  </figcaption>
+
+  <div class="table" role="table" aria-label="Claims and their status">
+    <div class="row head" role="row">
+      <span role="columnheader">Claim as circulated</span>
+      <span role="columnheader">Status</span>
+      <span role="columnheader">What the sources support</span>
+    </div>
+    {
+      rows.map((r) => (
+        <div class="row" role="row">
+          <strong role="cell">{r.claim}</strong>
+          <span class="verdict" data-verdict={r.verdict} role="cell">
+            {r.verdict}
+          </span>
+          <p role="cell">{r.reality}</p>
+        </div>
+      ))
+    }
+  </div>
+</figure>
+
+<style>
+  .viz {
+    container-type: inline-size;
+    margin: 2em 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+  }
+  figcaption {
+    display: grid;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+  }
+  figcaption strong {
+    font: 600 var(--font-size-s) var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  figcaption span {
+    color: var(--text-secondary);
+    font: 0.7rem/1.5 var(--mono);
+  }
+  .table {
+    display: grid;
+    border-top: 2px solid var(--text-secondary);
+  }
+  .row {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) 7rem minmax(0, 1.5fr);
+    gap: 0.5rem 1rem;
+    align-items: baseline;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .row.head span {
+    color: var(--text-tertiary);
+    font: 0.6rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .row strong {
+    font: 600 0.78rem/1.4 var(--sans);
+  }
+  .row p {
+    margin: 0;
+    color: var(--text-secondary);
+    font: 0.66rem/1.6 var(--mono);
+  }
+  .verdict {
+    justify-self: start;
+    padding: 0.15rem 0.45rem;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font: 0.6rem var(--mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .verdict[data-verdict='confirmed'] {
+    border-color: var(--text-primary);
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  .verdict[data-verdict='false'] {
+    border-style: dashed;
+    border-color: var(--text-primary);
+    color: var(--text-primary);
+  }
+  @container (max-width: 600px) {
+    .row {
+      grid-template-columns: 1fr;
+      gap: 0.4rem;
+    }
+    .row.head {
+      display: none;
+    }
+  }
+</style>
