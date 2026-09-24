@@ -1,0 +1,37 @@
+---
+title: 'How to climb the inference performance curve'
+pubDate: 2026-09-17
+author: 'Aadit Agrawal'
+category: 'Serving & Runtime'
+description: 'Tune prefill, decode, long context, and batched inference against the metric each workload actually needs.'
+topics: ['Inference', 'Performance', 'Benchmarking']
+---
+
+"Faster inference" hides several different jobs. A chat user cares about the first token. A streaming user notices gaps between tokens. A batch pipeline cares about total work completed. An agent making ten tool calls cares about the entire trajectory. Optimize the wrong number and the system can look faster in a benchmark while feeling slower in use.
+
+## Split the workload first
+
+Collect prompt and output length distributions, concurrent requests, cache hit rates, and the actual deadline. Then run a baseline at fixed model quality. Report time to first token (TTFT), time per output token (TPOT), p95 end-to-end latency, and **goodput**, the work completed within the deadline. The existing [inference SLO guide](/inference-slos/) explains why peak tokens per second can conceal a queueing problem.
+
+| Inference shape                 | First experiment                                     | Main tradeoff                                               |
+| ------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------- |
+| Long prompt, short answer       | Chunked prefill or prefix caching                    | Better TTFT versus cache memory and scheduler complexity    |
+| Short prompt, long answer       | Quantization, speculative decoding, decode batching  | More tokens per second versus quality and verification cost |
+| Many short independent requests | Continuous batching and admission control            | Aggregate throughput versus p95 latency                     |
+| Long context                    | KV cache layout, attention kernel, context reduction | Memory use versus lost information                          |
+| Many adapters                   | Adapter loading and batching policy                  | Flexibility versus weight movement                          |
+| Multi GPU model                 | Partition plan and communication overlap             | More compute capacity versus transfer cost                  |
+
+Only change one lever at a time. Compare at the same arrival rate and output quality. Quantization can improve speed by shrinking memory traffic, but if the model makes more mistakes or generates longer answers, a raw token rate is misleading. Speculative decoding helps when the draft model's guesses are accepted often enough to pay for draft and verification work. Prefix caching helps when prefixes genuinely repeat.
+
+## Give the model a bounded search job
+
+A coding agent can inspect traces, generate candidate configurations, run a sweep, and summarize the Pareto curve. Give it a fixed dataset and explicit limits such as "p95 TTFT below 600 ms, accuracy within 0.5 points of baseline, minimize cost per successful request." Save every configuration and result. Reject runs with errors, OOMs, changed outputs, or incomplete requests.
+
+Use an open-loop arrival process for latency tests, because fixed concurrency hides queues. Use closed-loop sweeps to find capacity and saturation. Repeat promising settings on production-shaped traffic, including long prompts and bursts. If the winning configuration only works on the median request, it is not the winner.
+
+## Know when the network is the bottleneck
+
+For a model split across GPUs, profile communication separately from computation. A larger tensor parallel group may cut matrix multiplication time while adding an all-reduce on every layer. Expert parallelism adds dispatch and combine traffic. At small batch sizes the communication can dominate. The neighboring [networking article](/parallel-kittens-ai-networking/) covers how to reason about those transfers and overlap them.
+
+The final output of a performance climb should be a small, reproducible record: workload, baseline, chosen configuration, quality check, latency distribution, cost, and the exact hardware. That record is more valuable than a lone tokens-per-second screenshot.

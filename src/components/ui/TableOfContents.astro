@@ -38,67 +38,69 @@ const { toc = [] }: TOCProps = Astro.props
   }}
 >
   ;(function () {
-    // Core state
     const state = {
       container: null,
       links: null,
-      headings: null,
       titleLink: null,
       headingMap: new Map(),
-      positions: [],
-      scrollTimeout: null,
-      hasContent: false
+      observer: null,
+      hasContent: false,
+      activeId: ''
     }
 
-    // Initialize DOM elements
+    function setActive(id) {
+      if (!state.links?.length) return
+      if (id === state.activeId) return
+      state.activeId = id
+
+      for (const link of state.links) link.classList.remove('active')
+
+      if (id && state.headingMap.has(id)) {
+        state.headingMap.get(id).classList.add('active')
+      } else if (state.titleLink) {
+        state.titleLink.classList.add('active')
+      }
+    }
+
+    function disconnectObserver() {
+      if (state.observer) {
+        state.observer.disconnect()
+        state.observer = null
+      }
+    }
+
     function initElements() {
       state.container = document.querySelector('.toc-container')
       if (!state.container) return false
 
       state.links = document.querySelectorAll('.toc-link')
-      state.headings = document.querySelectorAll('h1, h2, h3')
       state.titleLink = document.querySelector('.toc-link.toc-title')
 
-      // Build heading map
       state.headingMap.clear()
-      state.links.forEach((link) => {
+      for (const link of state.links) {
         const href = link.getAttribute('href')
-        if (href?.startsWith('#')) {
+        if (href && href.startsWith('#')) {
           state.headingMap.set(href.substring(1), link)
         }
-      })
+      }
 
       return true
     }
 
-    // Check if content exists
     function checkContent() {
       if (!state.container || !state.links) return
 
-      const tocItems = Array.from(state.links).filter(
-        (link) => !link.classList.contains('toc-title')
-      )
-      state.hasContent = tocItems.length > 0
+      let count = 0
+      for (const link of state.links) {
+        if (!link.classList.contains('toc-title')) count++
+      }
+      state.hasContent = count > 0
 
       if (!state.hasContent) {
         state.container.style.display = 'none'
       }
     }
 
-    // Cache heading positions
-    function cachePositions() {
-      if (!state.headings?.length) return
-
-      const scrollTop = window.pageYOffset
-      state.positions = Array.from(state.headings)
-        .filter((_, index) => !(index === 0 && state.headings[0].tagName === 'H1'))
-        .map((heading) => ({
-          id: heading.id,
-          offsetTop: heading.getBoundingClientRect().top + scrollTop
-        }))
-    }
-
-    // Adjust TOC position
     function adjustPosition() {
       if (!state.container || !centeredLayout || !state.hasContent) {
         if (state.container) state.container.style.display = 'none'
@@ -108,14 +110,14 @@ const { toc = [] }: TOCProps = Astro.props
       const pageWidth = window.innerWidth
       const contentWidthValue = Math.max(parseFloat(contentWidth), 25)
       const margin = (pageWidth - contentWidthValue * 16) / 2
-      const baseMinSpace = 11 * 16 // Base minimum space needed
+      const baseMinSpace = 11 * 16
       const minSpace = toc ? baseMinSpace + 52 : baseMinSpace + 12
 
       if (margin >= minSpace) {
         state.container.style.display = 'block'
         state.container.classList.add('fixed-position')
         const leftPosition = toc ? margin - 176 - 40 : margin - 176
-        state.container.style.left = `${leftPosition}px`
+        state.container.style.left = leftPosition + 'px'
       } else {
         state.container.style.display = 'none'
         state.container.classList.remove('fixed-position')
@@ -123,7 +125,48 @@ const { toc = [] }: TOCProps = Astro.props
       }
     }
 
-    // Handle click events
+    function observeHeadings() {
+      disconnectObserver()
+
+      const headings = []
+      for (const id of state.headingMap.keys()) {
+        const el = document.getElementById(id)
+        if (el) headings.push(el)
+      }
+      if (!headings.length) {
+        setActive('')
+        return
+      }
+
+      // Track which headings are in the upper reading band; pick the last one
+      // still above the band for the active marker — no per-scroll layout reads.
+      const visible = new Set()
+
+      state.observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) visible.add(entry.target.id)
+            else visible.delete(entry.target.id)
+          }
+
+          let current = ''
+          for (const heading of headings) {
+            if (visible.has(heading.id) || heading.getBoundingClientRect().top < 120) {
+              current = heading.id
+            }
+          }
+          setActive(current)
+        },
+        {
+          rootMargin: '-96px 0px -55% 0px',
+          threshold: [0, 1]
+        }
+      )
+
+      for (const heading of headings) state.observer.observe(heading)
+      setActive('')
+    }
+
     function handleClick(e) {
       const link = e.target.closest('.toc-link')
       if (!link) return
@@ -133,117 +176,70 @@ const { toc = [] }: TOCProps = Astro.props
       if (link.classList.contains('toc-title')) {
         window.scrollTo({ top: 0, behavior: 'smooth' })
         history.pushState(null, null, '#')
+        setActive('')
       } else {
         const href = link.getAttribute('href')
-        if (href?.startsWith('#')) {
+        if (href && href.startsWith('#')) {
           const target = document.getElementById(href.substring(1))
           if (target) {
-            const rect = target.getBoundingClientRect()
-            const scrollTop = window.pageYOffset || document.documentElement.scrollTop
-            const offset = rect.top + scrollTop - 96
+            const offset = target.getBoundingClientRect().top + window.scrollY - 96
             window.scrollTo({ top: offset, behavior: 'smooth' })
             history.pushState(null, null, href)
+            setActive(href.substring(1))
           }
         }
       }
     }
 
-    // Update active state
-    function updateActive() {
-      if (!state.links?.length || !state.positions.length) return
-
-      const scrollTop = window.pageYOffset + 100
-      let currentActive = null
-
-      // Find current active heading
-      for (let i = state.positions.length - 1; i >= 0; i--) {
-        if (scrollTop >= state.positions[i].offsetTop) {
-          currentActive = state.positions[i].id
-          break
-        }
-      }
-
-      // Update active state
-      state.links.forEach((link) => link.classList.remove('active'))
-
-      if (currentActive && state.headingMap.has(currentActive)) {
-        state.headingMap.get(currentActive).classList.add('active')
-      } else if (state.titleLink) {
-        state.titleLink.classList.add('active')
-      }
-    }
-
-    // Initialize
-    function init(retryCount = 0) {
+    function init(retryCount) {
+      retryCount = retryCount || 0
       const maxRetries = 5
 
       if (initElements()) {
         checkContent()
         adjustPosition()
-        cachePositions()
+        observeHeadings()
 
         if (state.container) {
           state.container.removeEventListener('click', handleClick)
           state.container.addEventListener('click', handleClick)
         }
-
-        updateActive()
       } else if (retryCount < maxRetries) {
-        setTimeout(() => init(retryCount + 1), 100)
+        setTimeout(function () {
+          init(retryCount + 1)
+        }, 100)
       }
     }
 
-    // Event handlers
-    function handleScroll() {
-      if (state.scrollTimeout) {
-        cancelAnimationFrame(state.scrollTimeout)
-      }
-      state.scrollTimeout = requestAnimationFrame(updateActive)
+    function cleanup() {
+      disconnectObserver()
+      state.container = null
+      state.links = null
+      state.titleLink = null
+      state.headingMap = new Map()
+      state.hasContent = false
+      state.activeId = ''
     }
 
     function handleResize() {
       adjustPosition()
-      requestAnimationFrame(cachePositions)
     }
 
-    // Cleanup
-    function cleanup() {
-      if (state.scrollTimeout) {
-        cancelAnimationFrame(state.scrollTimeout)
-        state.scrollTimeout = null
-      }
-
-      Object.assign(state, {
-        container: null,
-        links: null,
-        headings: null,
-        titleLink: null,
-        headingMap: new Map(),
-        positions: [],
-        hasContent: false
-      })
-    }
-
-    // Event listeners
-    document.addEventListener('astro:page-load', () => {
+    document.addEventListener('astro:page-load', function () {
       cleanup()
-      init()
+      init(0)
     })
 
-    document.addEventListener('astro:after-swap', () => {
+    document.addEventListener('astro:after-swap', function () {
       cleanup()
-      init()
+      init(0)
     })
 
-    // Fallback for when Astro transitions are disabled
-    document.addEventListener('DOMContentLoaded', () => {
-      if (!state.container || !state.hasContent) {
-        init()
-      }
+    document.addEventListener('DOMContentLoaded', function () {
+      if (!state.container || !state.hasContent) init(0)
     })
 
-    window.addEventListener('resize', handleResize)
-    window.addEventListener('scroll', handleScroll)
+    window.addEventListener('resize', handleResize, { passive: true })
   })()
 </script>
 
@@ -255,6 +251,7 @@ const { toc = [] }: TOCProps = Astro.props
     opacity: 0;
     transition: opacity 0.2s ease-out;
     display: none;
+    contain: layout style;
   }
 
   .toc-container.fixed-position {

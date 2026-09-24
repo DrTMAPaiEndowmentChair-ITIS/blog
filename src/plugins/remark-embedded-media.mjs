@@ -37,7 +37,7 @@ const embedHandlers = {
     if (!url) {
       return false
     }
-    if (!/^https:\/\/open\.spotify\.com\//.test(url)) {
+    if (!url.startsWith('https://open.spotify.com/')) {
       return false
     }
     let embedUrl = url.replace('open.spotify.com/', 'open.spotify.com/embed/')

@@ -1,25 +1,6 @@
-<div class="gradient-mask">
+<div class="gradient-mask" aria-hidden="true">
   <slot />
 </div>
-
-<script>
-  function updateMask() {
-    const mask = document.querySelector('.gradient-mask') as HTMLElement
-    const threshold = 64
-    const scrollY = window.scrollY
-
-    if (scrollY >= threshold) {
-      mask.style.opacity = '1'
-    } else {
-      mask.style.opacity = '0'
-    }
-  }
-
-  document.addEventListener('DOMContentLoaded', () => {
-    updateMask()
-    window.addEventListener('scroll', updateMask)
-  })
-</script>
 
 <style>
   .gradient-mask {
@@ -50,6 +31,39 @@
       transparent 100%
     );
     opacity: 0;
-    transition: opacity 0.3s ease;
+  }
+
+  /*
+    Drive fade from scroll position with no JS on supporting browsers — removes
+    a global scroll listener from every page that mounts this mask.
+  */
+  @supports (animation-timeline: scroll()) {
+    .gradient-mask {
+      animation: gradient-mask-in linear both;
+      animation-timeline: scroll();
+      animation-range: 0px 64px;
+    }
+  }
+
+  @supports not (animation-timeline: scroll()) {
+    .gradient-mask {
+      opacity: 1;
+    }
+  }
+
+  @keyframes gradient-mask-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .gradient-mask {
+      animation: none;
+      opacity: 1;
+    }
   }
 </style>

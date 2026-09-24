@@ -13,6 +13,7 @@ export interface PostLayoutProps {
   image?: string
   readingTime?: ReadingTime
   toc?: TOCItem[]
+  hasMath?: boolean
 }
 
 // Transition props interface
@@ -42,6 +43,8 @@ export interface BaseHeadProps {
   category?: string
   topics?: string[]
   noindex?: boolean
+  /** When true, KaTeX CSS is loaded for this page only. */
+  hasMath?: boolean
 }
 
 // ImageOptimizer component props interface

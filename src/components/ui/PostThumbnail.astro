@@ -9,7 +9,12 @@ interface Props {
 }
 
 const { slug, category, variant = 'card', class: className } = Astro.props
-const { markup, viewBox } = generateThumbnail(slug, category, variant)
+// The same artwork appears in the directory and the article banner. Keep its
+// paths in one cached sprite rather than repeating them in every HTML response.
+// Only row artwork goes in the sprite: every row is used on the index, while
+// including all banner/hero variants would triple the asset's transfer size.
+const art = variant === 'row' ? undefined : generateThumbnail(slug, category, variant)
+const viewBox = art?.viewBox ?? '0 0 120 80'
 ---
 
 <svg
@@ -18,8 +23,9 @@ const { markup, viewBox } = generateThumbnail(slug, category, variant)
   preserveAspectRatio="xMidYMid slice"
   role="presentation"
   aria-hidden="true"
-  set:html={markup}
-/>
+>
+  {art ? <g set:html={art.markup} /> : <use href={`/thumbnails.svg#row-${slug}`} />}
+</svg>
 
 <style>
   /* Both colour and the well behind it are set by the consumer, so hover and

@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "semi": false,
+  "singleQuote": true,
+  "trailingComma": "none",
+  "printWidth": 100,
+  "tabWidth": 2,
+  "sortPackageJson": false,
+  "ignorePatterns": [
+    "dist/**",
+    ".output/**",
+    ".netlify/**",
+    "node_modules/**",
+    ".astro/**",
+    ".cache/**",
+    "coverage/**",
+    "public/**",
+    "bun.lock",
+    "*.min.css",
+    "*.min.js",
+    "**/*.astro"
+  ]
+}

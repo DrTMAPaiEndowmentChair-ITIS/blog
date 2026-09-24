@@ -1,0 +1,9 @@
+---
+/**
+ * Emit KaTeX as its own stylesheet URL so Vite does not fold it into the
+ * shared CSS chunk. Only pages that render this component link it.
+ */
+import katexHref from 'katex/dist/katex.min.css?url'
+---
+
+<link rel="stylesheet" href={katexHref} />

@@ -1,0 +1,48 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "oxc"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "env": {
+    "builtin": true
+  },
+  "globals": {
+    "Astro": "readonly",
+    "Fragment": "readonly"
+  },
+  "ignorePatterns": [
+    "dist/**",
+    ".output/**",
+    ".netlify/**",
+    "node_modules/**",
+    ".astro/**",
+    ".cache/**",
+    "coverage/**",
+    "public/open-graph/**",
+    "*.min.css",
+    "*.min.js"
+  ],
+  "rules": {
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "no-underscore-dangle": "off",
+    "no-await-in-loop": "off",
+    "typescript/no-unused-vars": [
+      "warn",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ],
+    "typescript/no-explicit-any": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["scripts/**/*.{ts,js,mjs}", "src/utils/feed.ts", "src/utils/og-card.ts"],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ]
+}

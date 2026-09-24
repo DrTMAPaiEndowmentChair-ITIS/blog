@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Enable npm (pnpm) dependency updates
+  # Enable npm/Bun dependency updates (Dependabot uses the npm ecosystem for bun.lock)
   - package-ecosystem: 'npm'
     directory: '/'
     schedule:

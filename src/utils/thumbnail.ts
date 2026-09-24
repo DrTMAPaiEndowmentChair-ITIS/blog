@@ -318,7 +318,7 @@ const circuit: Motif = (rng, geo, ctx) => {
 
     // Pads terminate the net so traces don't just fall off the edge.
     const first = points[0]
-    const last = points[points.length - 1]
+    const last = points.at(-1)
     for (const end of [first, last]) {
       if (!end) continue
       marks.push(
@@ -566,7 +566,7 @@ const histogram: Motif = (rng, geo, ctx) => {
   for (let i = 0; i < bars; i += 1) {
     const t = i / (bars - 1)
     // Log-normal-ish: fast rise, long tail.
-    const shape = Math.exp(-Math.pow(Math.log((t + 0.02) / peak), 2) / (2 * spread))
+    const shape = Math.exp(-(Math.log((t + 0.02) / peak) ** 2) / (2 * spread))
     const h = innerH * Math.max(0.04, shape * rng.range(0.82, 1)) * 0.92
     marks.push(rect(ctx, padX + i * slot, baseY - h, slot - gap, h, 0.3, true))
   }

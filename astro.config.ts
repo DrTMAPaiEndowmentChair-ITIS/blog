@@ -1,12 +1,15 @@
 import { defineConfig } from 'astro/config'
 import mdx from '@astrojs/mdx'
 import sitemap from '@astrojs/sitemap'
+import { unified } from '@astrojs/markdown-remark'
 import playformInline from '@playform/inline'
 import remarkMath from 'remark-math'
 import remarkDirective from 'remark-directive'
 import rehypeKatex from 'rehype-katex'
 import remarkEmbeddedMedia from './src/plugins/remark-embedded-media.mjs'
 import remarkReadingTime from './src/plugins/remark-reading-time.mjs'
+import remarkHasMath from './src/plugins/remark-has-math.mjs'
+import remarkProtectCurrency from './src/plugins/remark-protect-currency.mjs'
 import rehypeCleanup from './src/plugins/rehype-cleanup.mjs'
 import rehypeImageProcessor from './src/plugins/rehype-image-processor.mjs'
 import rehypeCopyCode from './src/plugins/rehype-copy-code.mjs'
@@ -15,7 +18,10 @@ import rehypeTableWrap from './src/plugins/rehype-table-wrap.mjs'
 import remarkTOC from './src/plugins/remark-toc.mjs'
 import { themeConfig } from './src/config'
 import { imageConfig } from './src/utils/image-config'
-import path from 'path'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const rootDir = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
   // No adapter: every route is prerendered, so the build is a directory of
@@ -27,12 +33,12 @@ export default defineConfig({
       config: imageConfig
     }
   },
-  // Every internal link warms itself on hover/focus (and on touchstart for
-  // pointerless devices), so by the time a click lands the HTML is usually
-  // already in cache and navigation is just a swap.
+  // Visible internal links prefetch as soon as they enter the viewport (not
+  // only on hover), so index→post navigation is usually a cache hit before
+  // the pointer even settles. Touch/hover still re-triggers for offscreen links.
   prefetch: {
     prefetchAll: true,
-    defaultStrategy: 'hover'
+    defaultStrategy: 'viewport'
   },
   experimental: {
     // Upgrades those prefetches to real speculation-rules prerenders where the
@@ -54,15 +60,28 @@ export default defineConfig({
       theme: 'css-variables',
       wrap: false
     },
-    remarkPlugins: [remarkMath, remarkDirective, remarkEmbeddedMedia, remarkReadingTime, remarkTOC],
-    rehypePlugins: [
-      rehypeKatex,
-      rehypeCleanup,
-      rehypeImageProcessor,
-      rehypeCopyCode,
-      rehypeReferenceLinks,
-      rehypeTableWrap
-    ]
+    // Astro 7.2: remark/rehype plugins belong on the unified processor (MDX
+    // inherits the same list via extendMarkdownConfig).
+    processor: unified({
+      remarkPlugins: [
+        remarkMath,
+        // After remark-math: demote currency `$…$` false positives before hasMath.
+        remarkProtectCurrency,
+        remarkHasMath,
+        remarkDirective,
+        remarkEmbeddedMedia,
+        remarkReadingTime,
+        remarkTOC
+      ],
+      rehypePlugins: [
+        rehypeKatex,
+        rehypeCleanup,
+        rehypeImageProcessor,
+        rehypeCopyCode,
+        rehypeReferenceLinks,
+        rehypeTableWrap
+      ]
+    })
   },
   integrations: [
     playformInline({
@@ -89,7 +108,18 @@ export default defineConfig({
   vite: {
     resolve: {
       alias: {
-        '@': path.resolve('./src')
+        '@': path.resolve(rootDir, 'src')
+      }
+    },
+    build: {
+      // Smaller module graph on navigations that pull a shared chunk; CSS is
+      // already critically inlined by playform/Beasties.
+      cssCodeSplit: true,
+      modulePreload: {
+        resolveDependencies: (_filename, deps) =>
+          // Drop font and wasm preload noise from the critical path; fonts are
+          // handled via <link rel="preload"> and wasm is OG-build only.
+          deps.filter((dep) => !/\.(woff2?|wasm)(?:\?|$)/i.test(dep))
       }
     }
   },

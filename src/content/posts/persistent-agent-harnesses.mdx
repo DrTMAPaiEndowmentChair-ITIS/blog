@@ -1,0 +1,38 @@
+---
+title: 'Build a persistent agent that can resume its work'
+pubDate: 2026-09-22
+author: 'Aadit Agrawal'
+category: 'Ecosystems & Tooling'
+description: 'The loop, durable state, tools, permissions, and checks behind long-running agents such as Claude and Muse.'
+topics: ['Agents', 'Harness design', 'Persistence']
+---
+
+A model call ends. An agent's job may not. It may need to wait for a build, wake after a calendar event, reopen a browser, or resume a half-finished research task tomorrow. The software around the model determines whether that continuation is reliable.
+
+Anthropic describes a [harness](https://claude.com/blog/harnessing-claudes-intelligence) as the loop, tools, context management, and boundaries around Claude. Its [managed-agent architecture](https://www.anthropic.com/engineering/managed-agents) separates an append-only session log, the harness that routes calls and tools, and a sandbox for execution. Meta describes [Muse](https://ai.meta.com/muse/) as an agent with a persistent dedicated virtual machine and browser that can keep working after the app closes. These are product designs with different tradeoffs; a personal project can copy the important mechanics without copying their scale.
+
+## Start with a small state machine
+
+```text
+queued -> running -> waiting_on_tool -> running -> done
+                   -> needs_user
+                   -> failed -> retry or stop
+```
+
+Give every task an ID, owner, objective, allowed tools, deadline, budget, and current state. Append events such as `tool_requested`, `tool_completed`, `checkpoint_saved`, and `user_approved`. Do not use the model's current context window as the sole record. On restart, load the latest checkpoint and the events after it, then reconcile any tool call that may have completed before the crash.
+
+For a first implementation, a database row per task plus an append-only events table is enough. A worker leases one task for a short period, renews the lease while active, and writes a checkpoint before yielding. Give external actions idempotency keys where possible. A restarted agent must not buy the same item or send the same email twice.
+
+## Keep memory useful
+
+Store durable facts separately from the transcript: user preferences, project decisions, file pointers, and unresolved questions. Each fact needs a source and update time. Retrieve only facts relevant to the current task. A model that sees every old note will waste context and may treat stale guesses as instructions. Keep the raw event log for audit; compact only the working context.
+
+Meta says [Muse Spark 1.1](https://ai.meta.com/blog/introducing-muse-spark-meta-model-api/) can manage long context, compact, and coordinate subagents. Those model abilities help, but the application still needs durable state, retries, and clear ownership of side effects. Anthropic's [long-running application work](https://www.anthropic.com/engineering/harness-design-long-running-apps) likewise treats verification and environment design as part of agent performance.
+
+## Bound action by consequence
+
+Read-only search can run freely within a budget. Editing a local branch is reversible. Sending a message, publishing, paying, or deleting data needs an explicit policy and often a person at the final step. Enforce tool permissions in code, outside the prompt. Run code in a sandbox with scoped filesystem and network access. Log tool inputs and outputs, redact secrets, and set time and spend limits.
+
+A useful starter task is a daily repository maintenance agent: inspect issues, propose one small fix in an isolated worktree, run tests, and leave a reviewable diff. The task is complete only when the diff and checks are recorded. Add scheduling, parallel work, and more tools after a single agent can resume cleanly from a forced restart.
+
+The model supplies judgment. The harness supplies continuity and accountability. Both determine whether the agent can finish a real job.

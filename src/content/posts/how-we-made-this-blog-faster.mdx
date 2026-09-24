@@ -1,0 +1,34 @@
+---
+title: 'We made this blog faster'
+pubDate: 2026-09-24
+author: 'Aadit Agrawal'
+category: 'Ecosystems & Tooling'
+description: 'A measured look at the fonts, artwork, and navigation work that made this blog lighter to load and quicker to browse.'
+topics: ['Performance', 'Web engineering', 'This site']
+---
+
+This blog has long technical posts, diagrams, custom typography, and artwork for every article. Those details are useful until they make the index slow to load or every page switch repeat work the browser has already done. We inspected the built files and changed two expensive paths: the font loaded on every page and the artwork embedded in the directory.
+
+## The largest cold-load saving was a font
+
+The site used to preload a 346 KB Inter WOFF2 file. Most pages use only its Latin characters, so we built a subset with the characters declared by the site's `@font-face` rule. The new file is 100 KB. That removes about **245 KB, or 71 percent, from that font request**. The original remains available for social-card generation, where a wider character set may be needed.
+
+This is a file-size comparison, not a claim that every visitor waits 71 percent less time. Browsers cache fonts, network compression varies, and page latency includes other resources. It does remove a real request cost for a first visit.
+
+## Stop repeating 69 drawings in the homepage HTML
+
+Each post row carried its own generated SVG paths. With 70 rows, that made the HTML larger and gave the browser more markup to parse on every visit to the index. We moved those row drawings into a shared SVG file and kept each row as a small `<use>` reference. The featured cards and article banners stay inline so a post does not download artwork for unrelated posts.
+
+On the same set of 70 posts, the homepage HTML is **177 KB**. Expanding its row references back into inline paths would make it **309 KB**, a difference of about **132 KB**. The shared sprite is 143 KB uncompressed and 13 KB with gzip. The total compressed bytes for a first visit are therefore nearly the same as an inline version; the gain is smaller HTML to parse and an artwork file the browser can cache separately. We do not count the 132 KB as a first-visit network saving.
+
+## Navigation spends less on pages you may never open
+
+Featured links prefetch when visible, because they are likely next clicks. Directory rows prefetch on hover or focus instead of warming every row as it enters the viewport. That keeps the fast path for a chosen article without pulling many full article pages while a reader scrolls the index. Astro's client router swaps between pages, so the browser can retain the shell and cached assets across a switch.
+
+The change has a tradeoff: a touch visitor who taps a row without hovering may wait for the article fetch. That is better than silently downloading dozens of articles while the visitor scans the list. We kept the visible featured links warm for the common path.
+
+## How we checked it
+
+We compared the generated file sizes, ran a full static build, and loaded the homepage and an article in a browser. We checked that row artwork still takes the surrounding theme color and that the article banner still appears after navigation. The measurements above describe **built payload**, not a production Core Web Vitals study. Real-world speed depends on hosting, device, cache state, and network. The next useful measurement is a field comparison of cold load and index-to-article navigation at the 75th and 95th percentiles.
+
+The rule behind the work is simple: measure the resource people actually pay for, keep repeated content in a cacheable place, and avoid background fetches that do not help the next action.

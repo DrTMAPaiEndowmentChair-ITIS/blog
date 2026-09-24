@@ -1,0 +1,42 @@
+---
+title: 'Jev and the case for System One models'
+pubDate: 2026-09-19
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Why a model that returns typed decisions and probabilities can be more useful than a chat model inside software.'
+topics: ['Jev', 'System One', 'Decision models']
+---
+
+A support ticket arrives. Software needs to choose a queue, estimate urgency, and decide whether a person should review it. A language model can write an excellent paragraph about the ticket. The application needs three values it can act on.
+
+[TypeSafe's Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), released in early access on September 15, 2026, is built for that second job. TypeSafe calls it a **System One model**. The name borrows Daniel Kahneman's distinction between fast, intuitive System 1 thinking and slower deliberation. It describes an interface and optimization target, not a claim that the model thinks like a person.
+
+## State in, decisions out
+
+A System One request supplies application state and questions with bounded answer types. A question might ask for a choice among known queues, a score between 0 and 1, or the probability of a yes/no outcome. Jev returns values and probabilities directly. It does not write a rationale or draft a reply.
+
+```text
+State: Customer reports a failed payment and a duplicate charge.
+Questions:
+  route: choose [billing, fraud, technical]
+  urgent: probability of yes
+  refund_risk: score from 0 to 1
+```
+
+The code can route the case, ask for review if uncertainty is high, and then call a text model to write the customer response. TypeSafe calls the yes/no probability primitive `noul`. Its [documentation](https://docs.typesafe.ai/) defines the actual request and response shapes; the sketch above illustrates the idea rather than a copyable API call.
+
+The benefit is less work between model output and program action. An autoregressive LLM generates tokens that must form valid JSON, pass schema validation, and contain a sensible decision. Jev's answer is constrained to the declared type. That eliminates malformed output; it does **not** eliminate wrong judgments. A perfectly valid 0.92 can still be poorly calibrated or based on missing context.
+
+## Where speed and probability matter
+
+TypeSafe says Jev answers multiple questions in parallel and reports 70 to 500 ms end-to-end latency on its service. Its published price and large speedup claims are [vendor measurements](https://typesafe.ai/blog/introducing-system-one-models-and-jev), not a guarantee for another workload or region. The company also notes that its workflow evaluation compares against reference probabilities from other models rather than independent ground truth.
+
+Even without accepting a headline speedup, the design has clear uses. A router invoked before every tool call cannot afford a long generated explanation. A moderation gate needs an explicit probability so the application can set different thresholds for blocking, review, and logging. A search system can score hundreds of candidates before a larger model reads the best few.
+
+Calibrate these probabilities on your own data. If decisions labeled 0.8 are right only half the time, the numeric output is no help. Evaluate by segment, too: language, customer type, ticket length, and rare but costly cases. Then compare Jev with a simple classifier, rules, and a small LLM with structured output. The cheapest correct option wins.
+
+## A useful division of labor
+
+Use a bounded decision model when the output space is known and many similar judgments must be made. Use a generative model when the task requires explanation, writing, code, or open-ended synthesis. Keep deterministic rules for decisions that the business can specify exactly. The most interesting system is often a pipeline: rules handle the obvious cases, a System One model handles ambiguous branches, and a larger model or person handles cases where the cost of error is high.
+
+That is a narrower claim than "a new model replaces LLMs," and a more useful one. Software contains millions of small judgments. Giving those judgments a typed, measurable interface may matter as much as making the next chat answer more eloquent.

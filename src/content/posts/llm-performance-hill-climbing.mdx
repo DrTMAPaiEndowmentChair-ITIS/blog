@@ -1,0 +1,45 @@
+---
+title: 'Give an LLM a stopwatch and a failing test'
+pubDate: 2026-09-18
+author: 'Aadit Agrawal'
+category: 'Ecosystems & Tooling'
+description: 'A practical loop for using coding models to improve software latency without gaming the benchmark or breaking behavior.'
+topics: ['Performance', 'Coding agents', 'Benchmarking']
+---
+
+A coding model is unusually good at finding performance wins when it can run the program, inspect a profile, change one thing, and measure again. Anthropic's [account of making claude.ai faster](https://claude.dev/blog/how-we-made-claude-ai-faster/#anything-can-be-hill-climbed) makes the case through ordinary product work: identify a user journey, build a local measurement that tracks it, and keep lowering the number. The team's reported gains belong to its own app and setup. The reusable part is the loop.
+
+## Choose the number carefully
+
+Start with a real user action: opening a large project, sending a message, searching a mailbox, loading a report, or starting a model session. Record a baseline distribution, including p50 and p95, on fixed hardware and realistic data. Save a correctness check before editing. A faster result that skips work or changes the answer is a regression.
+
+The inner loop can be simple:
+
+```text
+reproduce -> profile -> propose one change -> run correctness checks
+          -> repeat benchmark -> inspect diff -> keep or revert
+```
+
+Ask the model to report the bottleneck it measured, the proposed mechanism, and the before/after result. Keep benchmark inputs fixed during a run. Recheck promising changes against a second dataset so the model cannot merely tune for one fixture.
+
+Anthropic used instruction counts on two hot paths because they were less noisy than wall-clock timing, then checked that lower counts also reduced elapsed time. That last check matters. An easily optimized proxy can drift away from what people feel. If an agent discovers that the benchmark ignores parsing, it may remove parsing from the measured path while leaving the application no faster.
+
+## Different software, different climbs
+
+| Workload         | Measure                                              | Likely bottlenecks                                     | Correctness gate                      |
+| ---------------- | ---------------------------------------------------- | ------------------------------------------------------ | ------------------------------------- |
+| Web app          | Time to usable input, long-task time, p95 navigation | Hydration, rerenders, bundle loading, main-thread work | Browser interaction and visual checks |
+| CLI              | Cold start and task completion time                  | Module loading, subprocesses, repeated parsing         | Exact output and exit status          |
+| Database service | p95 query latency at a fixed arrival rate            | Plans, indexes, N+1 calls, serialization               | Query result comparison               |
+| Model server     | Goodput under TTFT and TPOT limits                   | Batching, KV memory, prefill scheduling                | Output-quality and SLO checks         |
+| Data pipeline    | Records per second and total completion time         | I/O, allocation, compression, skew                     | Counts and sampled records            |
+
+The prompt should describe the workload, not prescribe a clever optimization. "Reduce p95 open time on this 10,000-item fixture while preserving all visible items" gives the model room to find a bad algorithm. "Add memoization" may lock it onto the wrong fix.
+
+## Make the climb trustworthy
+
+Run the benchmark several times. Control caches, warmup, parallel load, and build mode. Record the command, commit, machine, and input. For a server, test at several arrival rates; an optimization that helps one request can worsen queueing at production load. For a UI, profile a slower laptop as well as a fast developer machine.
+
+Keep changes small enough to review. A model can land a series of modest wins, but each should survive tests and a real user path. Add a regression threshold only after the metric has proved stable and correlated with elapsed time. If the metric flakes, fix or remove it.
+
+There is no universal "3x" recipe here. There is a reproducible method: turn a vague complaint into a measurable journey, let the model explore, and make every claimed win pass both the stopwatch and the behavior check.

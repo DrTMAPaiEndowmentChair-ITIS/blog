@@ -8,8 +8,8 @@ import { loadRenderers } from 'astro:container'
 import { getCollection, render, type CollectionEntry } from 'astro:content'
 import { Feed, type Item } from 'feed'
 import { parse as parseHtml, type HTMLElement } from 'node-html-parser'
-import sanitizeHtml from 'sanitize-html'
 import { themeConfig } from '@/config'
+import { sanitizeFeedHtml } from '@/utils/feed-sanitize'
 
 /**
  * Feed generation.
@@ -21,78 +21,6 @@ import { themeConfig } from '@/config'
  * pipeline the site itself uses — and the resulting HTML is then rewritten for
  * offline readers (absolute URLs, MathML-only math, no scripts or styles).
  */
-
-const MATHML_TAGS = [
-  'math',
-  'semantics',
-  'annotation-xml',
-  'maction',
-  'menclose',
-  'merror',
-  'mfenced',
-  'mfrac',
-  'mi',
-  'mmultiscripts',
-  'mn',
-  'mo',
-  'mover',
-  'mpadded',
-  'mphantom',
-  'mprescripts',
-  'mroot',
-  'mrow',
-  'ms',
-  'mspace',
-  'msqrt',
-  'mstyle',
-  'msub',
-  'msubsup',
-  'msup',
-  'mtable',
-  'mtd',
-  'mtext',
-  'mtr',
-  'munder',
-  'munderover',
-  'none'
-]
-
-const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
-  allowedTags: [
-    ...sanitizeHtml.defaults.allowedTags,
-    'img',
-    'figure',
-    'figcaption',
-    ...MATHML_TAGS
-  ],
-  allowedAttributes: {
-    ...sanitizeHtml.defaults.allowedAttributes,
-    '*': ['class', 'id', 'dir', 'lang'],
-    a: ['href', 'title', 'rel', 'name'],
-    img: ['src', 'alt', 'title', 'width', 'height', 'loading', 'decoding'],
-    td: ['colspan', 'rowspan', 'align'],
-    th: ['colspan', 'rowspan', 'align', 'scope'],
-    time: ['datetime'],
-    // MathML carries its layout in attributes, so keep the ones KaTeX emits.
-    math: ['display', 'xmlns'],
-    mo: ['stretchy', 'fence', 'separator', 'lspace', 'rspace', 'maxsize', 'minsize'],
-    mi: ['mathvariant'],
-    mn: ['mathvariant'],
-    ms: ['mathvariant'],
-    mtext: ['mathvariant'],
-    mspace: ['width', 'height', 'depth'],
-    mstyle: ['displaystyle', 'scriptlevel', 'mathvariant'],
-    mtable: ['columnalign', 'rowspacing', 'columnspacing', 'displaystyle'],
-    mtd: ['columnalign', 'colspan', 'rowspan'],
-    mover: ['accent'],
-    munder: ['accentunder'],
-    munderover: ['accent', 'accentunder'],
-    mpadded: ['width', 'height', 'depth', 'lspace', 'voffset']
-  },
-  allowedSchemes: ['http', 'https', 'mailto'],
-  // Drop the contents too, instead of flattening them into stray text.
-  nonTextTags: ['script', 'style', 'noscript', 'template', 'textarea', 'title']
-}
 
 /**
  * Astro stamps every element that came from a component with a scoped-style
@@ -353,7 +281,7 @@ async function renderPostContent(
   rewriteInteractiveBlocks(root, { slug, postUrl, siteUrl })
   absolutizeUrls(root, siteUrl, postUrl)
 
-  return sanitizeHtml(root.toString(), SANITIZE_OPTIONS).trim()
+  return sanitizeFeedHtml(root)
 }
 
 /**

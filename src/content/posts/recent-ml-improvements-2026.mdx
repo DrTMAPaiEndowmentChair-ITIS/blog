@@ -1,0 +1,34 @@
+---
+title: 'Recent ML improvements that change what you can build'
+pubDate: 2026-09-21
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'A September 2026 reading of better attention kernels, outcome-trained agents, open multimodal models, and inference-time work.'
+topics: ['Machine learning', 'Agents', 'Inference']
+---
+
+The biggest ML improvement is not always a bigger checkpoint. Sometimes it is the same model answering faster, an agent learning from an executable outcome, or a smaller model becoming good enough to run on a laptop. Here are four changes with direct engineering consequences as of September 2026.
+
+## Attention kernels adapted to newer GPUs
+
+[FlashAttention-4](https://arxiv.org/abs/2603.05451) targets a mismatch on Blackwell hardware: tensor-core compute grew faster than some supporting resources. Its algorithm and pipelining changes aim to keep the matrix units busy while managing the slower parts of attention. The lesson for practitioners is to benchmark the actual attention backend on your target GPU and sequence distribution. A theoretical FLOP gain is useless if softmax, shared-memory traffic, or launch overhead becomes the limit.
+
+This is a continuation of I/O-aware attention, not a new model architecture. It can improve inference or training without changing model weights, but gains depend on shapes, precision, masking, and hardware. The existing [attention-kernel guide](/modern-attention-kernels/) covers the underlying memory argument.
+
+## Training agents against outcomes
+
+A coding agent can be rewarded for a patch that passes tests, rather than for an answer that sounds plausible. Newer training reports increasingly describe agents operating inside executable environments, with reinforcement learning and distillation used to improve the behavior. The public [OpenEnv collaboration](https://huggingface.co/blog/openenv-agentic-rl) reflects a practical need: each rollout needs an isolated environment, tools, observable outcomes, and a way to reset before the next attempt.
+
+The difficulty moves into the environment. A weak test suite rewards shortcuts. A contaminated task lets a model memorize. A flaky environment makes good actions look bad. Better agent training therefore depends on better task design and verification as much as on a new optimizer. This connects directly to [harness design](/persistent-agent-harnesses/), because the same tool interfaces used in training shape real-world agent behavior.
+
+## Open multimodal models on smaller hardware
+
+[Gemma 4's release](https://huggingface.co/blog/gemma4) is one example of the growing availability of open models with image, audio, and text input across local runtimes including MLX and llama.cpp. The result is a new deployment choice: a task that previously required a hosted general model can sometimes run privately on a device. "Sometimes" matters. Measure the exact task, memory fit, language, latency, and license. A compact model may beat a large one on cost and privacy while losing on difficult reasoning.
+
+## Spend reasoning where it pays
+
+Meta's [Muse Spark report](https://ai.meta.com/blog/introducing-muse-spark-msl) describes two approaches to inference-time work: training for more efficient reasoning tokens and running multiple agents in parallel on hard questions. The first reduces unnecessary thinking; the second can improve difficult answers without making one serial chain arbitrarily long. Neither is free. Parallel attempts consume more compute, and a weak selector can choose the wrong answer.
+
+The general pattern is workload-aware allocation. Easy requests should finish quickly. Hard requests can receive more time, independent attempts, tools, or a verifier. Evaluate quality against total compute and wall-clock time, not reasoning length alone.
+
+Taken together, these changes shift the practical frontier in different ways. Kernels lower the cost of each attempt. Better environments improve what agents learn. Open models change who can deploy them. Inference-time allocation decides where to spend the savings. Each claim still needs a task-specific measurement before it becomes a product decision.

@@ -22,11 +22,12 @@ import BaseLayout from '@/layouts/BaseLayout.astro'
 
 import { themeConfig } from '@/config'
 
-const { title, pubDate, description, readingTime, toc, category, topics, author } =
+const { title, pubDate, description, readingTime, toc, category, topics, author, hasMath } =
   Astro.props as PostLayoutProps & {
     category?: string
     topics?: string[]
     author?: string
+    hasMath?: boolean
   }
 
 const postSlug = Astro.url.pathname.split('/').filter(Boolean).pop() || ''
@@ -45,6 +46,7 @@ const ogImage = `/open-graph/${postSlug}.png`
     author={author}
     category={category}
     topics={topics}
+    hasMath={hasMath}
     slot="head"
   />
   <div class="post-container">

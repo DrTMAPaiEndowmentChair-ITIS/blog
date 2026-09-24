@@ -89,8 +89,8 @@ const MONO_FAMILY = ['DM Mono']
 const SANS_FAMILY = ['Inter Variable']
 
 const FONT_FILES = [
-  'node_modules/@fontsource/dm-mono/files/dm-mono-latin-400-normal.woff2',
-  'node_modules/@fontsource/dm-mono/files/dm-mono-latin-500-normal.woff2',
+  'public/fonts/dm-mono-latin-400-normal.woff2',
+  'public/fonts/dm-mono-latin-500-normal.woff2',
   'public/fonts/Inter.woff2'
 ]
 

@@ -42,12 +42,12 @@ export default function rehypeImageProcessor() {
         imgNode.properties = {
           ...imgNode.properties,
           'data-preview': themeConfig.post.imageViewer ? 'true' : 'false',
-          // Add lazy loading for better performance
+          // Content images sit below the title; keep them off the critical path.
           loading: 'lazy',
-          // Add decoding hint for better performance
           decoding: 'async',
-          // Add fetchpriority for critical images (first image gets high priority)
-          fetchpriority: newNodes.length === 0 ? 'high' : 'auto',
+          // Never pair lazy with high fetchpriority — that fights the browser's
+          // own prioritization and can delay LCP fonts/CSS.
+          fetchpriority: 'low',
           class: [...(imgNode.properties.class || []), 'img-placeholder']
         }
 

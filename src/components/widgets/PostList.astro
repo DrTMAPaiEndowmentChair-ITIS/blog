@@ -271,7 +271,7 @@ const [leadPost, ...asidePosts] = heroPosts
             .toLocaleLowerCase()}
           style={orderVars(post)}
         >
-          <a href={`/${post.id}/`}>
+          <a href={`/${post.id}/`} data-astro-prefetch="hover">
             <div class={`post-item ${!themeConfig.date.dateOnRight ? 'date-left' : ''}`}>
               <span class="post-art" data-post-art={post.id}>
                 <PostThumbnail slug={post.id} category={post.data.category} variant="row" />

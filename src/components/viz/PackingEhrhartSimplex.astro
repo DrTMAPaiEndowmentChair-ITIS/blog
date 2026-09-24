@@ -27,8 +27,8 @@ const history = [
   <figcaption id="ehrhart-title">
     <strong>The extremal body is a dilated, shifted simplex</strong>
     <span
-      >Drawn exactly for n = 2: the triangle 3&Delta;<sub>2</sub> &minus; (1, 1) has barycenter 0,
-      no other interior lattice point, and area 9/2 = (n + 1)<sup>n</sup>/n!.</span
+      >Drawn exactly for n = 2: the triangle 3&Delta;<sub>2</sub> &minus; (1, 1) has barycenter 0, no
+      other interior lattice point, and area 9/2 = (n + 1)<sup>n</sup>/n!.</span
     >
   </figcaption>
 
@@ -47,11 +47,17 @@ const history = [
 
         <path class="body" d="M66 174H168L66 72Z"></path>
 
-        {points.map((p) => <circle class={p.kind} cx={p.cx} cy={p.cy} r={p.kind === 'interior' ? 4.5 : 2.4} />)}
+        {
+          points.map((p) => (
+            <circle class={p.kind} cx={p.cx} cy={p.cy} r={p.kind === 'interior' ? 4.5 : 2.4} />
+          ))
+        }
 
         <path class="cross" d="M92 140h16M100 132v16"></path>
         <text x="108" y="130">barycenter = only interior lattice point</text>
-        <text class="dim" x="72" y="192">vertices at (&minus;1,&minus;1), (2,&minus;1), (&minus;1,2)</text>
+        <text class="dim" x="72" y="192"
+          >vertices at (&minus;1,&minus;1), (2,&minus;1), (&minus;1,2)</text
+        >
       </svg>
     </div>
 

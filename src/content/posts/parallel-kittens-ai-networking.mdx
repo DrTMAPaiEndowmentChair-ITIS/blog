@@ -1,0 +1,34 @@
+---
+title: 'ParallelKittens and the network inside an AI node'
+pubDate: 2026-09-16
+author: 'Aadit Agrawal'
+category: 'Hardware & Systems'
+description: 'Why multi GPU inference slows down at transfer boundaries, and what ParallelKittens changes about communication kernels.'
+topics: ['Multi-GPU', 'Networking', 'ParallelKittens']
+---
+
+A GPU can finish its matrix multiplication and still wait for the next layer. The missing value may be on another GPU. At that point, network topology, transfer size, and scheduling determine how much of the chip's compute you actually use.
+
+Inside a server, GPUs communicate over PCIe or a faster interconnect such as NVLink. Across servers they usually rely on a network adapter and a fabric such as InfiniBand or Ethernet with RDMA. These paths have different latency and bandwidth. A model split across devices creates communication at predictable places: tensor parallel layers exchange partial results, expert parallel models dispatch tokens to experts and combine their outputs, and sequence parallel work moves attention or activation shards.
+
+## The real cost is the part you cannot hide
+
+A useful first approximation is:
+
+```text
+step time = local compute + communication that did not overlap with compute
+```
+
+Peak link bandwidth alone cannot tell you that second term. A small transfer may be latency-bound. A large one may saturate the link but occupy resources needed by the kernel. A collective can force every GPU to wait for the slowest participant. Profiling must show transfer duration, overlap, and idle gaps on each device.
+
+[ParallelKittens](https://arxiv.org/abs/2511.13940) is a research framework for writing multi GPU kernels that combine computation and communication. It extends ThunderKittens with a small set of primitives and a common program template. The paper's central choice is _how_ to move data and _where_ to schedule the work: copy-engine transfers, thread-level peer operations, and GPU-side scheduling have different sweet spots. It separates loader, storer, consumer, and communicator roles so a kernel can bring in the next tile while computing on the current one.
+
+The authors report up to 2.33x on data and tensor parallel workloads, 4.08x on sequence parallel workloads, and 1.22x on expert parallel workloads in their tested settings. These are paper results on Hopper and Blackwell kernels, not general speedups for any distributed model server. The paper also shows that a fast copy path for large messages may lose on small matrices; the choice has to follow the shape.
+
+## A practical design sequence
+
+First, draw the communication graph for one token and one prefill batch. Count bytes per edge and collectives per layer. Second, place shards to keep frequent transfers on the fastest links. Third, profile whether transfers block computation. Fourth, batch or fuse tiny messages and overlap transfers with independent work. Finally, retest at the real batch and sequence lengths. An all-reduce that looks cheap in prefill can dominate single-token decode.
+
+For multi-node inference, keep a separate network budget. RDMA can avoid extra host copies, but congestion, oversubscription, and uneven expert routing still add tail latency. Add per-hop transfer and queue timings to the trace. If a larger parallel group lowers matrix time by 20 ms but adds 30 ms of exposed communication, the model got slower.
+
+ParallelKittens is a good reminder that networking for AI is a kernel design problem as well as a switch and cable problem. The useful target is not maximum advertised bandwidth. It is fewer milliseconds during which expensive GPU compute waits for data.

@@ -1,0 +1,40 @@
+---
+title: 'MLX on M5 and M6: which engine does the work?'
+pubDate: 2026-09-20
+author: 'Aadit Agrawal'
+category: 'Hardware & Systems'
+description: 'Compare M3, M5, and M6 AI hardware without confusing the Neural Engine with GPU Neural Accelerators.'
+topics: ['MLX', 'Apple silicon', 'On-device AI']
+---
+
+Apple's chip diagrams now contain two similarly named things: the **Neural Engine**, a dedicated processor block, and **Neural Accelerators inside GPU cores**. They are separate. That distinction explains more about local model performance than a single "AI TOPS" number.
+
+[MLX](https://ml-explore.github.io/mlx/) is Apple's open array framework for Apple silicon. It supports CPU and GPU operations over unified memory, automatic differentiation, and model training and inference. MLX LM adds common language-model workflows. Apple's [M5 MLX measurements](https://machinelearning.apple.com/research/exploring-llms-mlx-m5) show how MLX uses Metal 4 Tensor Operations to reach the GPU's Neural Accelerators. This is GPU acceleration; it does not mean ordinary MLX inference runs on the separate Neural Engine.
+
+The software has moved as well as the chips. [MLX LM's releases](https://github.com/ml-explore/mlx-lm/releases) document work on batched generation, prompt caching, tool-call parsing, speculative decoding fixes, and support for newer model families. These are the features that turn a local demo into a usable service. They also make version and workload part of any fair Mac benchmark: a new cache policy can change latency even on the same M-series machine.
+
+## From M3 to M6
+
+| Chip family | AI hardware change                                                         | Memory implication                                                                                        |
+| ----------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| M3          | 16-core Neural Engine; GPU without per-core Neural Accelerators            | Unified memory already permits large local models, but GPU matrix work lacks the later accelerator design |
+| M5          | Faster 16-core Neural Engine; Neural Accelerator in each GPU core          | Base M5 bandwidth reaches 153 GB/s                                                                        |
+| M5 Pro/Max  | GPU accelerator design scales to 20/40 cores; faster 16-core Neural Engine | Up to 307/614 GB/s and 64/128 GB, depending on chip                                                       |
+| M5 Ultra    | Up to 80 GPU cores with Neural Accelerators; 32-core Neural Engine         | Up to 512 GB and 1.2 TB/s for very large local models                                                     |
+| M6          | 12 GPU cores with Neural Accelerators; two 16-core Neural Engines          | Up to 32 GB and 170 GB/s on the announced M6                                                              |
+
+Apple's [M3](https://www.apple.com/newsroom/2023/10/apple-unveils-m3-m3-pro-and-m3-max-the-most-advanced-chips-for-a-personal-computer/), [M5](https://www.apple.com/newsroom/2025/10/apple-unleashes-m5-the-next-big-leap-in-ai-performance-for-apple-silicon/), [M5 Pro/Max](https://www.apple.com/newsroom/2026/03/apple-debuts-m5-pro-and-m5-max-to-supercharge-the-most-demanding-pro-workflows/), and [August 2026 M6/M5 Ultra](https://www.apple.com/newsroom/2026/08/apple-introduces-m6-and-m5-ultra-for-a-big-leap-in-performance-and-ai-compute/) announcements supply these specifications. Apple has announced the base M6 in Mac mini; an M6 Pro/Max architecture should not be inferred from it.
+
+The M3's Neural Engine was already useful for Core ML workloads. M5's major local LLM change is the matrix accelerator placed **in every GPU core**, alongside more memory bandwidth. M6 keeps that layout and adds two more GPU cores than base M5. Its two 16-core Neural Engines are a separate change. Apple says system frameworks can use both together and claims up to twice the peak Neural Engine compute over previous generations. That is a peak hardware claim, not a measured MLX token-rate improvement.
+
+## Prefill and decode respond differently
+
+Processing a prompt uses large matrix operations and can exploit the GPU Neural Accelerators. Generating the next token often reads model weights from memory, so memory bandwidth becomes the limit. In Apple's M5 tests against a similarly configured M4, generation speed improved 19 to 27 percent across the tested models; the article attributes that mainly to the bandwidth increase from 120 to 153 GB/s. The test used 4,096-token prompts and selected Qwen and GPT-OSS models. It does not predict gains for every model or M6 system.
+
+M6 raises base-chip bandwidth to 170 GB/s, roughly 11 percent over M5's 153 GB/s. That suggests a modest decode gain for a bandwidth-bound model, but it remains an inference until matched MLX benchmarks exist. Prefill may benefit differently from the larger GPU and matrix hardware. M5 Ultra is a different class of machine: its capacity and 1.2 TB/s bandwidth matter when the model would not fit or stream well on the base chip.
+
+## What to test on your Mac
+
+Measure fit first: weights, KV cache, and the rest of the application must fit in unified memory without swapping. Then measure TTFT and steady token rate separately, with the same model, quantization, prompt, output length, and MLX/macOS versions. Apple's M5 accelerator path requires macOS 26.2 or later according to its research note. For app deployment on Apple's dedicated Neural Engine, evaluate Core ML or Core AI separately from MLX.
+
+The chip to buy depends on the workload. A 32 GB M6 may start a small model quickly; a larger M5 Max or Ultra can run a model the M6 cannot hold. Memory capacity often decides the result before peak compute does.

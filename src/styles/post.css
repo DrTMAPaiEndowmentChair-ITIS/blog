@@ -10,6 +10,21 @@
   margin-bottom: 8rem;
 }
 
+/*
+  Skip layout/paint for offscreen heavy blocks while scrolling long posts.
+  Intrinsic size keeps scrollbar length stable enough to avoid jumpiness.
+*/
+.prose pre,
+.prose figure,
+.prose table,
+.prose .katex-display,
+.prose .viz,
+.prose [class*='viz-'],
+.prose .mermaid-container {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 280px;
+}
+
 /* Post title section */
 .prose .title {
   margin-bottom: 2.5em;

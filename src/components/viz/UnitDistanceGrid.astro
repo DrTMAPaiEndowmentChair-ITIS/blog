@@ -32,11 +32,7 @@ const size = pad * 2 + (side - 1) * step
           A five by five square lattice of 25 points with 40 unit-length segments drawn between
           horizontally and vertically adjacent points.
         </title>
-        {
-          edges.map((e) => (
-            <line class="edge" x1={e.p.x} y1={e.p.y} x2={e.q.x} y2={e.q.y} />
-          ))
-        }
+        {edges.map((e) => <line class="edge" x1={e.p.x} y1={e.p.y} x2={e.q.x} y2={e.q.y} />)}
         {points.map((p) => <circle class="node" cx={p.x} cy={p.y} r="4" />)}
       </svg>
     </div>
@@ -66,9 +62,9 @@ const size = pad * 2 + (side - 1) * step
   </div>
 
   <p class="note">
-    A plain <span>k &times; k</span> lattice gives only about <span>2n</span> unit distances.
-    Erd&#337;s improved this by rescaling the lattice so that many integer pairs share a common
-    sum of squares; that trick is what produces the slowly growing
+    A plain <span>k &times; k</span> lattice gives only about <span>2n</span> unit distances. Erd&#337;s
+    improved this by rescaling the lattice so that many integer pairs share a common sum of squares; that
+    trick is what produces the slowly growing
     <span>c / log log n</span> exponent, and it was the record for eighty years.
   </p>
 </figure>
