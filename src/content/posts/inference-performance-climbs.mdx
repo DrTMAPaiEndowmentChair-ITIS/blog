@@ -7,6 +7,8 @@ description: 'Tune prefill, decode, long context, and batched inference against 
 topics: ['Inference', 'Performance', 'Benchmarking']
 ---
 
+_Updated September 25, 2026 with technical examples and source references. Original publication date retained._
+
 "Faster inference" hides several different jobs. A chat user cares about the first token. A streaming user notices gaps between tokens. A batch pipeline cares about total work completed. An agent making ten tool calls cares about the entire trajectory. Optimize the wrong number and the system can look faster in a benchmark while feeling slower in use.
 
 ## Split the workload first
@@ -34,4 +36,71 @@ Use an open-loop arrival process for latency tests, because fixed concurrency hi
 
 For a model split across GPUs, profile communication separately from computation. A larger tensor parallel group may cut matrix multiplication time while adding an all-reduce on every layer. Expert parallelism adds dispatch and combine traffic. At small batch sizes the communication can dominate. The neighboring [networking article](/parallel-kittens-ai-networking/) covers how to reason about those transfers and overlap them.
 
-The final output of a performance climb should be a small, reproducible record: workload, baseline, chosen configuration, quality check, latency distribution, cost, and the exact hardware. That record is more valuable than a lone tokens-per-second screenshot.
+## Put a budget on each phase
+
+For a request producing N output tokens, a useful accounting identity is:
+
+```text
+end-to-end latency = time to first token + sum of the remaining inter-token gaps
+mean TPOT = (completion time - first-token time) / (N - 1)
+```
+
+TPOT is undefined for a one-token response under this definition. Report such requests separately rather than silently dividing by zero. TTFT includes queueing and transport as well as prompt processing when measured from the client. A GPU-only prefill measurement cannot substitute for it.
+
+Consider an illustrative request with a 400 ms TTFT and 199 subsequent token gaps averaging 25 ms. Completion takes 5.375 seconds. Halving TTFT saves 200 ms; reducing each gap by 5 ms saves 995 ms. For a one-token classifier the priorities reverse. This arithmetic is why prompt length and output length belong in the benchmark definition.
+
+A mean gap also hides streaming stalls. A response can have a good average while pausing for a second in the middle. Record the gap distribution and the fraction of responses containing a gap above your chosen limit. Use client timestamps to include buffering in the API gateway and network stack.
+
+## Understand what each optimization actually saves
+
+PagedAttention addresses fragmented and duplicated KV-cache storage by mapping logical blocks to physical memory blocks. Its practical benefit is fitting more useful concurrent work into memory. It does not make every attention operation proportionally faster, and the original paper's throughput gains are comparisons against particular serving systems.[^paged]
+
+Prefix caching reuses the attention state of an identical preceding token sequence. It reduces repeated prefill work, not the work of generating every new token. Put genuinely shared instructions before request-specific content, but do not change task semantics merely to improve cache hits. A timestamp or random identifier near the start can destroy reuse for everything that follows. vLLM's documentation distinguishes the workloads that benefit from prefix caching from generation-heavy workloads that do not.[^prefix]
+
+Chunked prefill splits a long prompt into smaller scheduling units. This gives an engine opportunities to interleave work for requests already decoding. SARATHI develops this approach to combining prefill and decode work.[^sarathi] For your service, inspect both sides of the tradeoff: a smaller chunk may protect streaming latency while increasing the time needed to finish a large prompt. The scheduler's token budget is a workload-dependent choice.[^tuning]
+
+Speculative decoding lets a cheap draft propose several tokens and a target model verify them. Exact speculative sampling uses a correction procedure to preserve the target distribution; simply accepting plausible guesses is a different algorithm.[^speculation] Measure accepted tokens per verification pass alongside draft time. A draft that is inexpensive but usually rejected can make serving slower. Do not assume the largest draft acceptance rate gives the best latency if obtaining those guesses is costly.
+
+## Calculate the KV-cache budget
+
+For a conventional decoder with a full attention cache, an approximate storage model is:
+
+```text
+KV bytes = 2 × layers × cached tokens × KV heads × head dimension × bytes per element
+```
+
+The factor of two accounts for keys and values. Use KV heads, not query heads, for grouped-query attention. Sum over live sequences and add allocation overhead. Sliding-window, compressed-cache, and hybrid architectures require a different accounting model.
+
+For an illustrative 32-layer model with 8 KV heads, head dimension 128, and two-byte cache elements, each cached token needs 131,072 bytes, or 128 KiB. A sequence of 8,192 tokens therefore needs 1 GiB. Sixteen such sequences need about 16 GiB before weights, temporary buffers, and fragmentation. Quantizing weights does not automatically quantize that cache.
+
+This calculation helps distinguish an allocation problem from a compute problem. If the model fits at short context and fails at long context, replacing a matrix kernel may not help. If cache capacity limits the batch, reducing wasted allocation can increase throughput even without changing arithmetic speed.
+
+## Run a load test that can reveal overload
+
+An open-loop generator schedules arrivals independently of completions. A closed-loop generator maintains a fixed number of outstanding requests and waits for one to finish before replacing it. Both are useful. Closed-loop tests reveal throughput at a concurrency level; open-loop tests reveal what happens when demand continues arriving while the service slows.
+
+Use separate experiments for cold cache, warm shared prefix, mixed prompt lengths, and bursts. Preserve failed requests in the denominator. Otherwise a configuration that rejects half the difficult traffic may appear to have excellent p95 latency.
+
+Here is a hypothetical comparison at the same offered load, with a 700 ms TTFT limit:
+
+| Configuration | Successful requests/s | p95 TTFT | Requests meeting all limits/s |
+| ------------- | --------------------: | -------: | ----------------------------: |
+| A             |                    24 |   620 ms |                            23 |
+| B             |                    30 | 1,100 ms |                            18 |
+| C             |                    26 |   650 ms |                            25 |
+
+B wins a throughput leaderboard but loses the stated service objective. C is the best candidate under these invented measurements. It still needs a quality check and a cost comparison. Define goodput using all required limits together; meeting TTFT while missing completion deadlines is insufficient.
+
+Store per-request arrival, first-token, completion, token counts, cache status, and error fields. Retain an untouched evaluation set for choosing the final configuration. A sweep over hundreds of settings can overfit a small benchmark just as model selection can.
+
+## References
+
+[^paged]: Kwon et al., [Efficient Memory Management for Large Language Model Serving with PagedAttention](https://arxiv.org/abs/2309.06180), SOSP 2023. KV-cache allocation and serving experiments.
+
+[^prefix]: vLLM, [Automatic Prefix Caching](https://docs.vllm.ai/en/latest/features/automatic_prefix_caching/). Reuse conditions and limitations.
+
+[^sarathi]: Agrawal et al., [SARATHI: Efficient LLM Inference by Piggybacking Decodes with Chunked Prefills](https://arxiv.org/abs/2308.16369), 2023.
+
+[^tuning]: vLLM, [Optimization and Tuning](https://docs.vllm.ai/en/latest/configuration/optimization/). Scheduling and memory settings are version-dependent; record the version used.
+
+[^speculation]: Chen et al., [Accelerating Large Language Model Decoding with Speculative Sampling](https://arxiv.org/abs/2302.01318), 2023. Distribution-preserving verification and measured decoding results.

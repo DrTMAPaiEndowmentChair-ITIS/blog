@@ -7,6 +7,8 @@ description: 'Why multi GPU inference slows down at transfer boundaries, and wha
 topics: ['Multi-GPU', 'Networking', 'ParallelKittens']
 ---
 
+_Updated September 25, 2026 with technical examples and source references. Original publication date retained._
+
 A GPU can finish its matrix multiplication and still wait for the next layer. The missing value may be on another GPU. At that point, network topology, transfer size, and scheduling determine how much of the chip's compute you actually use.
 
 Inside a server, GPUs communicate over PCIe or a faster interconnect such as NVLink. Across servers they usually rely on a network adapter and a fabric such as InfiniBand or Ethernet with RDMA. These paths have different latency and bandwidth. A model split across devices creates communication at predictable places: tensor parallel layers exchange partial results, expert parallel models dispatch tokens to experts and combine their outputs, and sequence parallel work moves attention or activation shards.
@@ -31,4 +33,68 @@ First, draw the communication graph for one token and one prefill batch. Count b
 
 For multi-node inference, keep a separate network budget. RDMA can avoid extra host copies, but congestion, oversubscription, and uneven expert routing still add tail latency. Add per-hop transfer and queue timings to the trace. If a larger parallel group lowers matrix time by 20 ms but adds 30 ms of exposed communication, the model got slower.
 
-ParallelKittens is a good reminder that networking for AI is a kernel design problem as well as a switch and cable problem. The useful target is not maximum advertised bandwidth. It is fewer milliseconds during which expensive GPU compute waits for data.
+## Name the collective before choosing a network
+
+An all-reduce combines values across participants and gives every participant the reduced result. An all-gather assembles shards into a complete result on each participant. Reduce-scatter combines reduction with partitioned output. These operations have different outputs and communication patterns; NVIDIA's NCCL documentation specifies their semantics.[^collectives]
+
+Tensor-parallel layers often alternate partitioned matrix work with collectives. Expert routing is closer to exchanging variable amounts of token data among owners. A pipeline boundary transfers activations to the next stage. Calling all of these "GPU networking" conceals the information needed to optimize them.
+
+Start with a table for the actual execution plan:
+
+| Boundary              | Data that moves                       | Question to answer                            |
+| --------------------- | ------------------------------------- | --------------------------------------------- |
+| Tensor-parallel layer | Partial activations or reductions     | Does every token wait for the collective?     |
+| Expert dispatch       | Tokens and routing metadata           | Are a few destinations receiving most tokens? |
+| Expert combine        | Weighted expert outputs               | Can results be consumed incrementally?        |
+| Pipeline stage        | Activations between stages            | Is the next stage idle while waiting?         |
+| Distributed attention | Key/value or attention-related shards | Which data must arrive before a tile can run? |
+
+This is a diagnostic template, not a claim that all implementations use the same partitioning. Fill it from the runtime and trace. A model name alone does not identify its communication schedule.
+
+## Separate latency from bandwidth with a simple model
+
+Approximate a transfer as a fixed startup cost plus message bytes divided by effective bandwidth:
+
+```text
+transfer time ≈ startup latency + message bytes / effective bandwidth
+```
+
+Effective bandwidth must come from the path being tested. It can differ greatly from a link's advertised one-direction peak. Collective algorithms add stages and topology effects, so this equation is a starting model rather than a complete predictor.
+
+Take an illustrative 4 microsecond startup and 100 GB/s effective transfer rate. Moving 4 KiB contributes only about 0.041 microseconds of transmission time, so startup dominates. Moving 64 MiB contributes roughly 671 microseconds, so transfer volume dominates. Doubling bandwidth barely changes the first case but substantially changes the second. Fusing small messages attacks a different bottleneck from increasing link rate.
+
+Do not fuse blindly. If one message becomes ready much earlier, waiting for the rest adds latency. Similarly, a larger batch may improve network efficiency while violating the deadline of an interactive request. The right unit of optimization is the dependent computation that becomes runnable after the message arrives.
+
+## Overlap is a dependency and resource problem
+
+Suppose an illustrative stage takes 6 ms of compute and 4 ms of communication. Serial execution takes 10 ms. Perfect overlap would take 6 ms, giving a maximum 1.67x speedup for that stage. Real overlap may be worse because the transfer consumes memory bandwidth or execution resources also needed by compute.
+
+Now suppose that stage accounts for only 20 percent of total request time. Making it 1.67x faster changes normalized total time from 1 to approximately 0.92, an overall speedup of about 1.09x. A dramatic kernel result can be a modest application result. Always report which denominator a speedup uses.
+
+ParallelKittens explores how transfer mechanisms and scheduling choices affect compute/communication overlap, and packages that work into reusable kernel primitives.[^pk] The important engineering question is whether your operation has independent work available while data is moving. If the next calculation needs the whole reduction result, asynchronous launch alone cannot remove the dependency.
+
+A tiled implementation can sometimes start useful work after one tile arrives. It then needs correct ordering, buffer ownership, and synchronization. A receiver reading a tile before its producer has finished is a correctness bug that a throughput benchmark may miss. Validate boundary sizes, partial tiles, different ranks, and repeated execution before trusting the fast path.
+
+## Read a trace across all participants
+
+NVIDIA's Nsight Systems guidance distinguishes launch latency, CPU overhead, and GPU execution time.[^trace] Keep those distinctions when investigating a gap. A GPU waiting for a CPU launch is different from a launched kernel waiting on remote data.
+
+For a collective, align the timelines from every rank. If seven ranks enter early and one enters late, the long duration on the seven may reflect skew before the collective. Optimizing the network cannot fix the late rank's upstream work. Inspect data preparation, expert imbalance, competing processes, and a different kernel choice on that device.
+
+Repeat with small and large messages, low and high batch sizes, and representative model shapes. A microbenchmark that copies one contiguous buffer cannot establish the performance of a fragmented expert exchange. Include the packing and unpacking kernels, barriers, and launch overhead in the measured interval.
+
+Report both bytes transferred and elapsed time. For collectives, distinguish an algorithm's logical data volume from the actual traffic on individual links. Different bandwidth conventions can produce numbers that look contradictory while describing the same execution.
+
+## When a custom kernel is worth the maintenance
+
+Use the runtime's mature collective implementation as a baseline. A custom fused kernel is most attractive when a repeated operation occupies a substantial share of request time, its shapes are predictable, and the team can maintain correctness across supported hardware. It is less attractive when the workload changes often or the bottleneck is a queue outside the GPU.
+
+Keep the original implementation available as a reference. Compare outputs within the numerical tolerance appropriate to the operation, test for hangs under repeated runs, and retain end-to-end serving measurements. Faster communication should eventually appear as improved latency, capacity, or cost at the same quality. If it appears only in the isolated benchmark, the investigation is unfinished.
+
+## References
+
+[^pk]: Sul, Arora, Spector, and Ré, [ParallelKittens: Systematic and Practical Simplification of Multi-GPU AI Kernels](https://arxiv.org/abs/2511.13940), 2025. The reported 2.33x, 4.08x, and 1.22x maxima above come from this paper's tested workloads.
+
+[^collectives]: NVIDIA, [NCCL collective operations](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/collectives.html). Definitions of all-reduce, all-gather, reduce-scatter, and related operations.
+
+[^trace]: NVIDIA, [Understanding the Visualization of Overhead and Latency in Nsight Systems](https://developer.nvidia.com/blog/understanding-the-visualization-of-overhead-and-latency-in-nsight-systems/). Interpreting launch and execution timelines.

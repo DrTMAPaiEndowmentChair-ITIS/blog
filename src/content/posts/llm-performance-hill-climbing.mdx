@@ -7,6 +7,8 @@ description: 'A practical loop for using coding models to improve software laten
 topics: ['Performance', 'Coding agents', 'Benchmarking']
 ---
 
+_Updated September 25, 2026 with technical examples and source references. Original publication date retained._
+
 A coding model is unusually good at finding performance wins when it can run the program, inspect a profile, change one thing, and measure again. Anthropic's [account of making claude.ai faster](https://claude.dev/blog/how-we-made-claude-ai-faster/#anything-can-be-hill-climbed) makes the case through ordinary product work: identify a user journey, build a local measurement that tracks it, and keep lowering the number. The team's reported gains belong to its own app and setup. The reusable part is the loop.
 
 ## Choose the number carefully
@@ -42,4 +44,73 @@ Run the benchmark several times. Control caches, warmup, parallel load, and buil
 
 Keep changes small enough to review. A model can land a series of modest wins, but each should survive tests and a real user path. Add a regression threshold only after the metric has proved stable and correlated with elapsed time. If the metric flakes, fix or remove it.
 
-There is no universal "3x" recipe here. There is a reproducible method: turn a vague complaint into a measurable journey, let the model explore, and make every claimed win pass both the stopwatch and the behavior check.
+## Start with a contract the agent cannot quietly change
+
+A performance task should specify the user journey, representative input, start and end events, required behavior, and resource constraints. The contract is more important than the first optimization idea. If "open project" ends when a spinner appears, the benchmark rewards showing a spinner quickly rather than making the project usable.
+
+For example:
+
+```text
+Journey: open a project containing 10,000 records.
+Start: the user activates its link.
+End: the visible records are rendered and the search field accepts input.
+Behavior: preserve sorting, selection, keyboard navigation, and result counts.
+Objective: reduce p95 duration without increasing peak memory by more than 10%.
+Evidence: trace, benchmark samples, correctness results, and a reviewable diff.
+```
+
+These are example constraints, not results from this site. Keep the benchmark and its fixtures outside the agent's permitted optimization scope unless a reviewer explicitly accepts a correction. A model can otherwise improve a number by shortening the fixture, weakening the assertion, or moving the end marker earlier.
+
+Browser User Timing marks allow application-specific intervals rather than relying only on generic page-load metrics.[^timing] Put the end marker at the actual readiness condition. Scheduling a callback does not prove that a frame has painted, and receiving data does not prove that the interface can process input.
+
+## Use a profile to choose the first experiment
+
+Break elapsed time into work and waiting. CPU samples can identify a repeated parser, while a timeline may reveal sequential network calls or a blocking subprocess. A hot function is not automatically on the user journey's critical path. Conversely, waiting can dominate without producing many CPU samples.
+
+Brendan Gregg's USE method asks about utilization, saturation, and errors for system resources.[^use] Apply that distinction before asking for a rewrite. A saturated CPU needs a different intervention from an idle CPU waiting on storage. High memory use is different from allocation churn, and a low average can conceal a short burst that blocks input.
+
+An illustrative 500 ms operation might spend 300 ms parsing, 150 ms waiting for data, and 50 ms rendering. Making parsing twice as fast reduces the total to 350 ms, a 1.43x improvement. Even eliminating rendering completely can save only 50 ms. This simple upper-bound calculation helps reject elaborate ideas aimed at the wrong part of the path.
+
+Ask for a mechanism before accepting a change: "build an index once so each lookup avoids scanning all records" is testable. "Use a faster data structure" is too vague until it names the repeated operation, cost, and lifecycle.
+
+## Write the experiment log before running a search
+
+Keep one row per candidate, including failures:
+
+| Candidate       | Hypothesis                     | Correctness gate                  | Timing result                      | Decision                                |
+| --------------- | ------------------------------ | --------------------------------- | ---------------------------------- | --------------------------------------- |
+| Cached index    | Remove repeated linear scans   | Compare result IDs and order      | Record raw samples                 | Keep only if stale-data cases pass      |
+| Deferred parser | Move work off the opening path | Verify content before interaction | Measure both opening and first use | Reject if delay merely moves to typing  |
+| Larger batch    | Amortize fixed overhead        | Verify cancellation and errors    | Include tail latency               | Reject if interactive deadlines regress |
+
+Run baseline and candidate measurements in alternating order where practical. Otherwise thermal throttling, cache warming, or a background job can align with one version. Warm a JIT before a steady-state comparison, but retain a separate cold-start benchmark when startup matters to users.
+
+Save individual samples. A median alone cannot reveal a multimodal distribution. Do not delete slow runs without a recorded reason that applies equally to both versions. If a difference is comparable to run-to-run noise, gather more evidence or report it as inconclusive.
+
+Percentiles need enough observations to be meaningful. A p95 from twenty runs is determined by roughly the slowest one or two observations, depending on the estimator. Reporting that value to three decimal places does not create precision. Record sample count and use a stable workload before turning a percentile into a release gate.
+
+## Prevent a proxy from replacing the objective
+
+Instruction counts, allocation counts, DOM mutations, and database queries can be useful stable proxies. Their relationship to elapsed time must be demonstrated. Fewer instructions can still lose if the remaining work waits on memory; fewer queries can lose if one enormous query transfers much more data.
+
+Anthropic's September 23 account describes validating local performance metrics against user-visible latency and rejecting metrics that did not support that relationship.[^claude] The lesson is methodological. Its reported gains do not establish the result of a similar change in a different application.
+
+Use a second fixture that differs in size or shape from the optimization fixture. If a parser gets faster only for ASCII input, test multilingual and mixed-format input. If memoization wins, test edits that should invalidate the cache. If virtualization wins, test keyboard focus, search, and assistive technology access to the content users need.
+
+## Evaluate the system under load
+
+For services, the time saved by one request can be magnified when it reduces queueing. The reverse is also possible: a more expensive cache or a larger batch improves one benchmark but increases contention at peak traffic. Google's _The Tail at Scale_ explains why rare delays matter in large services.[^tail]
+
+Test representative arrival rates, not only a single request in an otherwise idle process. Keep error rates and cancellations visible. A server that rejects slow requests can appear faster unless the result includes those failures. For a UI, inspect the next action as well as the optimized action so deferred work cannot disappear from the accounting.
+
+After release, compare the same journey by build, device class, and cache state. If local gains do not appear in production, inspect the assumption that failed: a different bottleneck, an unrepresentative fixture, or another resource on the critical path. Keep a change because the evidence supports it, not because the agent spent many iterations producing it.
+
+## References
+
+[^claude]: Raymond Wang, Sam Attard, and Issac G., [How we made claude.ai 3x faster in two weeks](https://claude.dev/blog/how-we-made-claude-ai-faster/), September 23, 2026. This source was published after this post's original date and is discussed in the September 25 revision.
+
+[^timing]: MDN, [Performance.mark()](https://developer.mozilla.org/en-US/docs/Web/API/Performance/mark). Application-defined timing markers.
+
+[^use]: Brendan Gregg, [The USE Method](https://www.brendangregg.com/usemethod.html). Resource utilization, saturation, and errors.
+
+[^tail]: Jeffrey Dean and Luiz André Barroso, [The Tail at Scale](https://research.google/pubs/the-tail-at-scale/), Communications of the ACM, 2013. Tail latency in large services.

@@ -7,6 +7,8 @@ description: 'A concrete definition of frontier crossings, and where Dario Amode
 topics: ['AI frontier', 'Open models', 'AI policy']
 ---
 
+_Updated September 25, 2026 with technical examples and source references. Original publication date retained._
+
 "The frontier" is not one finish line. It can mean the best score on a benchmark, the best quality at a given cost, or the point where a model can complete a task people previously had to do. **Crossing the frontier** should name which boundary moved and what evidence shows it moved.
 
 A model beating an expert on a fixed exam crosses a benchmark threshold. An agent completing a real software change with tests and review crosses a different one. An open model matching a closed model on a useful workload crosses an access and cost boundary. None of these alone establishes general intelligence or safe autonomy.
@@ -25,4 +27,69 @@ A model beating an expert on a fixed exam crosses a benchmark threshold. An agen
 
 When someone says a system has crossed the frontier, ask for four things: the task, the comparison group, the success rate, and the cost of a failure. Add the time horizon for agents. A 90 percent score on short, isolated tasks is different from a 90 percent success rate over a week of tool use. Ask whether independent teams can reproduce the result and whether the model had access to the test data.
 
-These leaders differ on what to do next, but all four positions become clearer once the boundary is specified. The useful question is not "Have we crossed it?" It is "Which task became possible, for whom, at what reliability and cost, and what controls now need to change?"
+## A frontier is a set of tradeoffs
+
+In a two-dimensional quality/cost comparison, a system is dominated when another system is at least as good on both dimensions and strictly better on one. The remaining systems form a Pareto frontier. There can be several useful frontier models because users value cost, latency, privacy, and quality differently.
+
+Consider an invented document-extraction evaluation:
+
+| System | Correct documents | Cost per document | p95 latency |
+| ------ | ----------------: | ----------------: | ----------: |
+| A      |               94% |            1 unit |    1 second |
+| B      |               97% |           3 units |   2 seconds |
+| C      |               95% |           4 units |   3 seconds |
+| D      |               92% |         0.2 units | 0.4 seconds |
+
+B dominates C under these metrics. A, B, and D remain plausible choices. A new system matching B's quality at A's cost would move the measured frontier, even if it gained no new ability on a difficult reasoning benchmark. Conversely, a spectacular maximum score obtained with hundreds of attempts may not change the feasible choices for a one-second application.
+
+The comparison is only as meaningful as its task definition. "Correct document" must say whether every field is right, whether partial credit counts, and whether abstentions count as failures. Changing that definition can change which system is on the frontier without any model improving.
+
+## Separate capability, reliability, and deployment
+
+Capability asks whether the system can solve a task under specified conditions. Reliability asks how often it succeeds across relevant conditions. Deployment asks whether the whole application can use that capability safely and economically. These are connected but not interchangeable.
+
+A coding benchmark may supply a prepared repository, a precise issue, and an executable test suite. A deployed assistant may need to discover the right repository, interpret an ambiguous request, obtain access, preserve unrelated changes, and communicate the result. The model can improve on the first setting while the surrounding workflow remains the largest source of failure.
+
+HELM evaluates language models across multiple scenarios and metrics rather than reducing comparison to a single accuracy number.[^helm] The same principle applies to a local acceptance test. Include robustness to ordinary variations, calibration where confidence affects action, and resource use. Choose metrics because the application needs them, not because a leaderboard already reports them.
+
+A useful test manifest records the dataset version, model revision, prompt, available tools, sampling settings, retry policy, time budget, and evaluator. Otherwise a later result may reflect an improved tool or a larger search budget while being presented as a change in the underlying model.
+
+## Time horizon changes the meaning of success
+
+METR's long-task research relates agent performance to how long tasks take human professionals, at an explicitly chosen success probability.[^horizon] That is a way to measure task difficulty, not a stopwatch saying how long the AI itself ran. A 50-percent-success horizon also does not imply the agent can be trusted unattended for that duration in any workplace.
+
+A simple calculation illustrates the reliability problem. If a workflow required 50 independent steps, each succeeding with probability 0.99, the probability that every step succeeded would be about 0.605. At 0.999 per step it would be about 0.951. These are toy assumptions: real errors are correlated, steps have unequal difficulty, and recovery can repair failures. The point is that a high per-step rate alone does not establish high end-to-end reliability.
+
+Measure completed tasks, interventions, recovery quality, and irreversible mistakes. An agent that detects a bad tool result and recovers may be more useful than one that scores slightly better on isolated tool calls but never notices when it goes wrong. Longer evaluations must preserve the uncertainty and accumulated state that make long work difficult.
+
+## Read policy positions as proposals with mechanisms
+
+Amodei's essay proposes embedded external evaluators and coordination to slow capability growth when safeguards cannot keep pace.[^amodei] Altman and Pachocki's plan and OpenAI's governance framework describe their own coordination and assessment proposals.[^openai-plan] These are primary sources for what their authors advocate. They are not independent evidence that a particular forecast will occur or that a proposed institution will succeed.
+
+When comparing these proposals, ask who measures the trigger, what access evaluators receive, who can require a change, and what information becomes public. Two proposals can use the same word "safety" while assigning very different authority to companies, governments, and outside researchers.
+
+Huang's infrastructure view emphasizes the capacity needed to make AI useful across industries.[^nvidia] An access-focused view asks who can inspect, adapt, and deploy models. Hugging Face's open-model report supplies evidence about that ecosystem.[^open-models] Those questions are not mutually exclusive with safety evaluation. They identify different constraints on deployment.
+
+Open weights alone do not guarantee reproducibility. A team also needs a usable license, supported runtime, adequate hardware, evaluation data, and enough knowledge of the training or post-training process to understand important limitations. Conversely, a closed service may be easy to evaluate for one narrow application even when its training process remains opaque. State precisely which kind of access matters to the claim.
+
+## Turn a frontier claim into an adoption experiment
+
+Suppose a university wants an assistant to triage maintenance requests. A general reasoning score is supporting context, but the decision needs local evidence: can it recognize urgent failures, work in the languages people use, avoid exposing personal information, and route uncertain cases to staff?
+
+Create a held-out set with ordinary and difficult cases. Compare the proposed model with the existing process. Fix the amount of human review and the time budget. Track the cost of missed urgent cases separately from harmless routing errors. Evaluate a shadow deployment before letting predictions change real queues.
+
+If the new system lowers review workload while preserving the urgent-case standard, a meaningful operational boundary has moved. That conclusion is narrower than declaring general intelligence, but it is actionable and can be checked. The most useful frontier claim names the work that became possible and supplies the evidence needed to decide whether someone else can use it.
+
+## References
+
+[^helm]: Liang et al., [Holistic Evaluation of Language Models](https://arxiv.org/abs/2211.09110), 2022. Multi-scenario, multi-metric evaluation.
+
+[^horizon]: METR, [Measuring AI Ability to Complete Long Software Tasks](https://metr.org/blog/2025-03-19-measuring-ai-ability-to-complete-long-tasks/), March 19, 2025. Human task duration, success-probability thresholds, and methodological limitations.
+
+[^amodei]: Dario Amodei, [We Must Pace the Frontier](https://darioamodei.com/post/we-must-pace-the-frontier), September 2026. The author's policy argument.
+
+[^openai-plan]: Sam Altman and Jakub Pachocki, [Built to benefit everyone: our plan](https://openai.com/index/built-to-benefit-everyone-our-plan/), and OpenAI, [Frontier Governance Framework](https://openai.com/index/openai-frontier-governance-framework/). Proposals and governance commitments should be distinguished from measured outcomes.
+
+[^nvidia]: Jensen Huang, [AI Is a 5-Layer Cake](https://blogs.nvidia.com/blog/ai-5-layer-cake/), NVIDIA. Infrastructure-centered account of AI development.
+
+[^open-models]: Hugging Face, [State of Open Models: Summer 2026 Observations](https://huggingface.co/blog/state-of-open-models-summer-2026). Open-model ecosystem evidence.

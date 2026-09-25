@@ -7,6 +7,8 @@ description: 'Compare M3, M5, and M6 AI hardware without confusing the Neural En
 topics: ['MLX', 'Apple silicon', 'On-device AI']
 ---
 
+_Updated September 25, 2026 with technical examples and source references. Original publication date retained._
+
 Apple's chip diagrams now contain two similarly named things: the **Neural Engine**, a dedicated processor block, and **Neural Accelerators inside GPU cores**. They are separate. That distinction explains more about local model performance than a single "AI TOPS" number.
 
 [MLX](https://ml-explore.github.io/mlx/) is Apple's open array framework for Apple silicon. It supports CPU and GPU operations over unified memory, automatic differentiation, and model training and inference. MLX LM adds common language-model workflows. Apple's [M5 MLX measurements](https://machinelearning.apple.com/research/exploring-llms-mlx-m5) show how MLX uses Metal 4 Tensor Operations to reach the GPU's Neural Accelerators. This is GPU acceleration; it does not mean ordinary MLX inference runs on the separate Neural Engine.
@@ -37,4 +39,78 @@ M6 raises base-chip bandwidth to 170 GB/s, roughly 11 percent over M5's 153 GB/s
 
 Measure fit first: weights, KV cache, and the rest of the application must fit in unified memory without swapping. Then measure TTFT and steady token rate separately, with the same model, quantization, prompt, output length, and MLX/macOS versions. Apple's M5 accelerator path requires macOS 26.2 or later according to its research note. For app deployment on Apple's dedicated Neural Engine, evaluate Core ML or Core AI separately from MLX.
 
-The chip to buy depends on the workload. A 32 GB M6 may start a small model quickly; a larger M5 Max or Ultra can run a model the M6 cannot hold. Memory capacity often decides the result before peak compute does.
+## Unified memory removes copies, not all memory costs
+
+MLX arrays can be used by CPU and GPU operations without explicitly transferring them between separate host and device allocations. The unified-memory model simplifies mixed workloads.[^unified] It does not make every byte free to access, remove synchronization, or allow a model to exceed physical memory without consequences.
+
+Distinguish three limits: capacity determines whether the working set fits; bandwidth determines how quickly bytes can be supplied; compute throughput determines how quickly operations execute once their inputs are available. Different phases of the same request can hit different limits.
+
+A dense model with 8 billion parameters needs about 16 GB for raw two-byte weights or 4 GB for idealized four-bit weights. These are decimal lower-bound estimates, not expected application footprints. Quantization scales, some higher-precision tensors, temporary arrays, the KV cache, runtime allocations, and the operating system all need additional space. A checkpoint advertised as "4-bit" does not imply that every allocation uses half a byte per element.
+
+Memory also matters for mixture-of-experts models. Active parameter count describes the experts selected for a token, while total parameter count determines much of the resident weight storage. A 30B model with a few billion active parameters should not be sized as if it contained only those active parameters. Measure actual peak memory after loading and processing representative prompts.
+
+## Estimate a decode ceiling before measuring it
+
+For a simplified dense-model decode step at batch size one, suppose every generated token requires reading 4 GB of weights from memory. At a hypothetical sustained bandwidth of 120 GB/s, those reads alone take at least about 33 ms, corresponding to roughly 30 tokens/s. At 150 GB/s, the same calculation gives 27 ms and 37.5 tokens/s.
+
+These are illustrative bandwidth ceilings, not measurements of a named Mac. Real execution adds attention-cache traffic, dequantization, synchronization, and imperfect utilization. Some weights may be reused from cache, while batching and sparse expert activation change the arithmetic. The value of the estimate is identifying what would have to be true for a claimed token rate.
+
+A useful distinction follows. Faster matrix hardware can strongly improve prompt processing while leaving single-stream decoding closer to a bandwidth limit. Larger batches reuse weight reads across more token positions and can shift that balance. Always specify whether "tokens/s" means one person's stream or the sum across concurrent requests.
+
+Apple's M5 report separately measures prompt-related TTFT and generation on fixed model/prompt combinations.[^m5-study] Treat that separation as part of the result. The M6 and M5 Ultra specifications describe different capacity and bandwidth classes, but they are not a substitute for a matched application benchmark.[^m6-spec]
+
+## Make an MLX benchmark execute the work
+
+MLX uses lazy evaluation: constructing an expression does not necessarily execute all of its computation immediately. Its documentation explains how evaluation is triggered and why this matters for timing.[^lazy] A benchmark that times graph construction while leaving execution until later can report an impressive but irrelevant number.
+
+For an array-level experiment, separate expression construction from materialization, then state which interval you measured. For a language model, use the runtime's generation measurements and cross-check client-observed latency. Include model loading only in a cold-start experiment. Report it separately when measuring an already-running service.
+
+MLX LM provides generation and quantization workflows, with model loading through supported repositories.[^mlx-lm] An isolated environment can be prepared with:
+
+```sh
+uv venv .venv
+uv pip install --python .venv/bin/python mlx-lm
+```
+
+Validate the runtime imports and save the installed versions:
+
+```sh
+.venv/bin/python -c 'import mlx.core; import mlx_lm; print("MLX imports succeeded")'
+uv pip freeze --python .venv/bin/python > requirements-benchmark.txt
+```
+
+Record the model repository and immutable revision separately from package versions. Installing the latest package once is acceptable for exploration; comparing machines using unspecified moving versions is not a reproducible experiment. Use the package's version-matched help for generation flags rather than copying an old command line uncritically.
+
+## Use a small experiment matrix
+
+A practical comparison should vary workload shape while keeping model weights, tokenizer, quantization, and sampling fixed:
+
+| Experiment          | Input and output shape                      | What it reveals                          |
+| ------------------- | ------------------------------------------- | ---------------------------------------- |
+| Cold launch         | Unloaded model, short prompt                | Storage, loading, and first-run overhead |
+| Short chat          | Warm model, short prompt, 256 output tokens | Typical interactive decode               |
+| Document question   | Long prompt, short answer                   | Prefill and long-context memory          |
+| Repeated prefix     | Same long prefix, different suffixes        | Cache reuse rather than raw chip speed   |
+| Concurrent requests | Several independent sequences               | Batching, contention, and tail latency   |
+
+Keep cached and uncached results separate. Changing the prompt without clearing or accounting for a prefix cache can make a second run appear to prove a hardware improvement. Record whether the machine is on battery, its power mode, and whether another application is using the GPU. Repeat sustained workloads long enough to notice thermal behavior.
+
+For each cell, save TTFT, total duration, output count, peak memory, and a quality result. If sampling produces a different number of tokens, completion time alone becomes difficult to compare. Fixed-length generation can help isolate throughput, while a separate realistic test should retain natural stopping behavior.
+
+## Choose the execution path by the model and application
+
+MLX is useful when you want Python-level experimentation, supported model implementations, and direct control over generation or fine-tuning. Core ML is a separate deployment framework, and hardware placement depends on model conversion, supported operations, and runtime decisions. A chip having a Neural Engine is insufficient evidence that a particular MLX program uses it.
+
+For an application, begin with the exact task and supported model. If a compact model meets quality targets, test it on the machine already available. If it does not fit, additional GPU arithmetic cannot solve the capacity problem. If it fits but TTFT is poor, inspect prefill; if streaming is slow, inspect decode and memory traffic. This gives a more defensible comparison than ranking machines by their newest chip name.
+
+## References
+
+[^unified]: MLX documentation, [Unified Memory](https://ml-explore.github.io/mlx/build/html/usage/unified_memory.html). CPU/GPU array sharing.
+
+[^lazy]: MLX documentation, [Lazy Evaluation](https://ml-explore.github.io/mlx/build/html/usage/lazy_evaluation.html). Evaluation behavior and timing implications.
+
+[^mlx-lm]: Apple ML Research, [MLX LM repository](https://github.com/ml-explore/mlx-lm). Installation, supported workflows, generation, and quantization.
+
+[^m5-study]: Apple Machine Learning Research, [Exploring LLMs with MLX and the Neural Accelerators in the M5 GPU](https://machinelearning.apple.com/research/exploring-llms-mlx-m5). Hardware, models, prompt lengths, and measured results.
+
+[^m6-spec]: Apple, [Apple introduces M6 and M5 Ultra](https://www.apple.com/newsroom/2026/08/apple-introduces-m6-and-m5-ultra-for-a-big-leap-in-performance-and-ai-compute/), August 25, 2026. Vendor hardware specifications, not an independent benchmark.
