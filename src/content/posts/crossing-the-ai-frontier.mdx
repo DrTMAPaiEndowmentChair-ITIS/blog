@@ -1,37 +1,21 @@
 ---
-title: 'What does crossing the AI frontier mean?'
+title: 'The AI Frontier: Capability, Efficiency, and Access'
 pubDate: 2026-09-23
 author: 'Aadit Agrawal'
 category: 'Models & Training'
-description: 'A concrete definition of frontier crossings, and where Dario Amodei, Sam Altman, Jensen Huang, and Clément Delangue differ.'
+description: 'Examine how capability, efficiency, reliability, and access shape the AI frontier and the different views of its development.'
 topics: ['AI frontier', 'Open models', 'AI policy']
 ---
 
-_Updated September 25, 2026 with technical examples and source references. Original publication date retained._
+The AI frontier describes the best capabilities available under a set of constraints. Those constraints can be cost, latency, hardware, access, or the reliability required to complete a task. An improvement moves the frontier when it makes a previously unavailable combination possible: a more capable model at the same cost, a useful model on smaller hardware, or an agent that can complete a longer piece of work.
 
-"The frontier" is not one finish line. It can mean the best score on a benchmark, the best quality at a given cost, or the point where a model can complete a task people previously had to do. **Crossing the frontier** should name which boundary moved and what evidence shows it moved.
+This gives the term several related meanings. Benchmark progress measures capability on defined tasks. Efficiency progress changes the resources needed to obtain a result. Deployment progress makes the capability available in a working system. The distinction explains why different accounts of the frontier emphasize different kinds of progress.
 
-A model beating an expert on a fixed exam crosses a benchmark threshold. An agent completing a real software change with tests and review crosses a different one. An open model matching a closed model on a useful workload crosses an access and cost boundary. None of these alone establishes general intelligence or safe autonomy.
+## The quality-cost frontier
 
-## Four views of the crossing
+In a quality-cost comparison, a system is dominated when another is at least as good on both dimensions and strictly better on one. The remaining systems form a Pareto frontier. Several systems can belong to it because a gain in quality may require more time or compute.
 
-[Dario Amodei's September 2026 essay](https://darioamodei.com/post/we-must-pace-the-frontier) argues that AI's ability to help build later AI systems may be accelerating faster than risk controls. He proposes embedded outside evaluators, coordination among democratic-country labs, and eventually international coordination. His preferred trigger is capability paired with demonstrated safety: if a system crosses a specified capability threshold, it should pass corresponding audits and evaluations before further deployment or development. His essay is an argument and forecast, not evidence that every projected incident will occur.
-
-[Sam Altman and Jakub Pachocki's June 2026 plan](https://openai.com/index/built-to-benefit-everyone-our-plan/) calls for an international body that could coordinate a slowdown of frontier development when safety and social resilience fall behind. OpenAI's [frontier governance framework](https://openai.com/index/openai-frontier-governance-framework/) describes its risk assessments, outside input, and incident response. That is a governance proposal, not a published commitment to a fixed rate of model improvement. The overlap with Amodei is the need for stronger measurement and coordination; the proposed mechanisms differ in detail.
-
-[Jensen Huang](https://blogs.nvidia.com/blog/ai-5-layer-cake/) treats the frontier as an industrial and compute problem. He argues that open models, chips, infrastructure, and applications develop together, and that open models reaching frontier quality let more companies and countries build with AI. At GTC 2026 he said the future includes proprietary **and** open models, according to [NVIDIA's account](https://blogs.nvidia.com/blog/ai-future-open-and-proprietary/). His emphasis is diffusion and capacity, not a proposed pause.
-
-[Clément Delangue](https://huggingface.co/blog/clem/opensourceairobotics) stresses who can inspect, adapt, and run models, including in robotics. Hugging Face's [summer 2026 open-model report](https://huggingface.co/blog/state-of-open-models-summer-2026) shows that open releases are moving at the high end, while downloads remain concentrated in a small fraction of repositories. His open-source position argues that frontier access should extend beyond a few API providers. This is an access and accountability claim, not proof that every open release is equally safe or useful.
-
-## A testable way to use the phrase
-
-When someone says a system has crossed the frontier, ask for four things: the task, the comparison group, the success rate, and the cost of a failure. Add the time horizon for agents. A 90 percent score on short, isolated tasks is different from a 90 percent success rate over a week of tool use. Ask whether independent teams can reproduce the result and whether the model had access to the test data.
-
-## A frontier is a set of tradeoffs
-
-In a two-dimensional quality/cost comparison, a system is dominated when another system is at least as good on both dimensions and strictly better on one. The remaining systems form a Pareto frontier. There can be several useful frontier models because users value cost, latency, privacy, and quality differently.
-
-Consider an invented document-extraction evaluation:
+Consider an illustrative document-extraction workload:
 
 | System | Correct documents | Cost per document | p95 latency |
 | ------ | ----------------: | ----------------: | ----------: |
@@ -40,45 +24,79 @@ Consider an invented document-extraction evaluation:
 | C      |               95% |           4 units |   3 seconds |
 | D      |               92% |         0.2 units | 0.4 seconds |
 
-B dominates C under these metrics. A, B, and D remain plausible choices. A new system matching B's quality at A's cost would move the measured frontier, even if it gained no new ability on a difficult reasoning benchmark. Conversely, a spectacular maximum score obtained with hundreds of attempts may not change the feasible choices for a one-second application.
+B dominates C under these measurements. A, B, and D remain useful at different operating points. A new system matching B's quality at A's cost would expand the set of choices even without introducing a new category of task.
 
-The comparison is only as meaningful as its task definition. "Correct document" must say whether every field is right, whether partial credit counts, and whether abstentions count as failures. Changing that definition can change which system is on the frontier without any model improving.
+The definition of correctness determines the comparison. Requiring every field in a document to be correct is stricter than averaging field-level accuracy. Abstentions and human review also change the cost of a completed result. A frontier is therefore attached to a task and measurement procedure, rather than to a model name alone.
 
-## Separate capability, reliability, and deployment
+Adding privacy, memory, or hardware requirements introduces more dimensions. A local model can occupy a useful point even if a hosted system has higher maximum quality, because local execution satisfies a constraint that the hosted option does not.
 
-Capability asks whether the system can solve a task under specified conditions. Reliability asks how often it succeeds across relevant conditions. Deployment asks whether the whole application can use that capability safely and economically. These are connected but not interchangeable.
+## Capability and usable reliability
 
-A coding benchmark may supply a prepared repository, a precise issue, and an executable test suite. A deployed assistant may need to discover the right repository, interpret an ambiguous request, obtain access, preserve unrelated changes, and communicate the result. The model can improve on the first setting while the surrounding workflow remains the largest source of failure.
+A capability result establishes that a system can perform a task under specified conditions. Reliability describes how consistently it succeeds across the conditions that matter to the application. Deployment combines that behavior with tools, data access, recovery, and an operating budget.
 
-HELM evaluates language models across multiple scenarios and metrics rather than reducing comparison to a single accuracy number.[^helm] The same principle applies to a local acceptance test. Include robustness to ordinary variations, calibration where confidence affects action, and resource use. Choose metrics because the application needs them, not because a leaderboard already reports them.
+A coding benchmark may provide a prepared repository, a precise issue, and an executable test suite. A deployed coding agent may also need to identify the repository, interpret an incomplete request, preserve unrelated changes, and verify the resulting application. The model contributes to all of this, but the surrounding execution system determines which capabilities become usable.
 
-A useful test manifest records the dataset version, model revision, prompt, available tools, sampling settings, retry policy, time budget, and evaluator. Otherwise a later result may reflect an improved tool or a larger search budget while being presented as a change in the underlying model.
+HELM evaluates models across multiple scenarios and dimensions, including properties beyond accuracy.[^helm] This supports a broader account of improvement: calibration matters when confidence determines an action, robustness matters when inputs vary, and efficiency matters when the application must serve many requests.
 
-## Time horizon changes the meaning of success
+A reproducible comparison identifies the model revision, prompt, tools, retry policy, time budget, and evaluator. Improvements in any of those can move the system-level frontier. Recording them separates a model improvement from an improvement in the way the model is used.
 
-METR's long-task research relates agent performance to how long tasks take human professionals, at an explicitly chosen success probability.[^horizon] That is a way to measure task difficulty, not a stopwatch saying how long the AI itself ran. A 50-percent-success horizon also does not imply the agent can be trusted unattended for that duration in any workplace.
+## Task duration as a capability measure
 
-A simple calculation illustrates the reliability problem. If a workflow required 50 independent steps, each succeeding with probability 0.99, the probability that every step succeeded would be about 0.605. At 0.999 per step it would be about 0.951. These are toy assumptions: real errors are correlated, steps have unequal difficulty, and recovery can repair failures. The point is that a high per-step rate alone does not establish high end-to-end reliability.
+Longer tasks introduce state, dependencies, and opportunities for recovery. METR's work measures agent performance against task duration as experienced by human professionals, at a specified success probability.[^horizon] The human duration provides a measure of task difficulty; it is distinct from the time the AI spends executing it.
 
-Measure completed tasks, interventions, recovery quality, and irreversible mistakes. An agent that detects a bad tool result and recovers may be more useful than one that scores slightly better on isolated tool calls but never notices when it goes wrong. Longer evaluations must preserve the uncertainty and accumulated state that make long work difficult.
+This makes a capability claim more specific. A 50-percent-success horizon and an 80-percent-success horizon describe different levels of reliability on the same task distribution. Their relationship is useful for understanding how performance changes as work becomes longer.
 
-## Read policy positions as proposals with mechanisms
+A simple model illustrates the compounding effect. If a workflow required 50 independent steps and each succeeded with probability 0.99, the probability that every step succeeded would be about 0.605. At 0.999 per step it would be about 0.951.
 
-Amodei's essay proposes embedded external evaluators and coordination to slow capability growth when safeguards cannot keep pace.[^amodei] Altman and Pachocki's plan and OpenAI's governance framework describe their own coordination and assessment proposals.[^openai-plan] These are primary sources for what their authors advocate. They are not independent evidence that a particular forecast will occur or that a proposed institution will succeed.
+Real workflows have correlated errors, unequal step difficulty, and recovery, so the calculation is a simplified example. Its significance is that local competence and completed-task reliability are different quantities. An agent that detects and repairs a failed tool call can improve the second without changing the first.
 
-When comparing these proposals, ask who measures the trigger, what access evaluators receive, who can require a change, and what information becomes public. Two proposals can use the same word "safety" while assigning very different authority to companies, governments, and outside researchers.
+Long-task evaluation therefore includes completed artifacts, interventions, recovery behavior, and the state retained between steps. These measurements connect progress in the model to the amount of work the system can reliably carry forward.
 
-Huang's infrastructure view emphasizes the capacity needed to make AI useful across industries.[^nvidia] An access-focused view asks who can inspect, adapt, and deploy models. Hugging Face's open-model report supplies evidence about that ecosystem.[^open-models] Those questions are not mutually exclusive with safety evaluation. They identify different constraints on deployment.
+## Amodei and the rate of capability growth
 
-Open weights alone do not guarantee reproducibility. A team also needs a usable license, supported runtime, adequate hardware, evaluation data, and enough knowledge of the training or post-training process to understand important limitations. Conversely, a closed service may be easy to evaluate for one narrow application even when its training process remains opaque. State precisely which kind of access matters to the claim.
+Dario Amodei's September 2026 essay treats the frontier as a rate-of-progress problem. His concern is that increasingly capable AI can accelerate subsequent AI development faster than alignment and operational safeguards improve. He proposes embedded external evaluators, coordination among companies in democratic countries, and broader international coordination.[^amodei]
 
-## Turn a frontier claim into an adoption experiment
+The embedded-evaluator proposal gives the argument an operational component. Ongoing access to development and evaluation processes would allow outside teams to examine adherence to commitments and report findings. Coordination would then have a source of evidence beyond each company's own account.
 
-Suppose a university wants an assistant to triage maintenance requests. A general reasoning score is supporting context, but the decision needs local evidence: can it recognize urgent failures, work in the languages people use, avoid exposing personal information, and route uncertain cases to staff?
+This position connects capability advancement to the time available for evaluation, alignment, and institutional response. The relevant boundary is the pace at which systems gain consequential abilities relative to the mechanisms used to understand and manage them.
 
-Create a held-out set with ordinary and difficult cases. Compare the proposed model with the existing process. Fix the amount of human review and the time budget. Track the cost of missed urgent cases separately from harmless routing errors. Evaluate a shadow deployment before letting predictions change real queues.
+## OpenAI and coordination around deployment
 
-If the new system lowers review workload while preserving the urgent-case standard, a meaningful operational boundary has moved. That conclusion is narrower than declaring general intelligence, but it is actionable and can be checked. The most useful frontier claim names the work that became possible and supplies the evidence needed to decide whether someone else can use it.
+Sam Altman and Jakub Pachocki's June 2026 plan also addresses coordination, including a proposed international body that could respond when safety and social resilience fall behind frontier development. OpenAI's Frontier Governance Framework describes risk assessment, outside input, and incident response.[^openai-plan]
+
+The emphasis is on how decisions about powerful systems are made and which institutions participate. Assessments and response procedures connect a capability result to a deployment decision. A model's measured ability becomes one input to a broader process involving safeguards and the conditions of use.
+
+These proposals overlap with Amodei's concern about the relationship between capability and preparedness, while differing in their mechanisms. The comparison turns on evaluator access, decision authority, and the information available to external participants. The essays and frameworks are primary sources for the positions their authors advocate.
+
+## Huang and the infrastructure frontier
+
+Jensen Huang's five-layer account of AI places models within a larger system of energy, chips, infrastructure, and applications.[^nvidia] In this view, the frontier moves through the capacity to train, serve, and apply increasingly capable systems.
+
+NVIDIA's [account of open and proprietary AI](https://blogs.nvidia.com/blog/ai-future-open-and-proprietary/) presents both as parts of that development. Open models broaden the set of organizations that can adapt and deploy AI, while proprietary systems continue to contribute capabilities and products.
+
+The infrastructure view explains a different constraint on progress. A capability that requires unavailable compute or uneconomic serving costs has limited reach. Better accelerators, networking, runtimes, and model efficiency can make the same capability useful at a much larger scale.
+
+This is closely related to the quality-cost frontier. Reducing the resources required for an accepted result expands the feasible set of applications, even when the maximum benchmark score is unchanged.
+
+## Delangue and access to the frontier
+
+Clément Delangue's [account of open-source AI robotics](https://huggingface.co/blog/clem/opensourceairobotics) describes openness across models, datasets, and hardware. The practical effect is that more participants can inspect, modify, and build on the components of a system.
+
+Hugging Face's summer 2026 open-model report adds evidence about how that ecosystem is used. Its observations distinguish attention around new releases from download activity concentrated in established models.[^open-models] A model can attract interest as a frontier release while smaller, older models continue to support much of the deployed work.
+
+Access therefore has several layers. Weights allow local execution and adaptation. A suitable license permits the intended use. Runtime support and hardware make execution practical. Data and methodological detail help other teams understand and reproduce the result.
+
+These layers determine how far a capability spreads. An open model that fits existing machines can change who is able to build an application, while a larger model may primarily change what the best-resourced teams can attempt.
+
+## From a general capability to a local application
+
+A university maintenance assistant illustrates how the different frontiers meet. The model must recognize urgent failures, understand the languages used in requests, and route uncertain cases to staff. The application also needs data access, a review process, and enough serving capacity to respond within its deadline.
+
+A held-out set of ordinary and difficult cases measures the capability relevant to that setting. Fixing the review budget and response-time target makes the comparison operational. Missed urgent cases and harmless routing errors have different consequences, so their rates remain separate in the result.
+
+A shadow deployment can measure predictions before they affect real queues. If the system reduces review work while preserving the required handling of urgent cases, it has moved an operational boundary. Better inference efficiency may make that result affordable; local deployment may make its data handling acceptable; recovery may make it reliable across longer workflows.
+
+This is how frontier progress becomes usable. Capability, efficiency, access, and operating reliability each remove a different constraint. Describing which constraint changed makes the result understandable to the next team trying to build with it.
 
 ## References
 
@@ -88,7 +106,7 @@ If the new system lowers review workload while preserving the urgent-case standa
 
 [^amodei]: Dario Amodei, [We Must Pace the Frontier](https://darioamodei.com/post/we-must-pace-the-frontier), September 2026. The author's policy argument.
 
-[^openai-plan]: Sam Altman and Jakub Pachocki, [Built to benefit everyone: our plan](https://openai.com/index/built-to-benefit-everyone-our-plan/), and OpenAI, [Frontier Governance Framework](https://openai.com/index/openai-frontier-governance-framework/). Proposals and governance commitments should be distinguished from measured outcomes.
+[^openai-plan]: Sam Altman and Jakub Pachocki, [Built to benefit everyone: our plan](https://openai.com/index/built-to-benefit-everyone-our-plan/), and OpenAI, [Frontier Governance Framework](https://openai.com/index/openai-frontier-governance-framework/). Coordination proposals and governance commitments.
 
 [^nvidia]: Jensen Huang, [AI Is a 5-Layer Cake](https://blogs.nvidia.com/blog/ai-5-layer-cake/), NVIDIA. Infrastructure-centered account of AI development.
 

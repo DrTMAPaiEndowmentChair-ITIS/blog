@@ -1,123 +1,132 @@
 ---
-title: 'Jev and the case for System One models'
+title: 'Jev and System One Models: Typed Decisions for Software'
 pubDate: 2026-09-19
 author: 'Aadit Agrawal'
 category: 'Models & Training'
-description: 'Why a model that returns typed decisions and probabilities can be more useful than a chat model inside software.'
+description: 'Explain how typed decisions, calibrated probabilities, and application policies compose into a System One workflow.'
 topics: ['Jev', 'System One', 'Decision models']
 ---
 
-_Updated September 25, 2026 with technical examples and source references. Original publication date retained._
+Many uses of language models inside software end in a small decision: selecting a queue, assigning a score, deciding whether to call a tool, or estimating whether a case needs review. The output space is known in advance. What the application needs from the model is a judgment over that space.
 
-A support ticket arrives. Software needs to choose a queue, estimate urgency, and decide whether a person should review it. A language model can write an excellent paragraph about the ticket. The application needs three values it can act on.
+Jev, released by TypeSafe in early access on September 15, 2026, makes this the model interface. Application state and typed questions go in; values and probabilities come back. TypeSafe calls this a System One model, borrowing the distinction between fast judgment and extended deliberation to describe the kind of work it is optimized for.[^launch]
 
-[TypeSafe's Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), released in early access on September 15, 2026, is built for that second job. TypeSafe calls it a **System One model**. The name borrows Daniel Kahneman's distinction between fast, intuitive System 1 thinking and slower deliberation. It describes an interface and optimization target, not a claim that the model thinks like a person.
+This changes how a model fits into a program. A decision can be composed with thresholds, rules, and downstream functions directly, while generation remains available for the parts of the workflow that need language.
 
-## State in, decisions out
+## State, questions, and return types
 
-A System One request supplies application state and questions with bounded answer types. A question might ask for a choice among known queues, a score between 0 and 1, or the probability of a yes/no outcome. Jev returns values and probabilities directly. It does not write a rationale or draft a reply.
+A request contains a description of the current state and one or more questions about it. The question defines the answer space. TypeSafe exposes three question types:[^interface]
+
+| Type   | Operation                            | Returned information                  |
+| ------ | ------------------------------------ | ------------------------------------- |
+| Choice | Select among supplied options        | Choice, probabilities, and confidence |
+| Score  | Evaluate against a rubric            | Score, probabilities, and confidence  |
+| Noul   | Estimate whether a statement is true | A value between zero and one          |
+
+The distinction matters to the caller. A queue selection is categorical. A score depends on the scale and rubric. A probability describes a specified event. These values support different operations even when each can be represented by a number.
+
+A support workflow might be described as follows. This is a conceptual request, with the exact API representation defined in the documentation.
 
 ```text
-State: Customer reports a failed payment and a duplicate charge.
+State:
+    Customer reports a failed payment and a duplicate charge.
+    Account history and the relevant support policy are attached.
+
 Questions:
-  route: choose [billing, fraud, technical]
-  urgent: probability of yes
-  refund_risk: score from 0 to 1
+    route: choose [billing, fraud, technical]
+    urgent: probability that the ticket requires a response within one hour
+    refund_risk: score against the supplied refund-risk rubric
 ```
 
-The code can route the case, ask for review if uncertainty is high, and then call a text model to write the customer response. TypeSafe calls the yes/no probability primitive `noul`. Its [documentation](https://docs.typesafe.ai/) defines the actual request and response shapes; the sketch above illustrates the idea rather than a copyable API call.
+The application can send the ticket to billing, raise its priority, and request a human review independently. A generative model can then draft the response using those decisions and the same underlying evidence. Routing and writing have separate outputs and can be improved separately.
 
-The benefit is less work between model output and program action. An autoregressive LLM generates tokens that must form valid JSON, pass schema validation, and contain a sensible decision. Jev's answer is constrained to the declared type. That eliminates malformed output; it does **not** eliminate wrong judgments. A perfectly valid 0.92 can still be poorly calibrated or based on missing context.
+## Parallel decisions within a request
 
-## Where speed and probability matter
+TypeSafe describes the questions in a request as evaluated in parallel against the same state. Its launch reports end-to-end service latency of 70 to 500 ms and a training method called Reinforcement Learning for Calibrated Decisions.[^launch] The intended workload is a collection of bounded judgments that would otherwise be expressed through generated text.
 
-TypeSafe says Jev answers multiple questions in parallel and reports 70 to 500 ms end-to-end latency on its service. Its published price and large speedup claims are [vendor measurements](https://typesafe.ai/blog/introducing-system-one-models-and-jev), not a guarantee for another workload or region. The company also notes that its workflow evaluation compares against reference probabilities from other models rather than independent ground truth.
+This is useful for decisions on a frequently executed path. A tool router runs before the selected tool. A moderation decision runs before content is accepted. A retrieval filter runs before a larger model reads the remaining candidates. Latency at these boundaries is paid repeatedly, so reducing the work between state and decision can improve the whole interaction.
 
-Even without accepting a headline speedup, the design has clear uses. A router invoked before every tool call cannot afford a long generated explanation. A moderation gate needs an explicit probability so the application can set different thresholds for blocking, review, and logging. A search system can score hundreds of candidates before a larger model reads the best few.
+Parallel evaluation also makes decomposition useful. A support policy may depend on urgency, customer status, and the likelihood of a duplicate charge. Each can be a separate question, with application code combining the results. A policy change can then alter the combination without changing the definition of every individual judgment.
 
-Calibrate these probabilities on your own data. If decisions labeled 0.8 are right only half the time, the numeric output is no help. Evaluate by segment, too: language, customer type, ticket length, and rare but costly cases. Then compare Jev with a simple classifier, rules, and a small LLM with structured output. The cheapest correct option wins.
+The joint probability still requires care. Knowing the probability of "urgent" and the probability of "billing" does not determine the probability of "urgent and billing." Multiplying the two assumes independence. Where the joint event drives the action, it needs an explicit definition and evaluation.
 
-## A useful division of labor
+## Type safety, accuracy, and calibration
 
-Use a bounded decision model when the output space is known and many similar judgments must be made. Use a generative model when the task requires explanation, writing, code, or open-ended synthesis. Keep deterministic rules for decisions that the business can specify exactly. The most interesting system is often a pipeline: rules handle the obvious cases, a System One model handles ambiguous branches, and a larger model or person handles cases where the cost of error is high.
+Three properties determine whether a returned decision is useful.
 
-## Separate three guarantees that sound similar
+**Type safety** means the value belongs to the declared output space. A Choice answer selects from the available options. A numeric answer satisfies its representation constraints. The application receives a value it can process.
 
-A typed output guarantee answers whether the response belongs to the declared output space. Accuracy answers whether the decision is right. Calibration answers whether predicted probabilities agree with observed frequencies over a relevant population. These are different properties. A classifier that always returns a valid Boolean can still be wrong on every example.
+**Accuracy** concerns the judgment itself. A valid queue name may still be the wrong destination for the ticket.
 
-TypeSafe's launch describes typed outputs and a training approach called Reinforcement Learning for Calibrated Decisions. Those are the vendor's claims about its design, not an independent audit of your workload.[^launch] The developer documentation explains the intended state-and-questions interface.[^interface] The evaluation you build around that interface should test the properties the application needs.
+**Calibration** concerns the relationship between probabilities and observed outcomes. Among cases assigned probability 0.8, the event should occur about 80 percent of the time over the relevant population. Calibration research treats this separately from classification accuracy.[^calibration]
 
-The documented question types make that interface more concrete:[^interface]
+The definitions of the questions establish what can be measured. "Urgent" could mean a safety incident, an unhappy customer, or a response due within an hour. A labeling guide turns that ambiguity into a repeatable target. Cases with missing information can have their own outcome rather than being forced into a confident label.
 
-| Type   | Question                                    | Returned information                  |
-| ------ | ------------------------------------------- | ------------------------------------- |
-| Choice | Which option should be selected?            | Choice, probabilities, and confidence |
-| Score  | How does this state score against a rubric? | Score, probabilities, and confidence  |
-| Noul   | Is a specified statement true?              | A value between zero and one          |
+Score has a similar dependency on its rubric. A risk score of 0.8 is not necessarily an 80 percent probability of a future loss. The application needs to preserve the meaning of the returned quantity when it uses it in a formula or threshold.
 
-Define a rubric before using a score in business logic. A score against a rubric is not automatically the probability of a future event, and a separate confidence value should not silently replace the predicted quantity.
+## From probability to action
 
-For example, "is this ticket urgent?" is underspecified. Does urgent mean a response within an hour, a safety incident, or a high-value customer who is unhappy? Two annotators can disagree for legitimate reasons. Write a labeling guide before interpreting a model's disagreement as error. Include examples near the policy boundary and a way to mark cases with insufficient information.
+The threshold for taking an action follows from the relative costs of its errors. Consider a simplified moderation policy. Let p be a calibrated probability that a submission violates a rule. Assign a cost of 100 units to allowing a violation and 2 units to blocking a valid submission.
 
-## Turn probabilities into an explicit policy
-
-Consider a hypothetical moderation queue with a calibrated probability p that a submission violates a defined rule. Suppose allowing a violating submission has cost 100 units, while blocking a valid submission has cost 2 units. Ignoring other costs, the expected losses are:
+The expected losses are:
 
 ```text
 allow: 100 × p
 block:   2 × (1 - p)
 ```
 
-Blocking has lower expected loss when p exceeds 2/102, about 0.0196. The threshold is low because the example assigns a much larger cost to a false negative. This is an illustration of decision theory, not a recommended moderation threshold. Real costs vary by rule and context, and a probability that is miscalibrated makes the arithmetic misleading.
+Blocking has lower expected loss when p exceeds 2/102, approximately 0.0196. The low threshold follows from the large cost assigned to a missed violation. The numbers are illustrative; the calculation shows how a policy threshold can be derived from consequences.
 
-Add human review and the decision changes again. If perfect review costs 0.5 units, it is cheaper than allowing when p exceeds 0.005 and cheaper than blocking when p is below 0.75. Under those deliberately simplified assumptions, the middle region goes to review. Review is not perfect in practice: include reviewer error, delay, and capacity in the actual model.
+Human review introduces a third action. If perfect review costs 0.5 units, it is cheaper than allowing once p exceeds 0.005, and cheaper than blocking while p remains below 0.75. Under those assumptions, the middle range goes to review. Reviewer error, delay, and limited capacity extend the model with additional costs.
 
-A fixed "use 0.9 confidence" rule has no such connection to consequences. Write the policy separately from the model call so it can be audited and changed without rewriting the input description. Keep deterministic exclusions, legal requirements, and missing-data checks outside the model.
+This separation gives the application a useful control point. The model estimates the event; the policy decides what to do about it. A change in review capacity or error cost can move the threshold without changing the question sent to the model.
 
-## Build a calibration report rather than trusting a score
+Deterministic conditions fit naturally before or after that step. Missing required fields can route directly to review. A known duplicate can follow a fixed rule. The decision model handles the cases where the state requires judgment.
 
-For a binary outcome, the Brier score is the average squared difference between the predicted probability and the observed zero-or-one label. Lower is better, but one aggregate number is insufficient. Reliability plots compare average prediction with observed positive frequency in groups of predictions. Calibration research shows why confidence and accuracy need to be evaluated separately.[^calibration]
+## Measuring calibration
 
-Imagine 100 held-out tickets assigned probabilities between 0.75 and 0.85, with an average of 0.80. If only 58 are actually urgent under the labeling guide, the model is overconfident in that group. If 82 are urgent, the result is more consistent with the stated probabilities, though a group of 100 still has sampling uncertainty. Do not turn one good bin into a blanket claim of calibration.
+For binary outcomes, the Brier score averages the squared difference between each predicted probability and its observed zero-or-one label. A reliability plot groups predictions and compares the average probability with the observed event frequency.[^calibration]
 
-Repeat the report for languages, ticket lengths, new customers, and rare categories. Use a time-based holdout when policies and traffic change over time. A random split can mix almost identical conversations across training and evaluation. Keep a final test set untouched while choosing prompts and thresholds.
+For example, suppose 100 held-out tickets receive probabilities between 0.75 and 0.85, averaging 0.80. If 58 are urgent under the labeling guide, the predictions are overconfident in that group. If 82 are urgent, the observed frequency is closer to the prediction, with uncertainty from the finite sample.
 
-Compare against a simple base-rate predictor as well as stronger classifiers. If only 1 percent of submissions violate a rule, predicting 0.01 for every submission may achieve a deceptively respectable aggregate score while providing little ranking value. Inspect precision, recall, review volume, and cost at the operating threshold.
+Breaking the result down by language, ticket length, and customer type identifies where the estimate transfers well. A model may be calibrated on common English requests while systematically overestimating urgency for another segment. Time-based holdouts are useful when policies and incoming traffic change, because near-duplicate conversations can otherwise appear on both sides of a random split.
 
-## Design the application around failure
+Base rates provide another reference point. If only 1 percent of submissions violate a rule, a model that always predicts 0.01 may have a low aggregate error while offering little ranking value. Precision, recall, review volume, and expected cost at the chosen threshold describe what the application gains from the model.
 
-The following is application-level pseudocode, not TypeSafe SDK syntax:
+## The application path
+
+The model call is one stage in a larger request. Input preparation, network transport, policy execution, and any fallback all contribute to completion time. An application-level outline is:
 
 ```text
-read current policy version
-validate required fields and remove irrelevant sensitive data
-call decision service with a stable request identifier
-if timeout or invalid response:
-    send to the fallback queue
+load policy and question definitions
+validate the required state
+request typed decisions within the remaining deadline
+
+if the request completes:
+    combine decisions with deterministic rules
+    choose the action under the current policy
 else:
-    apply deterministic exclusions
-    apply the threshold policy
-    record model version, policy version, probabilities, and chosen action
+    use the fallback queue
+
+record the model, policy, probabilities, and action
 ```
 
-A bounded output does not prevent timeouts, authentication failures, stale inputs, or a changed interpretation of a label. Give the call a deadline within the overall request budget. If the user-facing action must complete in 300 ms, a service that sometimes takes 500 ms requires either a different path or an asynchronous design.
+The record makes the result reproducible. A later change in queue assignment can be traced to the model, question definition, threshold, or input. Retaining only the final label loses that distinction.
 
-For multiple questions, inspect joint behavior. Separate probabilities for "urgent" and "billing" do not by themselves specify the probability of "urgent and billing." Multiplying them assumes independence, which may be false. When a joint event drives the action, define and evaluate that event explicitly.
+Deadlines connect this design to the rest of the system. A synchronous call inside a 300 ms interaction has a different budget from an asynchronous queue processor. Retries and review also contribute to total cost per completed workflow, even when the initial decision call is inexpensive.
 
-Store enough evidence to reconstruct the decision while minimizing retained sensitive content. A later reviewer should be able to identify the policy, question definitions, model, and application action. Logging only the final queue name makes it difficult to tell whether a regression came from the model or a threshold change.
+## Where the interface is useful
 
-## Compare systems at the point of useful work
+A bounded decision model fits applications with repeated judgments and explicit outcomes: classification, routing, ranking, scoring, and branching. A text model fits explanation, writing, code, and synthesis. Rules remain efficient for conditions that can be specified exactly.
 
-Build an evaluation table with schema failures, decision quality, calibration, p50/p95 latency, timeout rate, and total cost per completed workflow. Run from the deployment region. Include preprocessing, retries, and fallback handling. Vendor latency numbers may start and stop at different boundaries from your application measurements.
+Comparisons become clearer at that workflow boundary. Decision quality, calibration, schema failures, latency, timeout rate, and review cost can be measured on the same cases. TypeSafe's published workflow evaluation uses reference-model probabilities for parts of its comparison; independently labeled application outcomes answer a separate question about correctness.[^launch]
 
-For the baseline LLM, use its best appropriate structured-output mode rather than a fragile JSON prompt. For the rules baseline, use the rules your team could actually maintain. Evaluate all candidates on the same examples and business policy. TypeSafe's launch also explains that parts of its workflow evaluation use reference-model probabilities; agreement with those references is different from correctness against independently labeled outcomes.[^launch]
-
-The adoption decision is concrete: does a dedicated decision interface improve the workflow's quality, latency, or cost enough to justify another service? That can be true even if a general model wins unrelated reasoning benchmarks, and false even if the API never emits an invalid type.
+The architectural value is composability. A probability can feed a threshold, a Choice can select a function, and a score can order a queue. Giving these judgments explicit types and measurable outcomes makes them ordinary components of software, with the same scope for testing and improvement as the code around them.
 
 ## References
 
 [^launch]: Diogo Almeida, [Introducing System One Models & Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), TypeSafe, September 15, 2026. Release, design claims, latency range, and evaluation caveats.
 
-[^interface]: TypeSafe, [Developer introduction](https://docs.typesafe.ai/introduction). Consult the current API reference for exact request types and supported model versions.
+[^interface]: TypeSafe, [Developer introduction](https://docs.typesafe.ai/introduction). Request types and supported model interfaces.
 
-[^calibration]: Guo et al., [On Calibration of Modern Neural Networks](https://arxiv.org/abs/1706.04599), ICML 2017. Calibration concepts and evaluation; it does not evaluate Jev.
+[^calibration]: Guo et al., [On Calibration of Modern Neural Networks](https://arxiv.org/abs/1706.04599), ICML 2017. Calibration concepts and evaluation.

@@ -1,98 +1,118 @@
 ---
-title: 'Recent ML improvements that change what you can build'
+title: 'Recent ML Advances: Attention Kernels, Agent Training, and Inference'
 pubDate: 2026-09-21
 author: 'Aadit Agrawal'
 category: 'Models & Training'
-description: 'A September 2026 reading of better attention kernels, outcome-trained agents, open multimodal models, and inference-time work.'
+description: 'Connect recent attention kernels, agent training environments, local multimodal models, and inference-time reasoning to their engineering benefits.'
 topics: ['Machine learning', 'Agents', 'Inference']
 ---
 
-_Updated September 25, 2026 with technical examples and source references. Original publication date retained._
+Recent progress in machine learning is changing several parts of the engineering stack at once. Attention kernels reduce the cost of executing an existing model. Training environments make it possible to improve agents against task outcomes. Open multimodal models bring more workloads onto local hardware. Inference-time reasoning allocates additional computation to the problems that benefit from it.
 
-The biggest ML improvement is not always a bigger checkpoint. Sometimes it is the same model answering faster, an agent learning from an executable outcome, or a smaller model becoming good enough to run on a laptop. Here are four changes with direct engineering consequences as of September 2026.
+These developments act at different levels, which is what makes them complementary. A model can become cheaper to run without changing its weights, more capable through training, or more reliable through an execution policy that adds tools and verification. Understanding the mechanism identifies where each improvement belongs in an application.
 
-## Attention kernels adapted to newer GPUs
+## Four places where computation changes
 
-[FlashAttention-4](https://arxiv.org/abs/2603.05451) targets a mismatch on Blackwell hardware: tensor-core compute grew faster than some supporting resources. Its algorithm and pipelining changes aim to keep the matrix units busy while managing the slower parts of attention. The lesson for practitioners is to benchmark the actual attention backend on your target GPU and sequence distribution. A theoretical FLOP gain is useless if softmax, shared-memory traffic, or launch overhead becomes the limit.
+| Development                  | Level of change                | Main benefit                       | Governing constraint            |
+| ---------------------------- | ------------------------------ | ---------------------------------- | ------------------------------- |
+| Attention kernels            | Execution of tensor operations | Lower runtime and memory traffic   | Hardware and tensor shapes      |
+| Outcome-based agent training | Learned behavior               | Better task completion             | Environment and reward quality  |
+| Local multimodal models      | Deployment options             | More tasks on smaller hardware     | Model fit and input processing  |
+| Inference-time allocation    | Work performed per request     | More capability on difficult tasks | Latency, compute, and selection |
 
-This is a continuation of I/O-aware attention, not a new model architecture. It can improve inference or training without changing model weights, but gains depend on shapes, precision, masking, and hardware. The existing [attention-kernel guide](/modern-attention-kernels/) covers the underlying memory argument.
+The baseline differs in each row. A kernel comparison holds weights and inputs fixed. A training comparison holds the evaluation task and resource budget fixed. A deployment comparison asks whether another model satisfies the application's requirements. An inference-policy comparison includes all attempts and checks used to produce the answer.
 
-## Training agents against outcomes
+This separation also explains why gains cannot generally be multiplied together. Two changes may reduce the same part of the execution, and an improvement at one layer can expose a bottleneck at another.
 
-A coding agent can be rewarded for a patch that passes tests, rather than for an answer that sounds plausible. Newer training reports increasingly describe agents operating inside executable environments, with reinforcement learning and distillation used to improve the behavior. The public [OpenEnv collaboration](https://huggingface.co/blog/openenv-agentic-rl) reflects a practical need: each rollout needs an isolated environment, tools, observable outcomes, and a way to reset before the next attempt.
+## Attention as a memory-system problem
 
-The difficulty moves into the environment. A weak test suite rewards shortcuts. A contaminated task lets a model memorize. A flaky environment makes good actions look bad. Better agent training therefore depends on better task design and verification as much as on a new optimizer. This connects directly to [harness design](/persistent-agent-harnesses/), because the same tool interfaces used in training shape real-world agent behavior.
+Conventional attention forms a score matrix, normalizes it, and multiplies the resulting probabilities by the value matrix. Materializing those intermediates creates substantial off-chip memory traffic. The original FlashAttention algorithm reorganizes exact attention around tiling and online softmax, reducing transfers between high-bandwidth memory and on-chip storage.[^flash-original]
 
-## Open multimodal models on smaller hardware
+The scale is visible from the intermediate alone. A 32,768-by-32,768 matrix contains about 1.07 billion entries. At two bytes per entry, one such matrix occupies 2 GiB. This calculation describes the straightforward materialized representation for one head, before other tensors are included.
 
-[Gemma 4's release](https://huggingface.co/blog/gemma4) is one example of the growing availability of open models with image, audio, and text input across local runtimes including MLX and llama.cpp. The result is a new deployment choice: a task that previously required a hosted general model can sometimes run privately on a device. "Sometimes" matters. Measure the exact task, memory fit, language, latency, and license. A compact model may beat a large one on cost and privacy while losing on difficult reasoning.
+A tiled algorithm works on smaller blocks and retains the running statistics needed to produce the same attention operation. Avoiding the full intermediate reduces both storage and memory traffic. Numerical differences can still arise from floating-point ordering, as with other fused implementations.
 
-## Spend reasoning where it pays
+This is an execution improvement that can benefit existing weights. Its value depends on how much attention contributes to the workload, which differs between training, prefill, and decode.
 
-Meta's [Muse Spark report](https://ai.meta.com/blog/introducing-muse-spark-msl) describes two approaches to inference-time work: training for more efficient reasoning tokens and running multiple agents in parallel on hard questions. The first reduces unnecessary thinking; the second can improve difficult answers without making one serial chain arbitrarily long. Neither is free. Parallel attempts consume more compute, and a weak selector can choose the wrong answer.
+## FlashAttention-4 and asymmetric hardware scaling
 
-The general pattern is workload-aware allocation. Easy requests should finish quickly. Hard requests can receive more time, independent attempts, tools, or a verifier. Evaluate quality against total compute and wall-clock time, not reasoning length alone.
+FlashAttention-4 targets Blackwell's change in the balance between matrix throughput and supporting resources. Tensor-core compute grows faster than some of the bandwidth and non-matrix operations needed to feed it. The work combines algorithm changes with a revised kernel pipeline to keep those resources coordinated.[^flash-four]
 
-## Understand the mechanism before comparing the headline
+The paper reports B200 results against specified cuDNN and Triton baselines. The useful engineering lesson is the dependency between algorithm and hardware: increasing matrix throughput changes which operations must be reduced, overlapped, or reorganized.
 
-A faster attention kernel, a better-trained policy, and an additional reasoning pass operate at different layers. A kernel changes the execution of a computation. Training changes the model's learned behavior. Inference-time search changes how many attempts or checks the application makes. Combining their headline gains by multiplication is usually unjustified because they may optimize overlapping costs or use different baselines.
+The end-to-end gain follows the fraction of time affected. If attention occupies 30 percent of a workload and a new kernel makes it twice as fast, normalized total time becomes:
 
-Use a table that keeps those layers visible:
+```text
+0.70 + 0.30 / 2 = 0.85
+```
 
-| Change                   | What stays fixed in a clean comparison | What may improve            | What must be rechecked                   |
-| ------------------------ | -------------------------------------- | --------------------------- | ---------------------------------------- |
-| Attention kernel         | Weights, inputs, numerical tolerance   | Runtime and memory traffic  | Shape support and numerical error        |
-| Outcome-based training   | Evaluation tasks and tool budget       | Task success                | Reward validity and generalization       |
-| Smaller local model      | Application acceptance criteria        | Privacy, cost, availability | Quality and actual device fit            |
-| More inference-time work | Base model and task set                | Difficult-task success      | Total compute, latency, selector quality |
+That is an overall speedup of about 1.18x. If attention occupies 5 percent, the same local improvement gives about 1.026x overall. The calculation connects a kernel result to the application profile.
 
-This is an evaluation framework for applying the research, not a benchmark result. It helps determine whether a paper should lead to a kernel upgrade, a new training experiment, or an application-policy change.
+The [attention-kernel guide](/modern-attention-kernels/) develops the underlying tiling and memory argument. The recent work extends it to a different balance of hardware resources.
 
-## Why attention can improve without changing the model
+## Training agents against executable outcomes
 
-The original FlashAttention work organizes exact attention around reducing transfers between high-bandwidth memory and faster on-chip storage.[^flash-original] It avoids materializing the full attention matrix in the straightforward way. "Exact" refers to the attention computation rather than a guarantee of bit-for-bit identity across every floating-point implementation.
+An agent produces a trajectory of observations and actions. When the environment can evaluate the result, training can reward completed work: a patch passes checks, a tool sequence reaches a target state, or an output satisfies a verifier.
 
-For intuition, a single 32,768-by-32,768 attention matrix contains about 1.07 billion entries. At two bytes per entry that is 2 GiB for one head's matrix alone. This illustrative calculation excludes other tensors and does not describe the storage of a tiled kernel. It explains why avoiding that intermediate can matter even before counting faster matrix instructions.
+OpenEnv addresses the infrastructure needed to run these experiments through consistent environment interfaces.[^openenv] Observations, actions, resets, and outcomes become repeatable parts of a rollout. That makes it easier to collect experience across tasks and compare changes in the policy.
 
-FlashAttention-4 adapts algorithm and scheduling choices to Blackwell's uneven scaling of matrix throughput and supporting resources. Its abstract reports particular B200 results against specified cuDNN and Triton baselines.[^flash-four] Those are attention-kernel comparisons, not universal training or serving speedups.
+The environment defines the learning signal. In a coding task with reward 1 for passing tests and 0 otherwise, the evaluator must distinguish implementing the feature from changing the tests or hard-coding the fixture. Hidden cases and protected evaluation code preserve that distinction.
 
-Suppose attention accounts for 30 percent of a workload and a new kernel makes that part twice as fast. The idealized total time becomes 0.7 + 0.3/2 = 0.85 of baseline, giving about 1.18x overall speedup. If attention is only 5 percent, the same kernel gain yields about 1.026x overall. Profile before adopting a kernel solely for a headline.
+Infrastructure reliability matters for the same reason. A dependency service failing during a run creates an unsuccessful outcome even when the proposed code is correct. Recording tool failures, invalid actions, and timeouts separately helps distinguish environment problems from the behavior being trained.
 
-## An executable reward is only as good as its definition
+## Generalization depends on the task distribution
 
-OpenEnv addresses the practical infrastructure around agentic reinforcement learning: environments need consistent interfaces for observations, actions, and outcomes.[^openenv] A shared interface makes experiments easier to run, but does not decide whether the reward captures the task people care about.
+A training improvement is useful when it carries to new work. Near-duplicate tasks can make a random split unusually easy, so repository, template, or time-based splits can expose different kinds of generalization.
 
-Consider an illustrative coding task with reward 1 when a test suite passes and 0 otherwise. The agent might implement the feature, delete a failing test, hard-code the fixture, or disable a check. All can produce the same observed reward if the environment permits them. Protect the evaluator and use hidden cases that test the requested behavior.
+The tool environment also defines the distribution. A policy trained with unrestricted access can behave differently when deployed with a scoped filesystem or fewer tools. Matching the relevant execution conditions connects the training result to the intended agent.
 
-Track more than pass rate. Record invalid actions, timeouts, tool failures, number of attempts, and the fraction of runs that require intervention. Separate environment defects from model failures. If a network outage prevents a correct solution from installing dependencies, treating that outcome as evidence about code quality produces a noisy learning signal.
+Task success, number of attempts, intervention rate, and resource use describe different aspects of that transfer. A policy may improve completion while using more tool calls, or become more efficient while preserving its success rate. Both changes can be valuable under different operating budgets.
 
-Split tasks by repository, template, or time where appropriate. Randomly separating near-duplicate tasks can make generalization look stronger than it is. Then evaluate under the tool permissions and resource limits the deployed agent will actually have. A policy trained with unrestricted filesystem access may not transfer smoothly to a tightly scoped application.
+The [persistent-agent architecture](/persistent-agent-harnesses/) supplies the corresponding deployment machinery: durable state, recoverable actions, and explicit completion conditions. Better learned behavior and better execution support contribute to the same completed task.
 
-## Local multimodality needs an end-to-end test
+## Open multimodal models on local hardware
 
-The Gemma 4 ecosystem announcement describes model variants and integration across inference libraries.[^gemma] Support is not identical across all variants or runtimes. Confirm the specific checkpoint, input modalities, license, and quantization path instead of assuming a family-level announcement covers every combination.
+The Gemma 4 ecosystem announcement describes multimodal model variants and integration across runtimes including MLX and llama.cpp.[^gemma] The practical change is a broader set of tasks that can be implemented with locally available weights and execution.
 
-A local document assistant is a useful example. Its input path may include image resizing, visual encoding, OCR-like interpretation, retrieval, and text generation. A fast text-only token rate says little about how long it takes to answer a question about a scanned page. Measure from the original file to the verified answer.
+Multimodal deployment includes more than the text decoder. A document assistant may resize an image, encode visual content, retrieve relevant context, and generate a response. Each stage contributes to latency and memory use. A text-only token rate measures only part of that path.
 
-An illustrative acceptance set could include clean scans, rotated pages, small print, tables, handwritten notes, and multilingual documents. Require the answer to identify its supporting page or region. Measure both extraction correctness and whether unsupported questions trigger an appropriate abstention. A model that confidently invents a value can be worse than a slower model that says the page is unreadable.
+A useful local workload therefore begins with the original input. For a scanned document, this includes rotation, small print, tables, handwriting, and language variation. An answer linked to its supporting page or region connects extraction quality to the evidence in the document.
 
-Local execution can reduce the need to send document contents to a hosted service. Verify the entire application path before making that claim: telemetry, crash reports, remote OCR, and model-download requests are separate data flows. "The weights are local" is a useful fact, but not a complete privacy description.
+The model variant and runtime determine which inputs and operations are supported. Quantization changes storage and execution. The complete configuration includes those choices alongside the model's license and the hardware available to run it.
 
-## Allocate extra attempts using expected value
+## Capacity creates new application choices
 
-Meta's Muse Spark report discusses efficient reasoning and parallel work on difficult tasks.[^muse] To apply the idea, separate candidate generation from selection. More attempts help only if some are better and the application can recognize them.
+A compact model that meets a task's quality requirement can shift execution from a hosted service to a local device. This changes latency, availability, and data movement as well as inference cost.
 
-If independent attempts each succeed with probability p, the chance that at least one of k attempts succeeds is 1 minus (1 minus p) raised to k. With p = 0.4 and k = 4, that is about 87 percent. This is an illustrative upper opportunity, not the final accuracy: real attempts may share errors, and a selector may discard the correct one.
+The memory budget includes weights, modality encoders, temporary tensors, and the attention cache. Long inputs can move the limiting factor from weight storage to activations or cached state. The [MLX hardware comparison](/mlx-m5-m6-neural-architecture/) separates capacity, bandwidth, and compute for that reason.
 
-For code, executable tests can sometimes serve as a selector. For an open-ended factual answer, several models agreeing may merely repeat the same misconception. Spend additional budget on retrieving evidence or checking an intermediate claim when that is more useful than sampling another answer.
+Local execution also changes where document contents travel. The inference step can remain on the device while model downloads, telemetry, or a separate OCR service use the network. Describing those stages independently gives an accurate account of the application's data path.
 
-A routing policy might use one quick attempt for routine tasks, a verifier for uncertain outputs, and multiple independent attempts for a small difficult subset. Evaluate that policy on total cost per accepted result. Include the latency of the slow path and the quality of tasks incorrectly routed to the quick path.
+The resulting choice is task-specific. A smaller local model may provide the required extraction quality at low latency, while difficult synthesis remains on a larger system. The application can combine those paths rather than assigning every request to the same model.
 
-## Decide what to adopt this week
+## Inference-time reasoning and parallel attempts
 
-Pick the change matching the measured bottleneck. If attention dominates, test a compatible kernel. If tools fail or rewards are weak, improve the environment before increasing training compute. If data location matters, evaluate a supported local model on the real input pipeline. If only a small subset of tasks fails, try selective verification or additional inference-time work.
+Training determines the model's behavior, while an inference policy determines how much work it performs for a particular request. Additional reasoning, tools, independent attempts, and verification can improve difficult-task success without applying the same cost to every request.
 
-Keep a before/after record that includes quality, latency, memory, and total cost. The common engineering benefit of these developments is more choice over where computation happens and how it is spent. That choice becomes useful only after a task-specific experiment shows which constraint it removes.
+Meta's Muse Spark report discusses both efficient reasoning and parallel work on difficult tasks.[^muse] These address two different parts of the budget: the work within an attempt and the number of attempts available for selection.
+
+Under a simplified independence assumption, if one attempt succeeds with probability p, the chance that at least one of k attempts succeeds is:
+
+```text
+1 - (1 - p)^k
+```
+
+With p = 0.4 and k = 4, that is about 87 percent. This describes the opportunity available to a selector. The final result also depends on whether the correct candidate can be recognized, and correlated errors reduce the benefit of additional attempts.
+
+Executable code tests can provide a strong selection signal for some tasks. For factual synthesis, retrieving evidence may contribute more than another answer generated from the same information. The most useful additional computation addresses the source of uncertainty.
+
+## Allocation across requests
+
+A serving policy can use a short path for routine tasks and reserve verification or additional attempts for a difficult subset. Its performance includes the quality of the routing decision: sending a hard task to the short path can erase the saving through failure or rework.
+
+Total cost per accepted result captures generation, selection, tools, and retries. Wall-clock time distinguishes serial reasoning from parallel work. These measurements explain whether extra computation produces a useful result within the application's budget.
+
+The recent developments expand the available design space at each layer. Kernels lower the execution cost, environments improve what agents learn, local models change where tasks can run, and inference policies decide where additional work is valuable. Their shared effect is finer control over the relationship between capability and resources.
 
 ## References
 
@@ -100,7 +120,7 @@ Keep a before/after record that includes quality, latency, memory, and total cos
 
 [^flash-four]: Zadouri et al., [FlashAttention-4: Algorithm and Kernel Pipelining Co-Design for Asymmetric Hardware Scaling](https://arxiv.org/abs/2603.05451), March 2026. Hardware and baseline-specific results.
 
-[^openenv]: Hugging Face and collaborators, [The Open Source Community is backing OpenEnv for Agentic RL](https://huggingface.co/blog/openenv-agentic-rl). Environment infrastructure, not proof that any reward is valid.
+[^openenv]: Hugging Face and collaborators, [The Open Source Community is backing OpenEnv for Agentic RL](https://huggingface.co/blog/openenv-agentic-rl). Environment infrastructure for agentic reinforcement learning.
 
 [^gemma]: Hugging Face, [Welcome Gemma 4: Frontier multimodal intelligence on device](https://huggingface.co/blog/gemma4), April 2, 2026. Model variants and runtime integration.
 

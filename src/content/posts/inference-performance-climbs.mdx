@@ -1,87 +1,98 @@
 ---
-title: 'How to climb the inference performance curve'
+title: 'Optimizing LLM Inference: Prefill, Decode, and Goodput'
 pubDate: 2026-09-17
 author: 'Aadit Agrawal'
 category: 'Serving & Runtime'
-description: 'Tune prefill, decode, long context, and batched inference against the metric each workload actually needs.'
+description: 'Connect prefill, decode, cache management, and scheduling to the latency and goodput of an LLM service.'
 topics: ['Inference', 'Performance', 'Benchmarking']
 ---
 
-_Updated September 25, 2026 with technical examples and source references. Original publication date retained._
+Inference performance is a resource-allocation problem across prefill, decode, cache storage, and scheduling. Each phase responds to different changes. A long prompt benefits from faster prefill or reuse of its prefix; a long response benefits from lower decode cost; a busy service benefits from keeping useful work on the accelerator without pushing requests past their deadlines.
 
-"Faster inference" hides several different jobs. A chat user cares about the first token. A streaming user notices gaps between tokens. A batch pipeline cares about total work completed. An agent making ten tool calls cares about the entire trajectory. Optimize the wrong number and the system can look faster in a benchmark while feeling slower in use.
+Separating these phases turns optimization into a sequence of measurable decisions. The workload determines the objective, the profile identifies the limiting resource, and a configuration sweep finds the operating point. The result is a latency and capacity curve for the actual service.
 
-## Split the workload first
+## Latency accounting
 
-Collect prompt and output length distributions, concurrent requests, cache hit rates, and the actual deadline. Then run a baseline at fixed model quality. Report time to first token (TTFT), time per output token (TPOT), p95 end-to-end latency, and **goodput**, the work completed within the deadline. The existing [inference SLO guide](/inference-slos/) explains why peak tokens per second can conceal a queueing problem.
-
-| Inference shape                 | First experiment                                     | Main tradeoff                                               |
-| ------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------- |
-| Long prompt, short answer       | Chunked prefill or prefix caching                    | Better TTFT versus cache memory and scheduler complexity    |
-| Short prompt, long answer       | Quantization, speculative decoding, decode batching  | More tokens per second versus quality and verification cost |
-| Many short independent requests | Continuous batching and admission control            | Aggregate throughput versus p95 latency                     |
-| Long context                    | KV cache layout, attention kernel, context reduction | Memory use versus lost information                          |
-| Many adapters                   | Adapter loading and batching policy                  | Flexibility versus weight movement                          |
-| Multi GPU model                 | Partition plan and communication overlap             | More compute capacity versus transfer cost                  |
-
-Only change one lever at a time. Compare at the same arrival rate and output quality. Quantization can improve speed by shrinking memory traffic, but if the model makes more mistakes or generates longer answers, a raw token rate is misleading. Speculative decoding helps when the draft model's guesses are accepted often enough to pay for draft and verification work. Prefix caching helps when prefixes genuinely repeat.
-
-## Give the model a bounded search job
-
-A coding agent can inspect traces, generate candidate configurations, run a sweep, and summarize the Pareto curve. Give it a fixed dataset and explicit limits such as "p95 TTFT below 600 ms, accuracy within 0.5 points of baseline, minimize cost per successful request." Save every configuration and result. Reject runs with errors, OOMs, changed outputs, or incomplete requests.
-
-Use an open-loop arrival process for latency tests, because fixed concurrency hides queues. Use closed-loop sweeps to find capacity and saturation. Repeat promising settings on production-shaped traffic, including long prompts and bursts. If the winning configuration only works on the median request, it is not the winner.
-
-## Know when the network is the bottleneck
-
-For a model split across GPUs, profile communication separately from computation. A larger tensor parallel group may cut matrix multiplication time while adding an all-reduce on every layer. Expert parallelism adds dispatch and combine traffic. At small batch sizes the communication can dominate. The neighboring [networking article](/parallel-kittens-ai-networking/) covers how to reason about those transfers and overlap them.
-
-## Put a budget on each phase
-
-For a request producing N output tokens, a useful accounting identity is:
+A generated response has an initial wait followed by a sequence of token arrivals. For N output tokens:
 
 ```text
-end-to-end latency = time to first token + sum of the remaining inter-token gaps
+end-to-end latency = TTFT + sum of the remaining inter-token gaps
 mean TPOT = (completion time - first-token time) / (N - 1)
 ```
 
-TPOT is undefined for a one-token response under this definition. Report such requests separately rather than silently dividing by zero. TTFT includes queueing and transport as well as prompt processing when measured from the client. A GPU-only prefill measurement cannot substitute for it.
+Time to first token, or TTFT, includes queueing, prompt processing, and transport when measured at the client. Time per output token, or TPOT, describes the generation phase. A one-token response has no subsequent token gap, so TPOT is undefined under this formulation.
 
-Consider an illustrative request with a 400 ms TTFT and 199 subsequent token gaps averaging 25 ms. Completion takes 5.375 seconds. Halving TTFT saves 200 ms; reducing each gap by 5 ms saves 995 ms. For a one-token classifier the priorities reverse. This arithmetic is why prompt length and output length belong in the benchmark definition.
+The arithmetic identifies where a change pays off. A request with 400 ms TTFT and 199 gaps averaging 25 ms takes 5.375 seconds. Halving TTFT saves 200 ms. Reducing each gap by 5 ms saves 995 ms. A one-token classification request has the opposite allocation: nearly all its latency is in the path to the first token.
 
-A mean gap also hides streaming stalls. A response can have a good average while pausing for a second in the middle. Record the gap distribution and the fraction of responses containing a gap above your chosen limit. Use client timestamps to include buffering in the API gateway and network stack.
+For agents, this accounting extends across calls. Ten sequential model steps accumulate ten queue waits and ten prefills, as well as tool execution. Per-call improvements matter in proportion to their contribution to the trajectory.
 
-## Understand what each optimization actually saves
+## Workload shape selects the optimization
 
-PagedAttention addresses fragmented and duplicated KV-cache storage by mapping logical blocks to physical memory blocks. Its practical benefit is fitting more useful concurrent work into memory. It does not make every attention operation proportionally faster, and the original paper's throughput gains are comparisons against particular serving systems.[^paged]
+| Inference shape           | Main resource pressure               | Useful mechanisms                                  |
+| ------------------------- | ------------------------------------ | -------------------------------------------------- |
+| Long prompt, short answer | Prefill compute and scheduling       | Prefix caching, chunked prefill                    |
+| Short prompt, long answer | Weight and cache reads during decode | Quantization, batching, speculation                |
+| Many short requests       | Scheduler capacity and queueing      | Continuous batching, admission control             |
+| Long context              | KV capacity and attention traffic    | Cache layout, attention kernels, context selection |
+| Many adapters             | Adapter residency and transfers      | Adapter batching and loading policy                |
+| Model split across GPUs   | Collectives and shard placement      | Parallelism plan, communication overlap            |
 
-Prefix caching reuses the attention state of an identical preceding token sequence. It reduces repeated prefill work, not the work of generating every new token. Put genuinely shared instructions before request-specific content, but do not change task semantics merely to improve cache hits. A timestamp or random identifier near the start can destroy reuse for everything that follows. vLLM's documentation distinguishes the workloads that benefit from prefix caching from generation-heavy workloads that do not.[^prefix]
+The same model can occupy several rows depending on the application. A document assistant and an autocomplete service may share weights while needing different replica configurations. Prompt and output length distributions, arrival rates, and shared-prefix structure define the workload more precisely than the model name.
 
-Chunked prefill splits a long prompt into smaller scheduling units. This gives an engine opportunities to interleave work for requests already decoding. SARATHI develops this approach to combining prefill and decode work.[^sarathi] For your service, inspect both sides of the tradeoff: a smaller chunk may protect streaming latency while increasing the time needed to finish a large prompt. The scheduler's token budget is a workload-dependent choice.[^tuning]
+Quantization reduces the bytes used for weights and can reduce memory traffic. Its effect on completed work also depends on output quality and response length. A faster token stream that requires more retries may consume more total resources per successful request.
 
-Speculative decoding lets a cheap draft propose several tokens and a target model verify them. Exact speculative sampling uses a correction procedure to preserve the target distribution; simply accepting plausible guesses is a different algorithm.[^speculation] Measure accepted tokens per verification pass alongside draft time. A draft that is inexpensive but usually rejected can make serving slower. Do not assume the largest draft acceptance rate gives the best latency if obtaining those guesses is costly.
+## Prefix caching removes repeated prefill
 
-## Calculate the KV-cache budget
+An attention cache records state for the preceding tokens. When another request begins with the same token prefix, that state can be reused. Automatic prefix caching therefore saves computation on shared instructions, documents, or earlier conversation turns.[^prefix]
 
-For a conventional decoder with a full attention cache, an approximate storage model is:
+The position of changing content matters. A request-specific timestamp near the beginning breaks the shared prefix before the reusable document. Placing stable instructions and common context first exposes a larger reusable region where the application semantics allow it.
+
+The saving applies to repeated prefill. Every newly generated token still requires decode work. A service dominated by long outputs therefore sees a different gain from a service repeatedly asking short questions about the same long document.
+
+Cache residency connects reuse to capacity. Frequently reused blocks are valuable only while they remain available. A workload with many unrelated long prefixes can evict them, so hit rate depends on the traffic mix and memory budget as well as prompt construction.
+
+## Paged storage increases useful cache capacity
+
+The KV cache grows as a sequence generates tokens and shrinks when the request completes. Reserving contiguous space for the maximum possible length wastes memory and makes sharing difficult. PagedAttention addresses this with logical blocks mapped to physical cache storage.[^paged]
+
+The block table lets a sequence grow without a single large contiguous allocation. Shared prefixes can refer to the same physical blocks, while later tokens occupy separate blocks. This increases the number of live sequences that fit in a fixed memory budget.
+
+For a conventional full-attention decoder, approximate cache storage is:
 
 ```text
-KV bytes = 2 × layers × cached tokens × KV heads × head dimension × bytes per element
+KV bytes = 2 × layers × cached tokens
+             × KV heads × head dimension × bytes per element
 ```
 
-The factor of two accounts for keys and values. Use KV heads, not query heads, for grouped-query attention. Sum over live sequences and add allocation overhead. Sliding-window, compressed-cache, and hybrid architectures require a different accounting model.
+The factor of two accounts for keys and values. Grouped-query attention uses the number of KV heads in this expression, rather than the larger number of query heads. Sliding-window and compressed-cache architectures change the storage model.
 
-For an illustrative 32-layer model with 8 KV heads, head dimension 128, and two-byte cache elements, each cached token needs 131,072 bytes, or 128 KiB. A sequence of 8,192 tokens therefore needs 1 GiB. Sixteen such sequences need about 16 GiB before weights, temporary buffers, and fragmentation. Quantizing weights does not automatically quantize that cache.
+For 32 layers, 8 KV heads, head dimension 128, and two-byte elements, each cached token occupies 128 KiB. An 8,192-token sequence needs 1 GiB, and sixteen such sequences need about 16 GiB before weights, temporary buffers, and allocation overhead. Weight quantization and cache quantization are separate choices.
 
-This calculation helps distinguish an allocation problem from a compute problem. If the model fits at short context and fails at long context, replacing a matrix kernel may not help. If cache capacity limits the batch, reducing wasted allocation can increase throughput even without changing arithmetic speed.
+This is why cache management can improve throughput without changing the speed of an individual matrix multiplication. More of the memory holds active work, so more sequences can share the cost of reading weights.
 
-## Run a load test that can reveal overload
+## Chunked prefill controls interference
 
-An open-loop generator schedules arrivals independently of completions. A closed-loop generator maintains a fixed number of outstanding requests and waits for one to finish before replacing it. Both are useful. Closed-loop tests reveal throughput at a concurrency level; open-loop tests reveal what happens when demand continues arriving while the service slows.
+A long prefill and a one-token decode step have different execution shapes. Running the entire prefill at once can delay requests that are already streaming. Chunking divides the prompt into smaller scheduling units so the engine can interleave the two kinds of work.
 
-Use separate experiments for cold cache, warm shared prefix, mixed prompt lengths, and bursts. Preserve failed requests in the denominator. Otherwise a configuration that rejects half the difficult traffic may appear to have excellent p95 latency.
+SARATHI develops this combination of chunked prefills and decode work.[^sarathi] The chunk size controls the tradeoff. Larger chunks give prompt processing more work per scheduling step. Smaller chunks give ongoing decodes more frequent opportunities to run.
 
-Here is a hypothetical comparison at the same offered load, with a 700 ms TTFT limit:
+The scheduler's token budget links TTFT, TPOT, and throughput. A configuration that finishes one large prompt sooner may lengthen the token gaps of every other request. vLLM's tuning documentation describes the corresponding scheduling and memory controls.[^tuning] Their useful values depend on the distribution of prompt lengths and the service objective.
+
+## Speculation changes the amount of work per target call
+
+Speculative decoding uses a cheaper model to propose several tokens, then has the target model verify them together. Exact speculative sampling includes a correction procedure that preserves the target distribution within numerical limits.[^speculation]
+
+Its gain comes from completing several accepted tokens during a verification pass whose cost is lower than producing those tokens through separate target calls. The draft model adds work, so acceptance rate and draft latency jointly determine the result.
+
+A small draft with moderate acceptance can outperform a larger, more accurate draft if it is substantially cheaper. Longer proposals can increase accepted tokens per pass while also increasing wasted work after rejection. The useful measurements are draft time, verification time, accepted tokens, and end-to-end generation time.
+
+Speculation is especially attractive when the target has spare parallel compute during small-batch decoding. At high utilization, the additional work can interact differently with batching. It belongs in a workload-specific sweep alongside the other serving parameters.
+
+## Goodput identifies the operating point
+
+Throughput counts completed work. Goodput counts work that meets the service's latency and quality requirements. As offered load increases, throughput can continue rising after deadline attainment has begun to fall. The [inference SLO guide](/inference-slos/) develops this distinction in more detail.
+
+Consider an illustrative comparison at a fixed arrival rate with a 700 ms TTFT limit:
 
 | Configuration | Successful requests/s | p95 TTFT | Requests meeting all limits/s |
 | ------------- | --------------------: | -------: | ----------------------------: |
@@ -89,9 +100,25 @@ Here is a hypothetical comparison at the same offered load, with a 700 ms TTFT l
 | B             |                    30 | 1,100 ms |                            18 |
 | C             |                    26 |   650 ms |                            25 |
 
-B wins a throughput leaderboard but loses the stated service objective. C is the best candidate under these invented measurements. It still needs a quality check and a cost comparison. Define goodput using all required limits together; meeting TTFT while missing completion deadlines is insufficient.
+B has the highest throughput. C delivers the most requests within the stated limits. The objective therefore selects C, subject to the same quality and cost requirements applied to the other configurations.
 
-Store per-request arrival, first-token, completion, token counts, cache status, and error fields. Retain an untouched evaluation set for choosing the final configuration. A sweep over hundreds of settings can overfit a small benchmark just as model selection can.
+Client-side timestamps also expose buffering and streaming stalls. Mean TPOT can be acceptable while a response contains a long pause, so the distribution of token gaps complements request-level latency.
+
+## Capacity and arrival-rate experiments
+
+A closed-loop generator maintains a fixed number of outstanding requests, replacing each as it completes. It measures throughput and latency at that concurrency. An open-loop generator schedules arrivals independently of completions, revealing how a queue grows when demand continues during a slowdown.
+
+Both experiments are useful. A concurrency sweep locates capacity and saturation; an arrival-rate sweep establishes deadline attainment under production-shaped demand. Cold caches, repeated prefixes, bursts, and mixed prompt lengths exercise different parts of the system.
+
+The request record contains arrival time, first-token time, completion time, token counts, cache status, and errors. Failed and rejected requests remain part of the offered workload. This keeps apparent latency gains from being confused with dropping difficult work.
+
+## Communication in a distributed replica
+
+Splitting a model across GPUs reduces local matrix work while adding transfers. Tensor parallelism introduces collectives around partitioned layers; expert parallelism introduces token dispatch and combination. The exposed part of that communication determines the gain from another device.
+
+A larger parallel group that saves 20 ms of compute and adds 30 ms of communication increases latency. Placement, transfer size, and overlap therefore belong in the same experiment as batch size and cache allocation. The [ParallelKittens article](/parallel-kittens-ai-networking/) examines those boundaries at the kernel level.
+
+An inference configuration is a balance among these resources. Phase-level measurements explain why a change works, while goodput identifies where that change becomes useful capacity for the application.
 
 ## References
 

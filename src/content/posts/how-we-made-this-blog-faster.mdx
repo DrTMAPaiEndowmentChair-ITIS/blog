@@ -1,89 +1,97 @@
 ---
-title: 'We made this blog faster'
+title: 'Optimizing This Blog: Fonts, SVG Artwork, and Navigation'
 pubDate: 2026-09-24
 author: 'Aadit Agrawal'
 category: 'Ecosystems & Tooling'
-description: 'A measured look at the fonts, artwork, and navigation work that made this blog lighter to load and quicker to browse.'
+description: 'Explain the font, SVG, stylesheet, and navigation changes that reduce the work of loading and rendering this Astro site.'
 topics: ['Performance', 'Web engineering', 'This site']
 ---
 
-_Updated September 25, 2026 with technical examples and source references. Original publication date retained._
+This blog is a static Astro site with long technical articles, diagrams, mathematical notation, and generated artwork. Its performance costs sit mainly in the resources needed to display that content: fonts, document markup, styles, and the work of laying out a page after navigation.
 
-This blog has long technical posts, diagrams, custom typography, and artwork for every article. Those details are useful until they make the index slow to load or every page switch repeat work the browser has already done. We inspected the built files and changed two expensive paths: the font loaded on every page and the artwork embedded in the directory.
+The September 24 update reduced the font loaded on every page, moved repeated directory artwork into a shared SVG, and changed how styles and offscreen content are handled. It also made prefetching follow the structure of the index, where featured articles and directory rows have different browsing patterns.[^implementation]
 
-## The largest cold-load saving was a font
+The changes address different parts of the path from a request to readable content. Their file-size effects can be measured directly, while their mechanisms explain where the browser can avoid or reuse work.
 
-The site used to preload a 346 KB Inter WOFF2 file. Most pages use only its Latin characters, so we built a subset with the characters declared by the site's `@font-face` rule. The new file is 100 KB. That removes about **245 KB, or 71 percent, from that font request**. The original remains available for social-card generation, where a wider character set may be needed.
+## The document's critical path
 
-This is a file-size comparison, not a claim that every visitor waits 71 percent less time. Browsers cache fonts, network compression varies, and page latency includes other resources. It does remove a real request cost for a first visit.
+A static page still needs to be parsed and rendered. The browser receives HTML, discovers its styles and fonts, constructs the document, computes layout, and paints. During navigation, some resources can be reused, but the new article introduces its own markup and layout.
 
-## Stop repeating 69 drawings in the homepage HTML
+This creates several independent costs. Large HTML takes work to parse. A font discovered late can delay final typography. Repeated artwork expands the document even when it compresses well on the network. A stylesheet for a feature absent from the page adds processing without contributing to that page's appearance.
 
-Each post row carried its own generated SVG paths. With 70 rows, that made the HTML larger and gave the browser more markup to parse on every visit to the index. We moved those row drawings into a shared SVG file and kept each row as a small `<use>` reference. The featured cards and article banners stay inline so a post does not download artwork for unrelated posts.
+The [implementation commit](https://github.com/DrTMAPaiEndowmentChair-ITIS/blog/commit/8e5049f) records the exact changes.[^implementation] The payload measurements below refer to its 70-post publication build. Subsequent article revisions change document sizes, while the underlying resource choices remain inspectable in the source.
 
-On the same set of 70 posts, the homepage HTML is **177 KB**. Expanding its row references back into inline paths would make it **309 KB**, a difference of about **132 KB**. The shared sprite is 143 KB uncompressed and 13 KB with gzip. The total compressed bytes for a first visit are therefore nearly the same as an inline version; the gain is smaller HTML to parse and an artwork file the browser can cache separately. We do not count the 132 KB as a first-visit network saving.
+## The Inter subset
 
-## Navigation spends less on pages you may never open
+The site previously preloaded a 345,588-byte Inter WOFF2 file. The Latin subset used for browser text is 100,176 bytes, a reduction of 245,412 bytes, or about 71 percent, for that font resource.
 
-Featured links prefetch when visible, because they are likely next clicks. Directory rows prefetch on hover or focus instead of warming every row as it enters the viewport. That keeps the fast path for a chosen article without pulling many full article pages while a reader scrolls the index. Astro's client router swaps between pages, so the browser can retain the shell and cached assets across a switch.
+Subsetting works because the browser text uses only part of the original font's glyph coverage. The `unicode-range` declaration identifies the characters served by the face, and `font-display` determines how text appears while the font is loading. Preloading makes the font discoverable before the browser would otherwise find it through the rendered text.[^fonts]
 
-The change has a tradeoff: a touch visitor who taps a row without hovering may wait for the article fetch. That is better than silently downloading dozens of articles while the visitor scans the list. We kept the visible featured links warm for the common path.
+The original Inter file remains available to social-card generation, which has a different coverage requirement. Browser text and build-time image rendering therefore use separate resources suited to their inputs.
 
-## How we checked it
+This saving applies most directly to a first visit that needs the font. A warm visit may reuse an existing response from the browser cache. Page latency also includes HTML, styles, layout, and other resources, so the percentage reduction in the font file describes one component of the load.
 
-We compared the generated file sizes, ran a full static build, and loaded the homepage and an article in a browser. We checked that row artwork still takes the surrounding theme color and that the article banner still appears after navigation. The measurements above describe **built payload**, not a production Core Web Vitals study. Real-world speed depends on hosting, device, cache state, and network. The next useful measurement is a field comparison of cold load and index-to-article navigation at the 75th and 95th percentiles.
+## Font selection and layout
 
-## Trace the work from a click to readable content
+The update also serves selected mono faces locally instead of importing a broader font package. Body text, headings, and code have different font requirements; loading the faces used by those elements makes the dependency explicit.
 
-A static site still has a critical path. The browser obtains HTML, discovers styles and fonts, builds the document, computes layout, and paints. Navigation may reuse resources, but a large document still has to be parsed and new content still has to be laid out. A small JavaScript bundle alone does not prove that an article opens quickly.
+A preload gives a resource priority. The useful set is the faces needed early in the page, since preloading every available weight makes them compete for network capacity. The selected heading weight and body face are more likely to contribute to the first viewport than a face used only deep in an article.
 
-Our changes are recorded in the [publication and performance commit](https://github.com/DrTMAPaiEndowmentChair-ITIS/blog/commit/8e5049f).[^implementation] That is the source for what this site actually changed. Browser documentation explains the mechanisms; it cannot prove the size of a gain on our pages.
+Coverage affects layout as well as download size. Accented names, punctuation, code symbols, and non-Latin characters can invoke fallback fonts when a subset does not contain them. Different metrics can change line breaks. That is why the subset and the page's actual character coverage are considered together.
 
-The implementation makes different tradeoffs at three boundaries. Fonts reduce bytes needed for initial typography. The thumbnail sprite separates reusable artwork from document markup. Selective loading and rendering keep unrelated work away from the current article. None of those mechanisms guarantees a particular improvement in production p95 navigation time.
+## Shared SVG artwork
 
-## Font subsets need a coverage check
+The directory originally embedded each row's generated SVG paths directly in the homepage. The new implementation stores those definitions in `/thumbnails.svg` and gives each row a small `<use>` reference. Featured cards and article banners remain inline.[^implementation]
 
-A font subset removes glyphs the selected pages do not need. The `unicode-range` declaration tells the browser which characters a face covers, while `font-display` controls behavior before the font is available.[^fonts] A smaller file is useful only if the page remains readable and the chosen fallback behaves acceptably.
+On the same 70-post corpus, the publication build's homepage was approximately 177 KB. Expanding the row references back into inline artwork would make it approximately 309 KB, a difference of about 132 KB in the document. The shared sprite was about 143 KB uncompressed and 13 KB with gzip.
 
-This site preloads the Latin Inter subset because body text needs it early. It also serves selected mono faces locally instead of importing a wider font package. Preloading every face would make them compete with resources needed for the first viewport. A preload is a priority decision, not a free speed switch.
+The distinction between document size and transfer size is important here. Gzip compresses repeated markup effectively, so moving paths into a separate file does not remove 132 KB from the compressed first-visit transfer. The cold transfer totals are similar. The main document contains less markup to parse, and the artwork becomes a separately reusable resource.
 
-Check accented names, punctuation, code symbols, and any non-Latin text when changing coverage. A missing glyph may fall back to another font with different metrics. That can alter line breaks even when nothing looks obviously broken at first glance. Our original Inter file remains available for social-card rendering; browser typography and image generation have different coverage needs.
+The cache boundary now follows the content boundary. A change to article text does not inherently change the SVG definitions, and a page using a row reference does not have to repeat the paths in its HTML. The actual reuse still follows the response's cache policy and validation behavior.
 
-## Why the shared SVG is not a 132 KB network saving
+## Rendering the sprite in context
 
-The old directory repeated drawing paths inside the page. The new directory references symbols in `/thumbnails.svg`. Each row contains its own dimensions and a reference, while the shared file contains the drawing definitions. Featured artwork and article banners remain inline in the implementation.[^implementation]
+Each row retains its dimensions and surrounding theme styles. The external symbol supplies the drawing. This preserves the role of the artwork while changing where its markup lives.
 
-Gzip already compresses repeated markup effectively. Moving repeated content into another file therefore does not save the full uncompressed HTML difference on a cold visit. It also introduces a request. The advantage is separating a reusable resource and reducing the amount of markup in the main document. Whether that improves a particular visit depends on cache behavior and the critical path.
+The important rendering cases are the light and dark themes, a fresh index load, and returning to the index through client navigation. A valid `<use>` element establishes the reference, while the visible paths establish that the resource loaded and inherited the expected appearance.
 
-Test the actual rendered artwork in both themes. An SVG reference can exist in the DOM while its external symbol fails to load or inherits the wrong color. Inspect network status, visible paths, dimensions, and color together. Also test an index-to-post-to-index journey, where client navigation may produce a different resource sequence from a hard reload.
+Article banners stay inline because they represent one article at a time. Downloading the entire directory sprite for a single banner would introduce unrelated artwork into that request. Keeping the two representations separate follows their reuse patterns.
 
-## Keep math styles with math pages
+## Math styles as an article dependency
 
-The build now records whether Markdown contains math, and the article layout uses that information to include a separate KaTeX stylesheet. A non-math post should not need that stylesheet. A math post still must receive both the rendering rules and the font resources they reference.[^implementation]
+The Markdown pipeline records whether an article contains math. The article layout uses that result to include a separate KaTeX stylesheet. Pages without math avoid the dependency; pages with equations load the rules and font resources needed to display them.[^implementation]
 
-There is a subtle parser issue here. Dollar signs used for prices can be interpreted as inline-math delimiters. The accompanying currency pass protects recognizable money prose before the build decides whether the page has math. That is a heuristic with boundaries, so test ordinary prices alongside real equations rather than checking only that a CSS link disappeared.
+This is a build-time decision. The browser receives the appropriate stylesheet link with the article rather than discovering the requirement through a later script.
 
-Verify navigation in both directions. Loading a math article directly can work while navigating to it from a non-math page loses its stylesheet. Conversely, a stylesheet retained after visiting a math page can hide a missing declaration in later tests. Use fresh browser contexts as well as warm navigation sequences.
+Currency notation makes the classification slightly more involved. Markdown math delimiters also use dollar signs, so money prose can be parsed as inline math. The accompanying currency pass recognizes common price patterns before the page's math flag is determined. Actual equations retain the math path.
 
-## Defer rendering without hiding content from the reader
+Client navigation exercises the dependency in both directions. A math article needs its stylesheet when reached from a non-math page, and a fresh context establishes that the page is not relying on a stylesheet retained from an earlier visit. These cases connect the build-time classification to the browser's resource lifecycle.
 
-The stylesheet applies `content-visibility: auto` to selected heavy blocks and supplies an estimated intrinsic size. This lets supporting browsers skip some rendering work while content is offscreen. It does not remove that content from the document or eliminate its network bytes.[^visibility]
+## Offscreen rendering
 
-The estimated size creates a tradeoff. If it differs greatly from the eventual rendered block, scrolling and anchor positions can shift as the browser discovers the true dimensions. Test wide tables, tall code blocks, equations, and links into the middle of a long article. A smooth opening animation is not enough to establish that reading remains comfortable.
+Long articles contain blocks with substantial layout and paint work: code listings, figures, tables, equations, and diagrams. The stylesheet applies `content-visibility: auto` to selected blocks and supplies an estimated intrinsic size.[^visibility]
 
-The table of contents also uses an intersection observer instead of a global per-scroll update loop, while the top gradient uses a CSS scroll-driven animation where supported. These are implementation changes, not measured frame-rate claims. Test heading activation, resizing, restored scroll positions, and reduced-motion behavior before assigning them a benefit.
+Supporting browsers can skip some rendering work for those blocks while they are offscreen. The content remains in the document, and its network bytes are still part of the page. The saving is in when rendering work is performed.
 
-## Prefetch only when its expected value is useful
+The intrinsic-size estimate gives the browser a provisional layout before it renders the block. As the actual content becomes relevant, its true dimensions replace that estimate. Tall code blocks, wide tables, and anchor navigation make this behavior visible, because their geometry affects the position of surrounding content.
 
-Astro provides several prefetch strategies, including hover and viewport-based triggering.[^prefetch] This site warms visible featured links while directory rows use hover or focus. The distinction matters because scanning a long directory does not imply an intention to open every article.
+The table of contents also moved from a global per-scroll update loop to intersection-observer-driven updates. The top gradient uses a CSS scroll-driven animation where supported. These changes reduce the amount of JavaScript tied directly to scrolling while preserving the navigation and visual behavior.[^implementation]
 
-Prefetch fetches resources ahead of a navigation; prerendering can go further by preparing a document. They have different costs and browser support.[^speculation] Our configuration enables Astro's supported client-prerender path, but that setting does not mean every visitor's next page is already rendered. Inspect the behavior in the target browser rather than inferring it from the config alone.
+## Prefetching follows browsing intent
 
-A useful experiment records bytes fetched before the click, latency after the click, and the fraction of prefetched pages eventually visited. A policy can reduce click latency while wasting bandwidth. Touch-only use, constrained connections, and readers who open many tabs may favor different policies.
+Astro supports prefetch strategies based on hover, focus, viewport entry, and other triggers.[^prefetch] The index uses viewport-based prefetching for featured links and hover or focus for directory rows.
 
-## Reproduce the payload check and extend it honestly
+The difference follows the page's structure. Featured articles are a small set of likely destinations. The directory is a large collection that readers may scan without opening most of it. Warming every row as it enters the viewport can transfer many articles that are never visited.
 
-The historical numbers above describe the 70-post publication build. They will change as this article and the other posts grow. To inspect the current built files, run:
+Hover and focus provide a more selective signal for the directory. They allow the browser to begin fetching a chosen article before activation. A touch interaction has less advance notice, so its request sequence can differ from the pointer path.
+
+Prefetching and prerendering perform different amounts of work. Prefetching obtains resources in advance; prerendering can prepare a document for a later navigation.[^speculation] The configuration enables Astro's supported client-prerender path, with actual behavior determined by browser support and policy.
+
+The useful tradeoff is between work before the click and time after it. Recording prefetched bytes and subsequent visits establishes how much of the background work contributes to navigation. A lower click-to-content time and a smaller total browsing transfer are related but distinct objectives.
+
+## Reproducing the payload measurements
+
+The current build can be inspected with:
 
 ```sh
 bun install --frozen-lockfile
@@ -93,9 +101,11 @@ gzip -c dist/index.html | wc -c
 gzip -c dist/thumbnails.svg | wc -c
 ```
 
-Compare the same corpus and build settings when isolating an implementation change. Comparing an old 61-post index with a new 70-post index mixes content growth with engineering work. Keep raw and compressed sizes labeled, and distinguish decimal KB from KiB when reporting exact calculations.
+The file sizes separate raw document storage from compressed transfer payload. The same corpus and build settings isolate the effect of an implementation change. Comparing an older 61-post index with a newer 70-post index would combine engineering changes with content growth.
 
-Payload checks should be followed by browser journeys: a fresh homepage, a warm article switch, a math article, and a long mobile page. Record page errors and missing assets separately from visual checks. For field performance, measure from the reader's click to usable article content and compare distributions by device and cache state. Until that field comparison exists, the defensible result is the shipped implementation and verified payload reduction, not a universal percentage improvement in user waiting time.
+Browser verification adds the execution context: a fresh homepage, a warm article switch, a math article, and a long mobile page. The publication checks covered article rendering, artwork, math-style loading, and mobile overflow. These establish that the changed resource paths still deliver the intended content.
+
+Field timing answers the remaining performance question. Click-to-usable-content distributions, separated by device and cache state, show how the resource changes affect readers. The established result is the reduced font resource and lighter homepage markup, together with more selective loading and rendering. Each addresses a specific cost in delivering the same technical material.
 
 ## References
 

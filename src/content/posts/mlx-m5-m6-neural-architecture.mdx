@@ -1,107 +1,121 @@
 ---
-title: 'MLX on M5 and M6: which engine does the work?'
+title: 'MLX on M5 and M6: GPU Acceleration and Unified Memory'
 pubDate: 2026-09-20
 author: 'Aadit Agrawal'
 category: 'Hardware & Systems'
-description: 'Compare M3, M5, and M6 AI hardware without confusing the Neural Engine with GPU Neural Accelerators.'
+description: 'Connect Apple silicon GPU accelerators, memory bandwidth, and capacity to MLX prefill and decode performance.'
 topics: ['MLX', 'Apple silicon', 'On-device AI']
 ---
 
-_Updated September 25, 2026 with technical examples and source references. Original publication date retained._
+Apple silicon exposes several routes for machine-learning computation: CPU operations, GPU kernels, matrix accelerators within the GPU, and the separate Neural Engine. MLX uses the CPU and GPU over a shared memory pool. On M5, its Metal path also uses the Neural Accelerators introduced inside the GPU cores.[^m5-study]
 
-Apple's chip diagrams now contain two similarly named things: the **Neural Engine**, a dedicated processor block, and **Neural Accelerators inside GPU cores**. They are separate. That distinction explains more about local model performance than a single "AI TOPS" number.
+This architecture explains the different gains seen in prompt processing and token generation. Prefill provides large matrix operations that benefit from more compute. Small-batch decode repeatedly reads weights and attention state, making memory bandwidth a major limit. Memory capacity determines which models and context lengths can be held in the first place.
 
-[MLX](https://ml-explore.github.io/mlx/) is Apple's open array framework for Apple silicon. It supports CPU and GPU operations over unified memory, automatic differentiation, and model training and inference. MLX LM adds common language-model workflows. Apple's [M5 MLX measurements](https://machinelearning.apple.com/research/exploring-llms-mlx-m5) show how MLX uses Metal 4 Tensor Operations to reach the GPU's Neural Accelerators. This is GPU acceleration; it does not mean ordinary MLX inference runs on the separate Neural Engine.
+The M3-to-M6 progression changes all three quantities, but by different amounts. Comparing them separately gives a useful account of local model performance.
 
-The software has moved as well as the chips. [MLX LM's releases](https://github.com/ml-explore/mlx-lm/releases) document work on batched generation, prompt caching, tool-call parsing, speculative decoding fixes, and support for newer model families. These are the features that turn a local demo into a usable service. They also make version and workload part of any fair Mac benchmark: a new cache policy can change latency even on the same M-series machine.
+## GPU accelerators and the Neural Engine
 
-## From M3 to M6
+The Neural Engine is a dedicated processor block. The Neural Accelerators introduced in M5 are inside the GPU cores and are reached through the GPU programming path. Apple describes MLX using Metal 4 Tensor Operations and Metal Performance Primitives to use this matrix hardware.[^m5-study]
 
-| Chip family | AI hardware change                                                         | Memory implication                                                                                        |
-| ----------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| M3          | 16-core Neural Engine; GPU without per-core Neural Accelerators            | Unified memory already permits large local models, but GPU matrix work lacks the later accelerator design |
-| M5          | Faster 16-core Neural Engine; Neural Accelerator in each GPU core          | Base M5 bandwidth reaches 153 GB/s                                                                        |
-| M5 Pro/Max  | GPU accelerator design scales to 20/40 cores; faster 16-core Neural Engine | Up to 307/614 GB/s and 64/128 GB, depending on chip                                                       |
-| M5 Ultra    | Up to 80 GPU cores with Neural Accelerators; 32-core Neural Engine         | Up to 512 GB and 1.2 TB/s for very large local models                                                     |
-| M6          | 12 GPU cores with Neural Accelerators; two 16-core Neural Engines          | Up to 32 GB and 170 GB/s on the announced M6                                                              |
+An MLX operation dispatched to the GPU therefore remains GPU execution even when those accelerators perform its matrix work. Core ML and other system frameworks provide a separate deployment path whose hardware placement depends on supported operations and runtime decisions.
 
-Apple's [M3](https://www.apple.com/newsroom/2023/10/apple-unveils-m3-m3-pro-and-m3-max-the-most-advanced-chips-for-a-personal-computer/), [M5](https://www.apple.com/newsroom/2025/10/apple-unleashes-m5-the-next-big-leap-in-ai-performance-for-apple-silicon/), [M5 Pro/Max](https://www.apple.com/newsroom/2026/03/apple-debuts-m5-pro-and-m5-max-to-supercharge-the-most-demanding-pro-workflows/), and [August 2026 M6/M5 Ultra](https://www.apple.com/newsroom/2026/08/apple-introduces-m6-and-m5-ultra-for-a-big-leap-in-performance-and-ai-compute/) announcements supply these specifications. Apple has announced the base M6 in Mac mini; an M6 Pro/Max architecture should not be inferred from it.
+The distinction also applies to specifications. More Neural Engine compute does not directly imply the same increase in MLX generation speed. The relevant quantities for an MLX workload are the GPU operations it executes, their efficiency on the selected hardware, and the memory traffic supplying them.
 
-The M3's Neural Engine was already useful for Core ML workloads. M5's major local LLM change is the matrix accelerator placed **in every GPU core**, alongside more memory bandwidth. M6 keeps that layout and adds two more GPU cores than base M5. Its two 16-core Neural Engines are a separate change. Apple says system frameworks can use both together and claims up to twice the peak Neural Engine compute over previous generations. That is a peak hardware claim, not a measured MLX token-rate improvement.
+## Hardware progression
 
-## Prefill and decode respond differently
+| Chip family | AI hardware                                                              | Memory configuration                    |
+| ----------- | ------------------------------------------------------------------------ | --------------------------------------- |
+| M3          | 16-core Neural Engine; GPU before the per-core Neural Accelerator design | Unified memory shared across the system |
+| M5          | Neural Accelerator in each GPU core; faster 16-core Neural Engine        | Base-chip bandwidth of 153 GB/s         |
+| M5 Pro/Max  | Accelerator design scaled to 20/40 GPU cores                             | Up to 307/614 GB/s and 64/128 GB        |
+| M5 Ultra    | Up to 80 GPU cores with Neural Accelerators; 32-core Neural Engine       | Up to 512 GB and 1.2 TB/s               |
+| M6          | 12 GPU cores with Neural Accelerators; dual 16-core Neural Engines       | Up to 32 GB and 170 GB/s                |
 
-Processing a prompt uses large matrix operations and can exploit the GPU Neural Accelerators. Generating the next token often reads model weights from memory, so memory bandwidth becomes the limit. In Apple's M5 tests against a similarly configured M4, generation speed improved 19 to 27 percent across the tested models; the article attributes that mainly to the bandwidth increase from 120 to 153 GB/s. The test used 4,096-token prompts and selected Qwen and GPT-OSS models. It does not predict gains for every model or M6 system.
+The specifications come from Apple's [M3 announcement](https://www.apple.com/newsroom/2023/10/apple-unveils-m3-m3-pro-and-m3-max-the-most-advanced-chips-for-a-personal-computer/), [M5 announcement](https://www.apple.com/newsroom/2025/10/apple-unleashes-m5-the-next-big-leap-in-ai-performance-for-apple-silicon/), [M5 Pro/Max announcement](https://www.apple.com/newsroom/2026/03/apple-debuts-m5-pro-and-m5-max-to-supercharge-the-most-demanding-pro-workflows/), and M6/M5 Ultra announcement.[^m6-spec] The M6 entry describes the announced base chip in Mac mini.
 
-M6 raises base-chip bandwidth to 170 GB/s, roughly 11 percent over M5's 153 GB/s. That suggests a modest decode gain for a bandwidth-bound model, but it remains an inference until matched MLX benchmarks exist. Prefill may benefit differently from the larger GPU and matrix hardware. M5 Ultra is a different class of machine: its capacity and 1.2 TB/s bandwidth matter when the model would not fit or stream well on the base chip.
+M5 adds matrix throughput within each GPU core. M6 extends that GPU design to twelve cores and increases base-chip memory bandwidth. M5 Ultra occupies a different capacity class, with a much larger memory pool and higher bandwidth for models that exceed the base chips' working sets.
 
-## What to test on your Mac
+These are separate ways to improve a workload. More capacity admits larger models or more live sequences. More bandwidth supplies weights and cache state faster. More matrix throughput accelerates operations with enough arithmetic to use it.
 
-Measure fit first: weights, KV cache, and the rest of the application must fit in unified memory without swapping. Then measure TTFT and steady token rate separately, with the same model, quantization, prompt, output length, and MLX/macOS versions. Apple's M5 accelerator path requires macOS 26.2 or later according to its research note. For app deployment on Apple's dedicated Neural Engine, evaluate Core ML or Core AI separately from MLX.
+## Unified memory and the working set
 
-## Unified memory removes copies, not all memory costs
+MLX arrays can be used by CPU and GPU operations without explicit transfers between separate host and device allocations.[^unified] This makes mixed execution straightforward: a GPU operation can produce an array that a CPU operation subsequently consumes in the same memory system.
 
-MLX arrays can be used by CPU and GPU operations without explicitly transferring them between separate host and device allocations. The unified-memory model simplifies mixed workloads.[^unified] It does not make every byte free to access, remove synchronization, or allow a model to exceed physical memory without consequences.
+The shared pool still has finite capacity and bandwidth. Model weights, attention caches, temporary arrays, runtime allocations, and other applications compete for it. A model's checkpoint size is therefore only one part of its execution footprint.
 
-Distinguish three limits: capacity determines whether the working set fits; bandwidth determines how quickly bytes can be supplied; compute throughput determines how quickly operations execute once their inputs are available. Different phases of the same request can hit different limits.
+For a dense model with 8 billion parameters, raw two-byte weights occupy about 16 GB. Four-bit weights have an idealized storage cost of 4 GB. Quantization metadata and tensors retained at higher precision add to that lower bound. The KV cache grows separately with context length and the number of live sequences.
 
-A dense model with 8 billion parameters needs about 16 GB for raw two-byte weights or 4 GB for idealized four-bit weights. These are decimal lower-bound estimates, not expected application footprints. Quantization scales, some higher-precision tensors, temporary arrays, the KV cache, runtime allocations, and the operating system all need additional space. A checkpoint advertised as "4-bit" does not imply that every allocation uses half a byte per element.
+Mixture-of-experts models make the distinction between storage and computation especially visible. Active parameter count describes the experts used for a token. Total parameter count describes the collection of weights that may need to remain resident. A model with 30 billion total parameters and a few billion active parameters has a larger storage requirement than its active count suggests.
 
-Memory also matters for mixture-of-experts models. Active parameter count describes the experts selected for a token, while total parameter count determines much of the resident weight storage. A 30B model with a few billion active parameters should not be sized as if it contained only those active parameters. Measure actual peak memory after loading and processing representative prompts.
+Unified memory makes these larger working sets accessible to the GPU, but fitting them remains an explicit allocation problem. Swapping changes the data path and can dominate the benefit of faster arithmetic.
 
-## Estimate a decode ceiling before measuring it
+## Prefill uses matrix throughput
 
-For a simplified dense-model decode step at batch size one, suppose every generated token requires reading 4 GB of weights from memory. At a hypothetical sustained bandwidth of 120 GB/s, those reads alone take at least about 33 ms, corresponding to roughly 30 tokens/s. At 150 GB/s, the same calculation gives 27 ms and 37.5 tokens/s.
+Prefill processes the input sequence and constructs the attention state used during generation. Many token positions participate in the layer operations, producing matrix workloads with substantial parallelism and reuse.
 
-These are illustrative bandwidth ceilings, not measurements of a named Mac. Real execution adds attention-cache traffic, dequantization, synchronization, and imperfect utilization. Some weights may be reused from cache, while batching and sparse expert activation change the arithmetic. The value of the estimate is identifying what would have to be true for a claimed token rate.
+Apple's M5 study compares selected Qwen and GPT-OSS models on similarly configured M4 and M5 MacBook Pros. It uses 4,096-token prompts and reports TTFT separately from generation speed.[^m5-study] The GPU matrix hardware has a larger effect on prompt processing than on the subsequent token stream.
 
-A useful distinction follows. Faster matrix hardware can strongly improve prompt processing while leaving single-stream decoding closer to a bandwidth limit. Larger batches reuse weight reads across more token positions and can shift that balance. Always specify whether "tokens/s" means one person's stream or the sum across concurrent requests.
+This phase matters most when a request contains a long document and produces a short answer, or when the application starts a new context frequently. Prefix caching changes the balance by reusing previously computed state. A warm-prefix request can have a much shorter prefill even on unchanged hardware.
 
-Apple's M5 report separately measures prompt-related TTFT and generation on fixed model/prompt combinations.[^m5-study] Treat that separation as part of the result. The M6 and M5 Ultra specifications describe different capacity and bandwidth classes, but they are not a substitute for a matched application benchmark.[^m6-spec]
+A hardware comparison therefore has two meaningful prefill cases: a new context that requires the full computation, and a repeated prefix that allows reuse. They describe different application behavior.
 
-## Make an MLX benchmark execute the work
+## Decode and memory bandwidth
 
-MLX uses lazy evaluation: constructing an expression does not necessarily execute all of its computation immediately. Its documentation explains how evaluation is triggered and why this matters for timing.[^lazy] A benchmark that times graph construction while leaving execution until later can report an impressive but irrelevant number.
+At batch size one, dense-model decoding often spends much of each step supplying weights from memory. A simplified lower bound is the weight bytes read divided by sustained bandwidth.
 
-For an array-level experiment, separate expression construction from materialization, then state which interval you measured. For a language model, use the runtime's generation measurements and cross-check client-observed latency. Include model loading only in a cold-start experiment. Report it separately when measuring an already-running service.
+For an illustrative 4 GB of weight reads per generated token:
 
-MLX LM provides generation and quantization workflows, with model loading through supported repositories.[^mlx-lm] An isolated environment can be prepared with:
+```text
+at 120 GB/s: 4 / 120 seconds ≈ 33 ms per token
+at 150 GB/s: 4 / 150 seconds ≈ 27 ms per token
+```
+
+Those bounds correspond to about 30 and 37.5 tokens/s before attention traffic, dequantization, synchronization, and other work. They describe a bandwidth model, not measured rates for a particular Mac.
+
+Batching changes the arithmetic because a weight read can serve several token positions. Sparse expert activation changes which weights are used. Cache residency and implementation details change the achieved traffic. These effects explain why aggregate throughput and the speed of one interactive stream are different measurements.
+
+Apple's reported M5 generation improvements range from 19 to 27 percent across its tested models, with the memory-bandwidth increase from 120 to 153 GB/s identified as the main contribution.[^m5-study] M6's 170 GB/s is roughly 11 percent above base M5. A bandwidth-bound workload can benefit from that increase, with its actual gain determined by the rest of the execution path.
+
+## Lazy execution and timing
+
+MLX builds computation lazily. Constructing an array expression records work that may execute only when the result is needed. Evaluation boundaries therefore matter when timing an operation.[^lazy]
+
+An array benchmark can measure graph construction, execution, or both. Materializing the result establishes that the computation has completed. Without that boundary, a short elapsed time may describe only the creation of an expression.
+
+Language-model measurements add their own phases: loading the model, first-run initialization, processing the prompt, and generating output. A cold-start experiment includes the first two. A warm serving experiment begins with the model already available. Keeping those intervals separate explains where a change in storage, runtime, or chip affects the result.
+
+## MLX LM and reproducible execution
+
+MLX LM supplies model-loading, generation, and quantization workflows on top of MLX.[^mlx-lm] Its [release history](https://github.com/ml-explore/mlx-lm/releases) also records changes to batching, caching, model support, and generation behavior. The software version is part of a performance configuration alongside the hardware.
+
+An isolated environment and package record can be created with:
 
 ```sh
 uv venv .venv
 uv pip install --python .venv/bin/python mlx-lm
-```
-
-Validate the runtime imports and save the installed versions:
-
-```sh
-.venv/bin/python -c 'import mlx.core; import mlx_lm; print("MLX imports succeeded")'
+uv run --no-project --python .venv/bin/python python -c 'import mlx.core; import mlx_lm'
 uv pip freeze --python .venv/bin/python > requirements-benchmark.txt
 ```
 
-Record the model repository and immutable revision separately from package versions. Installing the latest package once is acceptable for exploration; comparing machines using unspecified moving versions is not a reproducible experiment. Use the package's version-matched help for generation flags rather than copying an old command line uncritically.
+The model repository and immutable revision identify the weights separately from the Python environment. Quantization, tokenizer, sampling settings, and prompt content complete the configuration. Apple's M5 research note also specifies macOS 26.2 or later for the accelerator path it describes.[^m5-study]
 
-## Use a small experiment matrix
+This record makes comparisons interpretable. A cache-policy change can lower TTFT on the same machine, while a different quantization can change both memory use and output quality.
 
-A practical comparison should vary workload shape while keeping model weights, tokenizer, quantization, and sampling fixed:
+## Workload-level comparison
 
-| Experiment          | Input and output shape                      | What it reveals                          |
-| ------------------- | ------------------------------------------- | ---------------------------------------- |
-| Cold launch         | Unloaded model, short prompt                | Storage, loading, and first-run overhead |
-| Short chat          | Warm model, short prompt, 256 output tokens | Typical interactive decode               |
-| Document question   | Long prompt, short answer                   | Prefill and long-context memory          |
-| Repeated prefix     | Same long prefix, different suffixes        | Cache reuse rather than raw chip speed   |
-| Concurrent requests | Several independent sequences               | Batching, contention, and tail latency   |
+A compact experiment matrix covers the main execution regimes:
 
-Keep cached and uncached results separate. Changing the prompt without clearing or accounting for a prefix cache can make a second run appear to prove a hardware improvement. Record whether the machine is on battery, its power mode, and whether another application is using the GPU. Repeat sustained workloads long enough to notice thermal behavior.
+| Experiment          | Request shape                              | Dominant information       |
+| ------------------- | ------------------------------------------ | -------------------------- |
+| Cold launch         | Unloaded model, short prompt               | Loading and initialization |
+| Short chat          | Warm model, short prompt, sustained output | Interactive decode         |
+| Document question   | Long prompt, short answer                  | Prefill and context memory |
+| Repeated prefix     | Shared context, changing suffix            | Cache reuse                |
+| Concurrent requests | Several live sequences                     | Batching and contention    |
 
-For each cell, save TTFT, total duration, output count, peak memory, and a quality result. If sampling produces a different number of tokens, completion time alone becomes difficult to compare. Fixed-length generation can help isolate throughput, while a separate realistic test should retain natural stopping behavior.
+TTFT, completion time, output count, and peak memory describe each run. Quality establishes whether the configurations perform the same useful task. Power mode, battery state, competing GPU work, and sustained thermal behavior explain variation between repeated runs.
 
-## Choose the execution path by the model and application
-
-MLX is useful when you want Python-level experimentation, supported model implementations, and direct control over generation or fine-tuning. Core ML is a separate deployment framework, and hardware placement depends on model conversion, supported operations, and runtime decisions. A chip having a Neural Engine is insufficient evidence that a particular MLX program uses it.
-
-For an application, begin with the exact task and supported model. If a compact model meets quality targets, test it on the machine already available. If it does not fit, additional GPU arithmetic cannot solve the capacity problem. If it fits but TTFT is poor, inspect prefill; if streaming is slow, inspect decode and memory traffic. This gives a more defensible comparison than ranking machines by their newest chip name.
+The practical ordering follows the architecture. Capacity determines whether the workload fits. Prefill and decode measurements determine which resource limits it. The runtime determines how effectively the available hardware is used. This is why a larger previous-generation system can be the better fit for one model while a newer base chip is faster on another.
 
 ## References
 
@@ -113,4 +127,4 @@ For an application, begin with the exact task and supported model. If a compact 
 
 [^m5-study]: Apple Machine Learning Research, [Exploring LLMs with MLX and the Neural Accelerators in the M5 GPU](https://machinelearning.apple.com/research/exploring-llms-mlx-m5). Hardware, models, prompt lengths, and measured results.
 
-[^m6-spec]: Apple, [Apple introduces M6 and M5 Ultra](https://www.apple.com/newsroom/2026/08/apple-introduces-m6-and-m5-ultra-for-a-big-leap-in-performance-and-ai-compute/), August 25, 2026. Vendor hardware specifications, not an independent benchmark.
+[^m6-spec]: Apple, [Apple introduces M6 and M5 Ultra](https://www.apple.com/newsroom/2026/08/apple-introduces-m6-and-m5-ultra-for-a-big-leap-in-performance-and-ai-compute/), August 25, 2026. Hardware specifications.

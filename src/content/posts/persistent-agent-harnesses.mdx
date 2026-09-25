@@ -1,19 +1,21 @@
 ---
-title: 'Build a persistent agent that can resume its work'
+title: 'Persistent Agent Architectures: State, Recovery, and Execution'
 pubDate: 2026-09-22
 author: 'Aadit Agrawal'
 category: 'Ecosystems & Tooling'
-description: 'The loop, durable state, tools, permissions, and checks behind long-running agents such as Claude and Muse.'
+description: 'Explain the durable state, checkpoints, leases, and action recovery that let agents continue work across process restarts.'
 topics: ['Agents', 'Harness design', 'Persistence']
 ---
 
-_Updated September 25, 2026 with technical examples and source references. Original publication date retained._
+A persistent agent separates the lifetime of a task from the lifetime of the process running it. The task can wait for a build, pause for input, survive a worker restart, and continue with the same objective and working state. Persistence comes from the software around the model: durable records, recoverable execution, and a defined path from an unfinished action to its next step.
 
-A model call ends. An agent's job may not. It may need to wait for a build, wake after a calendar event, reopen a browser, or resume a half-finished research task tomorrow. The software around the model determines whether that continuation is reliable.
+Anthropic's managed-agent architecture separates the session log, the harness that runs the model/tool loop, and the sandbox that executes work.[^managed] Meta's Muse architecture makes another implementation of the same broad distinction, separating the agent runtime from durable application state, credentials, and permission enforcement.[^muse-design]
 
-Anthropic describes a [harness](https://claude.com/blog/harnessing-claudes-intelligence) as the loop, tools, context management, and boundaries around Claude. Its [managed-agent architecture](https://www.anthropic.com/engineering/managed-agents) separates an append-only session log, the harness that routes calls and tools, and a sandbox for execution. Meta describes [Muse](https://ai.meta.com/muse/) as an agent with a persistent dedicated virtual machine and browser that can keep working after the app closes. These are product designs with different tradeoffs; a personal project can copy the important mechanics without copying their scale.
+These boundaries allow a long-running task to outlive any individual model call or worker. They also make failures local: a lost process becomes something the system can recover from using the records it already holds.
 
-## Start with a small state machine
+## The task state machine
+
+A task moves through a small set of states:
 
 ```text
 queued -> running -> waiting_on_tool -> running -> done
@@ -21,29 +23,25 @@ queued -> running -> waiting_on_tool -> running -> done
                    -> failed -> retry or stop
 ```
 
-Give every task an ID, owner, objective, allowed tools, deadline, budget, and current state. Append events such as `tool_requested`, `tool_completed`, `checkpoint_saved`, and `user_approved`. Do not use the model's current context window as the sole record. On restart, load the latest checkpoint and the events after it, then reconcile any tool call that may have completed before the crash.
+Each state identifies what can happen next. A running task belongs to a worker. A waiting task records the operation or event that can wake it. A task needing user input retains the question and the point at which work paused. Completion records the resulting artifact and the checks that establish it.
 
-For a first implementation, a database row per task plus an append-only events table is enough. A worker leases one task for a short period, renews the lease while active, and writes a checkpoint before yielding. Give external actions idempotency keys where possible. A restarted agent must not buy the same item or send the same email twice.
+The task record contains the objective, owner, allowed operations, deadline, remaining budget, and current status. These fields remain authoritative even when the model's context is compacted. A summary can help the next model call understand the task, while the durable record determines what it is permitted and expected to do.
 
-## Keep memory useful
+An event log records transitions such as `tool_requested`, `tool_completed`, `checkpoint_saved`, and `user_approved`. Sequence numbers establish their order. The current state can be reconstructed from those events or stored alongside them for efficient lookup.
 
-Store durable facts separately from the transcript: user preferences, project decisions, file pointers, and unresolved questions. Each fact needs a source and update time. Retrieve only facts relevant to the current task. A model that sees every old note will waste context and may treat stale guesses as instructions. Keep the raw event log for audit; compact only the working context.
+## Session state and working files
 
-Meta says [Muse Spark 1.1](https://ai.meta.com/blog/introducing-muse-spark-meta-model-api/) can manage long context, compact, and coordinate subagents. Those model abilities help, but the application still needs durable state, retries, and clear ownership of side effects. Anthropic's [long-running application work](https://www.anthropic.com/engineering/harness-design-long-running-apps) likewise treats verification and environment design as part of agent performance.
+Three forms of state have different roles:
 
-## Bound action by consequence
+| State           | Purpose                                   | Example                                      |
+| --------------- | ----------------------------------------- | -------------------------------------------- |
+| Task state      | Ownership, objective, and progress        | Waiting for deployment 123                   |
+| Session history | Observations, decisions, and tool results | Build output and the action that produced it |
+| Artifact state  | The work being created or changed         | A repository revision or saved report        |
 
-Read-only search can run freely within a budget. Editing a local branch is reversible. Sending a message, publishing, paying, or deleting data needs an explicit policy and often a person at the final step. Enforce tool permissions in code, outside the prompt. Run code in a sandbox with scoped filesystem and network access. Log tool inputs and outputs, redact secrets, and set time and spend limits.
+The distinction makes recovery precise. A worker can reconstruct its context from the session history, identify the current artifact revision, and resume according to the task state. A container's filesystem alone does not contain all three guarantees.
 
-A useful starter task is a daily repository maintenance agent: inspect issues, propose one small fix in an isolated worktree, run tests, and leave a reviewable diff. The task is complete only when the diff and checks are recorded. Add scheduling, parallel work, and more tools after a single agent can resume cleanly from a forced restart.
-
-## Separate task state, conversation, and working files
-
-These records answer different questions. Task state says who owns the work and whether it is complete. Conversation history explains what the model saw and decided. Working files contain the artifact being changed. Losing any one of them should not silently redefine the objective.
-
-Anthropic's managed-agent design separates session storage, the model/tool loop, and execution environments.[^managed] A smaller implementation can use the same separation without copying its infrastructure. For example, keep durable records in a database, generated artifacts in a versioned workspace, and a disposable worker process that can reconstruct its context.
-
-A minimal schema might contain:
+A small implementation can represent them with a few tables:
 
 ```text
 tasks(id, objective, status, owner, lease_until, version, deadline, budget)
@@ -52,66 +50,80 @@ actions(id, task_id, request_key, status, external_id, result)
 checkpoints(task_id, last_sequence, summary, artifact_revision)
 ```
 
-This is an illustrative data model. Add a uniqueness constraint on event sequence within a task and on action request keys. Update state and append its corresponding event in one transaction where possible. Otherwise the worker can observe a new status without the event explaining how it got there.
+Unique event sequences and action request keys give each record a stable identity. A transaction can update the task state and append its corresponding event together, avoiding a status change without an explanation in the log.
 
-Do not store only a model-generated summary. A summary can omit a failed command, collapse two alternatives into one decision, or turn uncertainty into a fact. Store the underlying evidence and use summaries as indexes into it.
+## Checkpoints and context reconstruction
 
-## Walk through the dangerous crash window
+A checkpoint records the last processed event, a compact account of the work, and the artifact revision it describes. Recovery loads that checkpoint and the subsequent events. The worker does not need to replay every model call to discover the next unfinished operation.
 
-Suppose an agent submits a report to an external service. The service accepts it, but the worker crashes before saving the returned identifier. On restart, the local action still appears unfinished. Blindly retrying can create a duplicate report.
+Raw events remain useful after compaction. A summary may omit the details of a failed command or the reason an alternative was rejected. Keeping the original result allows the agent or a reviewer to retrieve it when it becomes relevant again. Anthropic's managed-agent design explicitly separates durable session history from the model's working context.[^managed]
 
-Writing "requested" before the call is necessary but insufficient: after a timeout, it remains unclear whether the external action happened. Three recovery options are available:
+Long-term facts have a different lifecycle from task events. A project decision, user preference, or file pointer benefits from a source and update time. Retrieval selects the relevant facts for the current task, while the event log retains the complete execution record.
 
-1. Retry with the same idempotency key if the API provides a documented guarantee.
-2. Query the external service using a stable identifier or recorded request metadata.
-3. Mark the action as uncertain and ask for resolution when neither mechanism exists.
+Model-level context management complements this storage. Meta describes context compaction and subagent coordination in [Muse Spark 1.1](https://ai.meta.com/blog/introducing-muse-spark-meta-model-api/). The model can use context more effectively, while the surrounding system preserves information across restarts and decides which state remains current.
 
-Stripe's API documents an idempotency-key mechanism for retrying requests.[^idempotency] That is an example of a service-specific contract, not a guarantee every tool shares. Check key retention, parameter matching, and error handling. A different key on each retry defeats deduplication.
+## Recovery across an external action
 
-Do not claim universal "exactly once" execution from a local events table. The local database and remote API usually do not share a transaction. Design explicitly for the uncertainty between them.
+The most difficult restart boundary occurs after an external action succeeds but before the worker records the result. Consider an agent submitting a report. The remote service accepts it, then the worker crashes before saving the returned identifier. Locally, the action still appears unfinished.
 
-## Leases need protection against stale workers
+Recording the request before sending it establishes intent, but the outcome is uncertain until it can be reconciled. Recovery follows one of three paths:
 
-A lease prevents a healthy scheduler from assigning one task to multiple workers at the same time. It does not stop a paused worker from waking after its lease expires. If a second worker has taken ownership, the first can still try to write a result.
+1. Retry with the same idempotency key under the external service's documented contract.
+2. Query the service using a stable identifier or request metadata.
+3. Retain an uncertain state for resolution when neither operation is available.
 
-Use a monotonically increasing task version or ownership token. The worker must include that token when committing a state change, and the store rejects writes from an older owner. This is a fencing pattern. It also needs to reach the tool boundary when a stale worker could perform an external action; protecting only the final database write is too late.
+Stripe's idempotency API is a concrete example of the first mechanism.[^idempotency] The key identifies the operation across attempts. Its retention period, parameter matching, and handling of errors determine which retries the guarantee covers.
 
-For a repository task, bind the checkpoint to a commit or content hash. On resume, compare the current workspace with that revision. If a person has changed the same file, the worker should inspect and reconcile the difference rather than restoring its old copy over the new work.
+A local events table and a remote API usually do not share a transaction. The action record bridges them by retaining the information needed to discover what happened. This is what prevents an ordinary process restart from becoming a duplicate message, report, or purchase.
 
-A useful restart sequence is:
+## Worker leases and fencing
+
+A lease assigns a task to a worker for a limited period. The worker renews it while active; after expiry, another worker can take over. This provides recovery when a process disappears without releasing its task.
+
+Expiry does not guarantee that the original process has stopped. A paused worker can resume after a new owner has started. A monotonically increasing ownership version resolves that case: each state-changing operation includes the version, and the store rejects an older owner's writes.
+
+This fencing check also matters at the tool boundary. Rejecting a stale database write after an external action has already happened cannot undo the action. The executor needs enough ownership information to reject stale work before performing it.
+
+Artifact revisions provide a related check for collaborative work. A checkpoint can name a commit or content hash. On resume, a difference between that revision and the current workspace identifies changes made by another worker or a person. Recovery can then reconcile the new state rather than restoring an obsolete copy.
+
+## The restart sequence
+
+With these records in place, resuming a task has a defined sequence:
 
 ```text
-claim task and obtain current ownership version
+claim task and obtain the current ownership version
 load objective, permissions, checkpoint, and later events
 reconcile pending actions with their external systems
-verify artifact revision and current workspace
-construct the next model context from current evidence
+compare artifact revision with the current workspace
+construct context from the current task and relevant evidence
 continue within the remaining budget
 ```
 
-## Treat permission as a scoped record
+The sequence resolves uncertainty before asking the model for its next action. It also reduces unnecessary work: a completed deployment or tool call can be observed and recorded rather than launched again.
 
-Approval should name an action, destination, and scope. "Publish this report" should not become permanent authority to publish every later report. Store the approved artifact revision or a digest of the action arguments. If the agent changes the destination or materially changes the artifact, the earlier approval may no longer apply.
+Waiting becomes inexpensive under this design. A task waiting for a build does not need a continuously running model loop. A completion event can wake a replaceable worker, which resumes from the durable state.
 
-Separate authorization from capability. A tool might technically be able to delete a repository while the task only permits reading issues. The executor should enforce that difference. Credentials should be held outside untrusted generated code wherever possible; the managed-agent architecture discusses this separation.[^managed]
+## Permission as application state
 
-A browser page, downloaded document, or tool response may contain text that resembles instructions. Preserve its provenance when placing it in context. The fact that a page says "ignore the user" does not make it an authorized change to the objective. A permission check based on the task record provides a boundary even when the model misinterprets such content.
+An approval has a scope: the action, destination, and artifact it authorizes. Binding it to the action arguments or an artifact revision makes it usable during recovery. The worker can determine whether the operation now being attempted is the one that was approved.
 
-Meta's published Muse architecture provides a concrete comparison: its agent runtime is separated from credential services and durable application state, and a separate permission authority controls external actions. These are reported implementation choices, not proof that prompt injection is solved.[^muse-design]
+Authorization is enforced by the executor. A tool may technically support deletion while the current task permits only reading. The task's permission record restricts the operation independently of what the model proposes.
 
-## Make completion a predicate over evidence
+Meta's published Muse design places permission enforcement and credential handling outside its agent runtime.[^muse-design] That separation lets the application check external actions without making the generated code responsible for protecting the credentials it could otherwise access.
 
-For a code-maintenance task, "done" might require a stored diff, passing required checks, and an explicitly recorded unresolved-issues list. For research, it might require a saved report whose factual claims have source links. A natural-language message saying "finished" should not be the sole completion signal.
+Provenance serves a similar role for information. A document or web page is task data, even when its contents resemble instructions. Retaining that distinction in context and checking actions against the task record limits how external text can redefine the work.
 
-Anthropic's long-running development work discusses the importance of evaluation and verification around generation.[^long-running] In your implementation, keep the evaluator's inputs separate from the worker's self-assessment. If the worker can simply edit the expected result until the check passes, the check is not an independent gate.
+## Completion and evaluation
 
-Test the system by killing it at specific boundaries: before a tool call, during a tool call, after external completion but before local persistence, and after a checkpoint. Replay the same scheduled event twice. Expire a lease while the original worker is paused. Revoke a permission while a task waits. These tests reveal whether persistence actually protects the work.
+Completion can be expressed as a predicate over recorded evidence. A code task may require a saved diff and passing checks. A research task may require a report with source-backed claims. A deployment task may require a successful build and a verified live artifact.
 
-## Budget the whole task, including recovery
+Anthropic's long-running development work treats evaluation as part of the agent system.[^long-running] Separating the evaluator from the worker's self-assessment gives the completion record meaning beyond the model saying it has finished.
 
-Limit elapsed time, model spending, tool invocations, and repeated failures. A task that retries forever is persistent but unusable. Distinguish a transient network error from a rejected permission or an invalid request; retrying all three with the same policy wastes time and can amplify damage.
+Recovery tests exercise the same design at its boundaries: before a tool call, during execution, after remote completion, and after checkpoint persistence. Duplicate wake events, expired leases, and revoked permissions test whether the task remains coherent under changes in ownership and authority.
 
-Expose the last successful checkpoint, pending action, next wake condition, and remaining budget to the user. A clear "waiting for deployment 123" state is more useful than an animation that says the agent is working. The first milestone should be a single task that resumes correctly after a forced crash. Scheduling more tasks is valuable only after that behavior is reliable.
+Budgets bound the lifetime of unsuccessful work. Elapsed time, model spending, tool invocations, and repeated failures can each have a limit. A transient transport error can be retried; an invalid request or revoked permission needs a different transition.
+
+The resulting system has continuity that can be inspected. Its last checkpoint, pending action, wake condition, and remaining budget describe what is happening even while no model call is running. That is the operational basis for an agent that can resume work reliably over hours or days.
 
 ## References
 

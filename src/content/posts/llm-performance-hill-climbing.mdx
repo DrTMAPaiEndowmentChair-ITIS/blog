@@ -1,113 +1,132 @@
 ---
-title: 'Give an LLM a stopwatch and a failing test'
+title: 'LLM-Assisted Performance Optimization: Profiling and Iteration'
 pubDate: 2026-09-18
 author: 'Aadit Agrawal'
 category: 'Ecosystems & Tooling'
-description: 'A practical loop for using coding models to improve software latency without gaming the benchmark or breaking behavior.'
+description: 'Explain how coding models use profiles, benchmarks, and behavioral checks to iterate on software performance.'
 topics: ['Performance', 'Coding agents', 'Benchmarking']
 ---
 
-_Updated September 25, 2026 with technical examples and source references. Original publication date retained._
+Performance optimization has a repeatable inner loop: identify the work on a slow path, change its cost, and measure the result while preserving behavior. Coding models can participate throughout that loop. They can follow execution paths, inspect profiles, construct benchmarks, and implement candidate changes, which makes a well-defined performance objective a useful engineering task for an agent.
 
-A coding model is unusually good at finding performance wins when it can run the program, inspect a profile, change one thing, and measure again. Anthropic's [account of making claude.ai faster](https://claude.dev/blog/how-we-made-claude-ai-faster/#anything-can-be-hill-climbed) makes the case through ordinary product work: identify a user journey, build a local measurement that tracks it, and keep lowering the number. The team's reported gains belong to its own app and setup. The reusable part is the loop.
+The leverage comes from feedback. A trace identifies where time goes; a correctness check constrains the implementation; a benchmark determines whether the candidate improved the path. Each result gives the next iteration more information than the original description of the problem.
 
-## Choose the number carefully
+Anthropic's account of its claude.ai performance work describes this approach across user journeys and local benchmarks.[^claude] The method applies more broadly because the essential components are ordinary profiling, experimentation, and software review.
 
-Start with a real user action: opening a large project, sending a message, searching a mailbox, loading a report, or starting a model session. Record a baseline distribution, including p50 and p95, on fixed hardware and realistic data. Save a correctness check before editing. A faster result that skips work or changes the answer is a regression.
+## The optimization objective
 
-The inner loop can be simple:
+A useful objective begins and ends with observable application behavior. Opening a project may begin with a click and end when its records are rendered and search accepts input. Sending a message may end when the interface displays the submitted message and is ready for the next action.
 
-```text
-reproduce -> profile -> propose one change -> run correctness checks
-          -> repeat benchmark -> inspect diff -> keep or revert
-```
+These boundaries determine which work is part of the problem. A spinner marks progress, but it does not establish that the requested content is usable. Receiving a response establishes network completion, while parsing and rendering may still be on the critical path.
 
-Ask the model to report the bottleneck it measured, the proposed mechanism, and the before/after result. Keep benchmark inputs fixed during a run. Recheck promising changes against a second dataset so the model cannot merely tune for one fixture.
-
-Anthropic used instruction counts on two hot paths because they were less noisy than wall-clock timing, then checked that lower counts also reduced elapsed time. That last check matters. An easily optimized proxy can drift away from what people feel. If an agent discovers that the benchmark ignores parsing, it may remove parsing from the measured path while leaving the application no faster.
-
-## Different software, different climbs
-
-| Workload         | Measure                                              | Likely bottlenecks                                     | Correctness gate                      |
-| ---------------- | ---------------------------------------------------- | ------------------------------------------------------ | ------------------------------------- |
-| Web app          | Time to usable input, long-task time, p95 navigation | Hydration, rerenders, bundle loading, main-thread work | Browser interaction and visual checks |
-| CLI              | Cold start and task completion time                  | Module loading, subprocesses, repeated parsing         | Exact output and exit status          |
-| Database service | p95 query latency at a fixed arrival rate            | Plans, indexes, N+1 calls, serialization               | Query result comparison               |
-| Model server     | Goodput under TTFT and TPOT limits                   | Batching, KV memory, prefill scheduling                | Output-quality and SLO checks         |
-| Data pipeline    | Records per second and total completion time         | I/O, allocation, compression, skew                     | Counts and sampled records            |
-
-The prompt should describe the workload, not prescribe a clever optimization. "Reduce p95 open time on this 10,000-item fixture while preserving all visible items" gives the model room to find a bad algorithm. "Add memoization" may lock it onto the wrong fix.
-
-## Make the climb trustworthy
-
-Run the benchmark several times. Control caches, warmup, parallel load, and build mode. Record the command, commit, machine, and input. For a server, test at several arrival rates; an optimization that helps one request can worsen queueing at production load. For a UI, profile a slower laptop as well as a fast developer machine.
-
-Keep changes small enough to review. A model can land a series of modest wins, but each should survive tests and a real user path. Add a regression threshold only after the metric has proved stable and correlated with elapsed time. If the metric flakes, fix or remove it.
-
-## Start with a contract the agent cannot quietly change
-
-A performance task should specify the user journey, representative input, start and end events, required behavior, and resource constraints. The contract is more important than the first optimization idea. If "open project" ends when a spinner appears, the benchmark rewards showing a spinner quickly rather than making the project usable.
-
-For example:
+A concrete task definition can be expressed as:
 
 ```text
 Journey: open a project containing 10,000 records.
 Start: the user activates its link.
-End: the visible records are rendered and the search field accepts input.
-Behavior: preserve sorting, selection, keyboard navigation, and result counts.
-Objective: reduce p95 duration without increasing peak memory by more than 10%.
-Evidence: trace, benchmark samples, correctness results, and a reviewable diff.
+End: visible records are rendered and search accepts input.
+Behavior: preserve ordering, selection, navigation, and result counts.
+Objective: reduce p95 duration within a defined memory budget.
+Evidence: profiles, raw timing samples, checks, and the implementation diff.
 ```
 
-These are example constraints, not results from this site. Keep the benchmark and its fixtures outside the agent's permitted optimization scope unless a reviewer explicitly accepts a correction. A model can otherwise improve a number by shortening the fixture, weakening the assertion, or moving the end marker earlier.
+The fixture and behavior define the work being optimized. Keeping them stable allows a sequence of candidate implementations to be compared against the same task. A correction to the benchmark itself is a separate change, with its own explanation.
 
-Browser User Timing marks allow application-specific intervals rather than relying only on generic page-load metrics.[^timing] Put the end marker at the actual readiness condition. Scheduling a callback does not prove that a frame has painted, and receiving data does not prove that the interface can process input.
+## The profile connects a symptom to a mechanism
 
-## Use a profile to choose the first experiment
+Elapsed time contains both execution and waiting. CPU sampling identifies active functions. A timeline reveals sequential requests, scheduling gaps, and blocked work. Resource measurements show whether the execution is limited by CPU, memory, storage, or another service.
 
-Break elapsed time into work and waiting. CPU samples can identify a repeated parser, while a timeline may reveal sequential network calls or a blocking subprocess. A hot function is not automatically on the user journey's critical path. Conversely, waiting can dominate without producing many CPU samples.
+Brendan Gregg's USE method organizes resource investigation around utilization, saturation, and errors.[^use] The distinction is useful here: an idle CPU waiting on storage presents a different optimization problem from a saturated CPU repeatedly parsing the same input.
 
-Brendan Gregg's USE method asks about utilization, saturation, and errors for system resources.[^use] Apply that distinction before asking for a rewrite. A saturated CPU needs a different intervention from an idle CPU waiting on storage. High memory use is different from allocation churn, and a low average can conceal a short burst that blocks input.
+Suppose a 500 ms operation spends 300 ms parsing, 150 ms waiting for data, and 50 ms rendering. Making parsing twice as fast reduces completion time to 350 ms, a 1.43x speedup. Eliminating all rendering work would save at most 50 ms. The phase breakdown provides an upper bound on the value of each candidate.
 
-An illustrative 500 ms operation might spend 300 ms parsing, 150 ms waiting for data, and 50 ms rendering. Making parsing twice as fast reduces the total to 350 ms, a 1.43x improvement. Even eliminating rendering completely can save only 50 ms. This simple upper-bound calculation helps reject elaborate ideas aimed at the wrong part of the path.
+A measured mechanism then gives the agent a tractable task. Building an index once can replace repeated scans. Reusing a parsed representation can remove repeated decoding. Overlapping independent requests can reduce serial wait. Each proposal identifies both the work removed and the condition under which that saving should appear.
 
-Ask for a mechanism before accepting a change: "build an index once so each lookup avoids scanning all records" is testable. "Use a faster data structure" is too vague until it names the repeated operation, cost, and lifecycle.
+## The experiment loop
 
-## Write the experiment log before running a search
+```text
+reproduce the path
+    -> profile its execution
+    -> propose a change tied to the profile
+    -> run behavioral checks
+    -> repeat the benchmark
+    -> inspect the result and implementation
+    -> retain or revert the candidate
+```
 
-Keep one row per candidate, including failures:
+Small changes make this loop informative. When one candidate changes parsing, caching, and scheduling together, a gain or regression is harder to attribute. A sequence of focused changes produces an explanation for each improvement and makes later regressions easier to locate.
 
-| Candidate       | Hypothesis                     | Correctness gate                  | Timing result                      | Decision                                |
-| --------------- | ------------------------------ | --------------------------------- | ---------------------------------- | --------------------------------------- |
-| Cached index    | Remove repeated linear scans   | Compare result IDs and order      | Record raw samples                 | Keep only if stale-data cases pass      |
-| Deferred parser | Move work off the opening path | Verify content before interaction | Measure both opening and first use | Reject if delay merely moves to typing  |
-| Larger batch    | Amortize fixed overhead        | Verify cancellation and errors    | Include tail latency               | Reject if interactive deadlines regress |
+A useful experiment record includes failed candidates as well as successful ones:
 
-Run baseline and candidate measurements in alternating order where practical. Otherwise thermal throttling, cache warming, or a background job can align with one version. Warm a JIT before a steady-state comparison, but retain a separate cold-start benchmark when startup matters to users.
+| Candidate       | Mechanism                      | Behavioral condition                   | Performance question                    |
+| --------------- | ------------------------------ | -------------------------------------- | --------------------------------------- |
+| Cached index    | Avoid repeated scans           | Result IDs and order remain correct    | Does lookup dominate enough to matter?  |
+| Deferred parser | Move work off the opening path | Content is ready before interaction    | Does the next action inherit the delay? |
+| Larger batch    | Amortize fixed overhead        | Cancellation and errors remain correct | How does the tail change?               |
 
-Save individual samples. A median alone cannot reveal a multimodal distribution. Do not delete slow runs without a recorded reason that applies equally to both versions. If a difference is comparable to run-to-run noise, gather more evidence or report it as inconclusive.
+The record preserves information about the workload. A rejected candidate may become useful at another scale, while its failure explains why it was unsuitable for the current path.
 
-Percentiles need enough observations to be meaningful. A p95 from twenty runs is determined by roughly the slowest one or two observations, depending on the estimator. Reporting that value to three decimal places does not create precision. Record sample count and use a stable workload before turning a percentile into a release gate.
+## Measuring a browser journey
 
-## Prevent a proxy from replacing the objective
+Browser User Timing marks provide application-defined start and end events.[^timing] They make it possible to measure a particular interaction rather than treating all page activity as one load metric.
 
-Instruction counts, allocation counts, DOM mutations, and database queries can be useful stable proxies. Their relationship to elapsed time must be demonstrated. Fewer instructions can still lose if the remaining work waits on memory; fewer queries can lose if one enormous query transfers much more data.
+The end event depends on the result. Data arrival, DOM update, layout, and paint are distinct stages. An input can appear before its event handling is ready, and a framework can finish a render before the browser displays the frame. The timing boundary should correspond to the application behavior being studied.
 
-Anthropic's September 23 account describes validating local performance metrics against user-visible latency and rejecting metrics that did not support that relationship.[^claude] The lesson is methodological. Its reported gains do not establish the result of a similar change in a different application.
+Browser traces complement the interval with an explanation. Long tasks identify stretches where input handling competes with other main-thread work. Layout and style recalculation show how a small data update can trigger a large amount of rendering work. Network timing identifies resources that are discovered late or requested serially.
 
-Use a second fixture that differs in size or shape from the optimization fixture. If a parser gets faster only for ASCII input, test multilingual and mixed-format input. If memoization wins, test edits that should invalidate the cache. If virtualization wins, test keyboard focus, search, and assistive technology access to the content users need.
+The same principle applies outside a browser. A CLI's start-to-exit duration includes process and module initialization. A database request includes query execution and result transfer. A model request includes queueing and output generation. The boundary follows the task.
 
-## Evaluate the system under load
+## Stable proxies for a fast inner loop
 
-For services, the time saved by one request can be magnified when it reduces queueing. The reverse is also possible: a more expensive cache or a larger batch improves one benchmark but increases contention at peak traffic. Google's _The Tail at Scale_ explains why rare delays matter in large services.[^tail]
+Wall-clock measurements include variation from scheduling, caches, and shared resources. Counts of instructions, allocations, queries, or rendering operations can provide more stable feedback for a narrow path.
 
-Test representative arrival rates, not only a single request in an otherwise idle process. Keep error rates and cancellations visible. A server that rejects slow requests can appear faster unless the result includes those failures. For a UI, inspect the next action as well as the optimized action so deferred work cannot disappear from the accounting.
+Anthropic's article describes using local metrics and checking that improvements in those metrics translated into elapsed-time gains.[^claude] The connection is what makes a proxy useful. Fewer instructions may still leave a memory bottleneck unchanged. Fewer queries may transfer more data. Fewer DOM mutations may require a larger replacement operation.
 
-After release, compare the same journey by build, device class, and cache state. If local gains do not appear in production, inspect the assumption that failed: a different bottleneck, an unrepresentative fixture, or another resource on the critical path. Keep a change because the evidence supports it, not because the agent spent many iterations producing it.
+A proxy therefore has two roles. It gives the agent a low-noise measure while exploring, and it can become a regression check after its relationship to the user journey is established. Wall-clock and field measurements remain the connection back to the application.
+
+## Experimental variation
+
+Warmup, caching, thermal behavior, and background load affect the comparison. Alternating baseline and candidate runs reduces the chance that a changing environment consistently favors one version. A steady-state benchmark warms the relevant JIT and caches; a cold-start benchmark measures those costs explicitly.
+
+Individual samples preserve the shape of the result. A median describes typical behavior, while the tail exposes occasional expensive paths. A p95 estimated from twenty runs depends on roughly the slowest one or two observations, so its stability is different from a percentile estimated from thousands of requests.
+
+Input variation is equally important. A parser improvement can depend on text encoding. A lookup improvement can depend on collection size. A cache can perform well until updates invalidate it. A second fixture with different size or structure shows whether the mechanism extends beyond the case used during optimization.
+
+For UI changes, behavior includes keyboard navigation, selection, scroll position, and the next interaction. Deferring work can improve opening time while moving the delay to the first keystroke. Measuring the adjacent action reveals that transfer.
+
+## Different workloads expose different levers
+
+| Workload         | Useful objective                         | Common sources of cost                         |
+| ---------------- | ---------------------------------------- | ---------------------------------------------- |
+| Web application  | Time to usable input, navigation latency | Initialization, rendering, resource discovery  |
+| CLI              | Cold start and task completion           | Module loading, subprocesses, repeated parsing |
+| Database service | Tail latency at a fixed arrival rate     | Query plans, round trips, serialization        |
+| Model server     | Goodput under latency limits             | Batching, KV storage, prefill scheduling       |
+| Data pipeline    | Completion time and records per second   | I/O, allocation, compression, skew             |
+
+The objective leaves room for the implementation to change. A request to reduce opening time can lead to an algorithmic improvement, a cache, or a better schedule. Prescribing memoization in advance narrows the search before the profile has identified the expensive work.
+
+Correctness checks define the allowable search space. Exact CLI output, query results, model-quality criteria, and browser interactions each establish what the faster implementation must continue to do.
+
+## Load and tail latency
+
+An isolated request measures service cost under little contention. A deployed service also has queues. Reducing service time can improve both the request itself and the waiting time of subsequent requests. Shared caches, larger batches, and additional concurrency can change that relationship.
+
+_The Tail at Scale_ describes why occasional delays become significant in large services.[^tail] A request that depends on many components can inherit the slowest of them, making tail behavior a system-level property.
+
+Arrival-rate experiments expose this effect. Error rates and rejected requests remain part of the result, since dropping slow work can otherwise look like a latency improvement. For interactive software, slower devices reveal contention that may be almost invisible on a development machine.
+
+## From a local result to a maintained improvement
+
+A release connects the experiment to field behavior. Comparing the same journey by build, device class, and cache state shows where the gain appears. A mismatch between local and field results identifies a difference in workload or critical path that the next experiment can address.
+
+Once a metric is stable and correlated with the application, it can protect the improvement in CI. The threshold represents an observed property of the implementation, with enough tolerance for the measurement method. The profile and experiment record explain the reason for the threshold.
+
+The agent's contribution is the speed of the loop: more candidate explanations can be investigated, implemented, and measured. The quality of the outcome comes from the objective and the feedback. Together they turn a vague report of slowness into a set of specific, maintainable changes.
 
 ## References
 
-[^claude]: Raymond Wang, Sam Attard, and Issac G., [How we made claude.ai 3x faster in two weeks](https://claude.dev/blog/how-we-made-claude-ai-faster/), September 23, 2026. This source was published after this post's original date and is discussed in the September 25 revision.
+[^claude]: Raymond Wang, Sam Attard, and Issac G., [How we made claude.ai 3x faster in two weeks](https://claude.dev/blog/how-we-made-claude-ai-faster/), September 23, 2026. Added in the September 25 revision.
 
 [^timing]: MDN, [Performance.mark()](https://developer.mozilla.org/en-US/docs/Web/API/Performance/mark). Application-defined timing markers.
 
