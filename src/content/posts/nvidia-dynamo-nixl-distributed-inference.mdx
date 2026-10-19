@@ -1,0 +1,80 @@
+---
+title: 'NVIDIA Dynamo and NIXL: Inference Becomes a Scheduling Problem'
+pubDate: 2026-10-12
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: "Explore distributed inference through KV-cache transfer, queue-aware routing, and NVIDIA Dynamo's separation of encoding, prefill, and decoding."
+topics: ['Distributed Inference', 'KV Cache', 'NVIDIA']
+---
+
+import InteractiveLab from '../../components/viz/InteractiveLab.astro'
+
+A fast decoder can sit idle while another device processes a long prompt. A worker with the right cached prefix can have the longest queue. Once inference spans several devices, selecting where work runs becomes part of the model's observed performance.
+
+NVIDIA Dynamo addresses this systems problem with components for routing, planning, cache management, and data movement. NIXL supplies an inference-oriented transfer layer within that ecosystem.[^intro] The interesting research question is when separating stages saves enough time to justify the communication and scheduling it adds.
+
+## Encoding, prefill, and decoding use resources differently
+
+Prefill processes the prompt and creates attention-cache state. Decoding repeatedly extends the output while reading that state. Multimodal models may also perform a substantial input-encoding stage before language-model prefill.
+
+NVIDIA's September 2026 discussion of encode-prefill-decode disaggregation examines when those stages should run separately.[^epd] Separation lets a system provision stages differently and route work according to their resource needs. It also introduces intermediate data that must arrive at the next stage on time.
+
+A useful design starts with measured stage durations and payload sizes. Merely assigning each stage to a different GPU does not establish a speedup. Small requests may spend more time coordinating than they save.
+
+## A cached prefix is a payload with a size
+
+For a decoder with $L$ layers, $H_{KV}$ KV heads, head width $D$, and $b$ bytes per cached scalar, the uncompressed key-and-value footprint per token is:
+
+$$
+B_{\mathrm{token}}=2LH_{KV}Db.
+$$
+
+This counts both keys and values. It omits metadata, alignment, compression, and any implementation-specific cache layout.
+
+<InteractiveLab kind="cache-transfer" />
+
+The hypothetical decoder uses 128 KiB per cached token. Increase prefix length and compare transfer with recomputation under the stated effective rates. Both costs grow here, while transfer also includes a fixed setup delay.
+
+Do not substitute a hardware interconnect's advertised bandwidth for the effective bandwidth without measurement. The actual path may include several memory domains, topology constraints, competing traffic, and synchronization.
+
+The recomputation estimate is also deliberately linear. Real prefill rates depend on length, batching, attention implementation, and device. Measure both alternatives on the same workload before using a break-even calculation for routing.
+
+## The warmest worker may be the slowest choice
+
+Prefix reuse reduces work only after a request reaches the worker. A long queue can consume the saving.
+
+<InteractiveLab kind="cache-routing" />
+
+Increase worker A's cached fraction, then increase its queue. At the crossover, the cold worker wins despite recomputing the full prompt. The chart assumes equal decode costs and no transfer path, so it isolates one scheduling tradeoff.
+
+A production router must also estimate future work. Requests already in the queue may have uncertain output lengths. A cache entry may be evicted before a new request uses it. Routing many requests toward the same attractive prefix can create the queue that makes that decision poor.
+
+This feedback makes online evaluation important. An offline trace replay that never updates queues after routing can overstate the benefit of cache affinity.
+
+## NIXL changes how data can move, not whether moving it pays
+
+NIXL is designed as a transfer layer for inference workloads, including movement of inference state across supported backends.[^nixl] It gives systems builders a common abstraction for transport choices.
+
+The scheduler still decides which transfer is useful. Record transferred bytes, setup time, completion time, and time the receiver waits for data. Those measurements locate whether the limitation is transport, producer timing, or consumer scheduling.
+
+A transfer that finishes quickly can still be unnecessary if recomputation would finish sooner. Conversely, moving a large reusable prefix can save compute even when the network is not especially fast. The payload and timing determine the comparison.
+
+## Evaluate a service under a stated workload
+
+Use a fixed request trace containing prompt lengths, output limits, arrival times, and repeated-prefix structure. Keep a separate trace for held-out evaluation so the router cannot be tuned to one convenient pattern.
+
+Compare colocated execution, prefill-decode separation, and multimodal stage separation where applicable. Give each configuration an explicit total-device budget. Report throughput under a latency target, time to first token, inter-token delay, tail latency, and rejection rate.
+
+Warm and cold caches should be separate conditions. Include queue saturation and a mixed-length workload. Count requests that miss the latency objective, including failed or rejected requests, rather than averaging only successful completions.
+
+Pin model, precision, runtime, Dynamo, transfer backend, and topology. Record whether the encoder and decoder communicate within one host or across hosts. The same software configuration can behave differently when the transport changes.
+
+NVIDIA's contribution is to make these scheduling and transfer mechanisms available as a system researchers can inspect. A convincing result explains which workload benefits, what state moves, and how the latency distribution changes under load.
+
+## References
+
+[^intro]: NVIDIA Developer Blog, "Introducing NVIDIA Dynamo, a Low-Latency Distributed Inference Framework for Scaling Reasoning AI Models," March 2025. [Read the introduction](https://developer.nvidia.com/blog/introducing-nvidia-dynamo-a-low-latency-distributed-inference-framework-for-scaling-reasoning-ai-models/).
+
+[^epd]: NVIDIA Developer Blog, "When to Use Encode-Prefill-Decode Disaggregation to Accelerate Multimodal Model Serving," September 9, 2026. [Read the analysis](https://developer.nvidia.com/blog/when-to-use-encode-prefill-decode-disaggregation-to-accelerate-multimodal-model-serving/).
+
+[^nixl]: NVIDIA and contributors, NIXL. [Read the project documentation and code](https://github.com/ai-dynamo/nixl).

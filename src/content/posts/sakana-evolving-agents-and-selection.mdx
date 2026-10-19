@@ -1,0 +1,76 @@
+---
+title: 'Sakana AI: Evolving Agents Without Selecting an Evaluation Illusion'
+pubDate: 2026-10-19
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: "Examine Sakana AI's Darwin Gödel Machine and ShinkaEvolve through code evolution, stepping-stone archives, evaluation noise, and reproducible agent search."
+topics: ['Agents', 'Evolution', 'Sakana AI']
+---
+
+import InteractiveLab from '../../components/viz/InteractiveLab.astro'
+
+An agent can improve its own code and still become worse at the task we care about. It may optimize a narrow test set, discover a weakness in the evaluator, or accumulate machinery whose apparent benefit disappears on fresh examples.
+
+Sakana AI's work makes this a concrete experimental problem. The Darwin Gödel Machine explores agents that modify their own code and retain a growing archive of variants. ShinkaEvolve studies efficient program evolution. The lab's newer recursive self-improvement agenda extends that line of inquiry.[^dgm][^shinka][^rsi]
+
+These systems raise a useful question: what evidence shows that search found a better agent rather than a more favorable measurement?
+
+## Code evolution changes the agent around the model
+
+The Darwin Gödel Machine combines language-model-driven code modification with empirical evaluation and an archive of agents. It is inspired by self-improvement ideas but uses experiments to judge changes rather than requiring a formal proof that each change improves performance.[^dgm]
+
+An agent's code can alter tools, control flow, prompting, memory, and how it handles failures. Those changes may improve performance without changing the foundation model's weights. Describe what actually evolves so the result is not confused with online learning of the underlying model.
+
+A reproduction should preserve the starting agent and every accepted code revision. The final system alone cannot reveal which changes caused the improvement or how much evaluation was spent finding them.
+
+## Search selects noise along with capability
+
+Suppose every candidate has the same true success rate. A finite development set still gives them different measured scores. Selecting the highest score selects a favorable error.
+
+<InteractiveLab kind="selection-noise" />
+
+Increase the number of candidates. The best development score cannot fall because the earlier candidates remain available. The held-out score of the current winner can move in either direction.
+
+The fixed seeded fixture gives every candidate exactly the same underlying 70% capability. Each development and held-out score comes from a separate binomial sample. The apparent gain is therefore selection over measurement noise.
+
+Real candidates differ in capability, so the example does not show that agent evolution cannot work. It shows why the number of attempted candidates belongs in the evaluation report. A final score without a search budget is difficult to interpret.
+
+## An archive can preserve a route through a bad intermediate step
+
+Greedy search retains only an improvement over its current best candidate. That rule can discard a change that temporarily lowers the score but creates a useful starting point for a later modification.
+
+ShinkaEvolve studies program evolution with mechanisms for candidate generation, selection, and efficient evaluation.[^shinka] The broader lesson is to treat the search procedure itself as an algorithm with costs and assumptions.
+
+<InteractiveLab kind="archive-search" />
+
+The greedy search climbs the nearby peak. The archive retains weaker points and can eventually explore across the valley to a higher peak. Both use local mutations in this authored one-dimensional space.
+
+The archive is not free. It stores more candidates and spends evaluations on variants that do not immediately help. The fixture is constructed to illustrate a stepping-stone mechanism; it is not evidence for the size of a gain on software-engineering benchmarks.
+
+A useful ablation compares archive policies under matched evaluation budgets. Otherwise, a more expensive search may appear better simply because it tried more programs.
+
+## The evaluator must remain outside the evolving code
+
+Let candidate code change its own implementation, but keep evaluation labels and scoring rules under separate control. If the program can edit the tests or read final answers, a higher score no longer measures the intended task.
+
+Record filesystem and tool access for each run. Use a reproducible execution environment with explicit time and resource limits. Preserve exceptions, timeouts, and invalid outputs as outcomes instead of removing them from the denominator.
+
+Development tests can guide search. Final held-out tests should be used after the search and selection rules are frozen. Repeatedly checking the same held-out set turns it into another development set, even when no gradients pass through it.
+
+## A setup that can support a credible improvement claim
+
+Begin with a small, inspectable agent and a task family with independently checkable outputs. Freeze the foundation model, sampling configuration, and tool versions. Compare the starting agent, an ordinary manually designed baseline, and the evolved result.
+
+Run several independent searches with the same budget. Report candidate count, model calls, generated tokens, evaluation time, and final test outcomes. Show the distribution across searches rather than only the most successful run.
+
+Audit the winning changes individually. Remove one change at a time and retest. Some apparently useful edits may be harmless passengers in a program whose improvement comes from one better retrieval rule or retry policy.
+
+Sakana's recursive self-improvement lab statement describes a research direction, including ambitions beyond a single agent loop.[^rsi] A lab agenda should be distinguished from a released system's demonstrated abilities. The path to a stronger claim runs through reproducible improvements that survive fresh tasks, fixed budgets, and independent evaluators.
+
+## References
+
+[^dgm]: Sakana AI and collaborators, "Darwin Gödel Machine: Open-Ended Evolution of Self-Improving Agents," May 30, 2025. [Read the research post](https://sakana.ai/dgm/).
+
+[^shinka]: Sakana AI, "ShinkaEvolve," 2025. [Read the project introduction](https://sakana.ai/shinka-evolve/).
+
+[^rsi]: Sakana AI, "Recursive Self-Improvement Lab," accessed October 19, 2026. Research agenda. [Read the lab statement](https://sakana.ai/rsi-lab/).

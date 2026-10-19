@@ -1,0 +1,127 @@
+---
+title: 'Evaluating Sparse Autoencoders: Reconstruction, Absorption, and Causal Coverage'
+pubDate: 2026-09-12
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Evaluate sparse feature dictionaries beyond reconstruction loss, with recall checks, absorption tests, causal controls, and benchmark uncertainty.'
+topics: ['Interpretability', 'Sparse Autoencoders', 'Evaluation']
+---
+
+import InteractiveLab from '../../components/viz/InteractiveLab.astro'
+
+A sparse autoencoder can produce a convincing feature dashboard while missing examples that belong to the feature's own label. The examples it displays may all fit. The failure lives in the examples it leaves out.
+
+That distinction matters when a dictionary becomes an audit tool. A researcher browsing activations can tolerate incomplete labels. A monitor that treats an inactive latent as evidence that a behavior is absent needs measured recall.
+
+The [interpretability overview](/frontier-mechanistic-interpretability) introduced sparse autoencoders as learned dictionaries. Choosing one for an investigation requires evaluating what its dictionary preserves, what its labels predict, and what its interventions change.
+
+## Separate reconstruction from the intended use
+
+Write an activation as a decoded sparse representation plus a residual:
+
+$$
+x=\hat x+e,\qquad \hat x=b+D z
+$$
+
+Here $z$ contains latent activations, the columns of $D$ are decoder directions, and $e$ is reconstruction error. Low average error says that the dictionary approximates sampled activations. It does not establish that any particular latent has the meaning assigned to it.
+
+SAEBench evaluates dictionaries across several dimensions, including concept detection, automated interpretability, reconstruction, and feature disentanglement. Its comparisons showed that rankings on reconstruction and sparsity did not reliably predict practical performance.[^saebench]
+
+Use that separation when defining a study:
+
+| Intended use                | Necessary evidence                      | Commonly omitted check                   |
+| --------------------------- | --------------------------------------- | ---------------------------------------- |
+| Explore an unfamiliar model | Useful labels on sampled activations    | Whether the samples hide counterexamples |
+| Detect a known concept      | Precision and recall on held-out labels | Recall on paraphrases and rare contexts  |
+| Edit one behavior           | Predicted causal effect                 | Changes to unrelated behavior            |
+| Explain a circuit           | Coverage of relevant computation        | Information left in reconstruction error |
+
+There is no reason to expect one dictionary to win every row. Decide which row matters before choosing its width or sparsity.
+
+## Read the false negatives
+
+A dashboard typically starts with examples that activate a latent strongly. Those examples are useful for generating a label, but they are selected by the detector being evaluated.
+
+Construct a separate labeled set. For a proposed concept $C$, choose a threshold $\tau$ on a development split, then measure:
+
+$$
+\operatorname{precision}
+=\Pr\left(C=1\mid z_j>\tau\right)
+$$
+
+$$
+\operatorname{recall}
+=\Pr\left(z_j>\tau\mid C=1\right)
+$$
+
+The first asks whether activations support the label. The second asks how often the label's positive cases activate the latent. A handpicked collection of top examples cannot answer the second question.
+
+<InteractiveLab kind="coverage" />
+
+Move the threshold, then increase the number of absorbed positives. The labels stay fixed while precision and recall move separately. This synthetic detector makes the denominator visible; its scores are not SAE benchmark results.
+
+Keep ambiguous labels separate. If humans disagree about what counts as deception, for example, detector performance also depends on that disagreement. First-letter identification offers a simpler diagnostic because token spellings give researchers an independently checkable target.
+
+Chanin and colleagues used such a task to study feature absorption. They found apparently clean first-letter latents that missed particular tokens. Other latents, aligned with those tokens, carried the relevant letter information instead.[^absorption] The model retained the information even when the obvious detector was silent.
+
+## Splitting and absorption require different responses
+
+Suppose a broad concept has separate uppercase and lowercase latents. Combining them can yield an understandable detector. That is a manageable feature split if the boundary is stable and the combined detector covers the intended examples.
+
+Absorption is harder. A token-specific latent can carry several properties together, including a property that has its own broad latent elsewhere. Increasing dictionary width or encouraging fewer active latents does not guarantee that the broad detector becomes complete.[^absorption]
+
+For an audit, inspect false negatives directly. Ask whether the model still performs the relevant task, whether a probe can recover the property, and which latents affect the answer on those missed examples. Agreement between a probe and the model's behavior is a reason to investigate the dictionary, rather than immediately concluding that the concept is absent.
+
+This is also why latent IDs should remain implementation details. A detector built from several latents needs its own version, thresholds, and coverage measurements. The name attached to one latent cannot stand in for those artifacts.
+
+## Keep reconstruction error explicit in interventions
+
+Replacing $x$ with $\hat x$ changes every direction represented by $e$. If an experiment then removes one latent, the behavioral difference includes two interventions unless reconstruction error is controlled.
+
+One way to isolate a latent edit is to preserve the original error:
+
+$$
+x'=b+D z'+e
+$$
+
+For an edit to only latent $j$, the same expression becomes:
+
+$$
+x'=x+D_j\left(z'_j-z_j\right)
+$$
+
+This identity makes the experiment easier to audit. With no edit, $x'=x$. A separate reconstruction-only run can measure how much replacing the original state with the SAE approximation changes behavior. Sparse Feature Circuits explicitly includes error terms when decomposing computation, so unexplained contributions remain visible.[^circuits]
+
+Neither procedure establishes complete semantic isolation. A decoder direction can affect several downstream computations. Pair a targeted edit with matched random-direction controls and unrelated task evaluations. Measure both the intended change and collateral damage.
+
+## A benchmark also needs validation
+
+Adding metrics helps only if the metrics distinguish the properties they claim to measure.
+
+A May 2026 preprint by Chanin audited SAEBench through evaluation reseeding, synthetic settings with known features, and comparisons along SAE training trajectories. It reported problems with Targeted Probe Perturbation and Spurious Correlation Removal at their canonical settings, and substantial noise or limited discriminability in other metrics.[^audit]
+
+These findings concern the tested procedures and settings. They do not show that every practical SAE intervention fails. They do mean that a small leaderboard improvement needs evidence that the evaluator can resolve a difference of that size.
+
+Separate SAE-training randomness from evaluation randomness. Repeating the evaluator on one frozen dictionary measures the second. Training several dictionaries and evaluating them under matched conditions helps measure the first. Report both when either can change the ranking.
+
+Synthetic ground truth is useful for checking whether a metric recognizes a known improvement. It still needs a transfer argument before becoming evidence about all concepts in a language model. The synthetic generator determines which structures are easy, difficult, or absent.
+
+## Choose a dictionary for a specific investigation
+
+For a practical comparison, freeze the base checkpoint, activation site, evaluation corpus, and intervention implementation. Compare candidates across an operating range of sparsity, rather than accepting a single convenient setting.
+
+Then run the experiment that motivated the dictionary. If the goal is detecting a particular internal signal, evaluate that detector under paraphrase and distribution shift. If the goal is editing a behavior, test selective changes on held-out prompts. Include a simple supervised probe when labels are available; a more elaborate decomposition should justify its additional cost.
+
+Report reconstruction quality beside concept recall and causal results. Preserve failed cases, including examples where the model uses information that the chosen latents miss. Those cases describe the boundary of the tool.
+
+The useful deliverable is a dictionary with a tested scope. A readable latent can guide an investigation. Its silence becomes evidence only after the investigation measures what that silence misses.
+
+## References
+
+[^saebench]: Adam Karvonen et al., "SAEBench: A Comprehensive Benchmark for Sparse Autoencoders in Language Model Interpretability," ICML, 2025. [Read the paper](https://arxiv.org/abs/2503.09532).
+
+[^absorption]: David Chanin et al., "A is for Absorption: Studying Feature Splitting and Absorption in Sparse Autoencoders," 2024. [Read the paper](https://arxiv.org/abs/2409.14507).
+
+[^audit]: David Chanin, "Are Sparse Autoencoder Benchmarks Reliable?" preprint, May 2026. [Read the benchmark audit](https://arxiv.org/abs/2605.18229).
+
+[^circuits]: Samuel Marks et al., "Sparse Feature Circuits: Discovering and Editing Interpretable Causal Graphs in Language Models," 2024, revised 2025. [Read the paper](https://arxiv.org/abs/2403.19647).

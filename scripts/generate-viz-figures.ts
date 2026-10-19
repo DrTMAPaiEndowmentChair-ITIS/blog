@@ -13,7 +13,7 @@
  * and logs a warning naming it.
  */
 import { createHash } from 'node:crypto'
-import { mkdir, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { dev } from 'astro'
 import { parse as parseHtml, type HTMLElement } from 'node-html-parser'
@@ -122,12 +122,30 @@ function collectServerBlocks(html: string) {
 }
 
 // Astro's glob loader lowercases collection ids, and the feed keys off those.
-const slugs = (await readdir(POSTS_DIR))
+const availableSlugs = (await readdir(POSTS_DIR))
   .filter((file) => /\.mdx?$/.test(file) && !file.startsWith('_'))
   .map((file) => file.replace(/\.[^.]+$/, '').toLowerCase())
   .sort()
 
-await rm(OUTPUT_DIR, { recursive: true, force: true })
+// A scoped export preserves unrelated articles' committed figures and hashes.
+// Example: bun run viz-figures --slugs=quantization-interactive-guide
+const argument = process.argv.slice(2)
+if (argument.some((value) => !value.startsWith('--slugs=')) || argument.length > 1) {
+  throw new Error('Usage: bun run viz-figures [--slugs=slug-one,slug-two]')
+}
+const selected = argument[0]?.slice('--slugs='.length).split(',').filter(Boolean) ?? []
+if (argument.length && !selected.length) throw new Error('--slugs requires at least one post slug')
+for (const slug of selected) {
+  if (!availableSlugs.includes(slug)) throw new Error(`Unknown post slug: ${slug}`)
+}
+const slugs = selected.length
+  ? availableSlugs.filter((slug) => selected.includes(slug))
+  : availableSlugs
+const existing: Figure[] = selected.length
+  ? JSON.parse(await readFile(MANIFEST_PATH, 'utf8')).figures
+  : []
+
+if (!selected.length) await rm(OUTPUT_DIR, { recursive: true, force: true })
 await mkdir(OUTPUT_DIR, { recursive: true })
 
 const server = await dev({ root: process.cwd(), logLevel: 'error' })
@@ -194,7 +212,10 @@ for (const slug of slugs) {
   console.warn(`${slug}: ${blocks.length} figure(s)`)
 }
 
-await writeFile(MANIFEST_PATH, `${JSON.stringify({ figures }, null, 2)}\n`)
+const combined = [...existing.filter((figure) => !selected.includes(figure.slug)), ...figures].sort(
+  (a, b) => a.slug.localeCompare(b.slug) || a.index - b.index
+)
+await writeFile(MANIFEST_PATH, `${JSON.stringify({ figures: combined }, null, 2)}\n`)
 
 await context.close()
 await browser.close()

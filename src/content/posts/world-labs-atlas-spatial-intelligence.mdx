@@ -1,0 +1,78 @@
+---
+title: "World Labs' Atlas: Spatial Intelligence Needs More Than Consistent Pictures"
+pubDate: 2026-10-09
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Examine Atlas, camera-conditioned generation, spatial coverage, and evaluation protocols that distinguish reconstructed geometry from plausible unseen content.'
+topics: ['Spatial Intelligence', 'World Models', 'World Labs']
+---
+
+import InteractiveLab from '../../components/viz/InteractiveLab.astro'
+
+Two images can depict the same room while disagreeing about where its walls are. A spatial model must preserve relationships across views, camera motion, and representations. That requirement is stricter than making each image look convincing on its own.
+
+World Labs introduced Atlas in September 2026 as a model for spatial intelligence, with native support for several visual and spatial representations.[^atlas] The lab also announced later that month that it was joining AMD.[^amd] Its research remains useful to examine through the concrete contracts a spatial system must satisfy.
+
+## A spatial representation must support a change of viewpoint
+
+Atlas is described as a multimodal autoregressive diffusion transformer, combining element-level autoregressive generation with denoising inside generated elements. Its inputs and outputs include text, images, video, camera poses, and depth, with applications involving explicit spatial representations.[^atlas]
+
+The appealing research direction is a shared representation that can answer different spatial requests without inventing a different scene each time. Testing that requires more than judging a single generated frame.
+
+Choose a fixed scene and a known camera path. Ask whether landmarks remain in consistent positions, whether depth agrees with reprojection, and whether returning to the starting pose recovers the same structure. These checks target spatial commitments that an isolated image comparison can miss.
+
+## Camera geometry explains why some views are informative
+
+For an ideal rectified stereo pair, a point at depth $Z$ has disparity $d=fB/Z$, where $f$ is focal length in pixels and $B$ is the camera baseline. A small disparity uncertainty $\sigma_d$ gives approximately:
+
+$$
+\sigma_Z\approx\frac{Z^2}{fB}\sigma_d.
+$$
+
+<InteractiveLab kind="stereo-depth" />
+
+Move the point farther away. Depth becomes more sensitive to the same one-pixel correspondence error. Increase the baseline and the uncertainty shrinks under the toy assumptions.
+
+A real system must also cope with occlusion, calibration error, textureless regions, and failed correspondences. A larger baseline can make some of those problems harder. The equation explains one geometric source of uncertainty, not a complete camera-placement strategy or an Atlas result.
+
+The evaluation implication is practical. A test set containing mostly easy nearby textured surfaces can conceal weaknesses that appear at distance or under a small baseline. Report the scene and camera distribution with the score.
+
+## Observed and generated regions need separate labels
+
+A model asked to reconstruct a room from a few views may need to fill unseen areas. That can be useful for exploration or content creation. It creates an ambiguity for measurement: which output regions are supported by observations, and which are plausible completions?
+
+<InteractiveLab kind="view-coverage" />
+
+The angular diagram marks directions covered by outward-facing cameras. Add views until the full circle is covered. Even then, the cameras have not seen behind every object. Angular coverage is weaker than complete surface coverage.
+
+The fixture deliberately ignores depth and occlusion. Its purpose is to prevent an easy counting error: more images do not automatically provide independent evidence about every part of a scene.
+
+For a reconstruction benchmark, score visible and initially hidden regions separately. If later measurements reveal the hidden region, compare the completion against those measurements. Without that evidence, describe it as generated content rather than recovered ground truth.
+
+## Rendering, simulation, and planning ask different questions
+
+World Labs' taxonomy distinguishes renderers, simulators, and planners by the role their outputs play.[^taxonomy] This is a useful organizing device, though a particular model may span more than one role.
+
+A renderer can succeed by producing a convincing view. A simulator must preserve the state or dynamics needed by its consumer. A planner must select useful actions. Improving one role can help another, but the improvement needs to be demonstrated through the downstream task.
+
+For example, a collision mesh can look close to the visible surface and still block a robot gripper in the wrong place. A camera-controlled video can follow a requested path while changing object dimensions. Record the failure in the representation where it matters.
+
+## Set up a study that can distinguish the failure modes
+
+A manageable evaluation uses a small collection of measured scenes with fixed camera trajectories. Include a static subset for geometry and a separate dynamic subset for temporal consistency. Preserve intrinsics, extrinsics, scale, and the exact observations given to the model.
+
+Compare camera-control methods under equivalent information. Native pose input and a textual description of camera motion are different interfaces. If a baseline lacks the same conditioning signal, report the interface difference alongside the result.
+
+Measure reprojection error, depth or surface error where reference geometry exists, and consistency on a return path. Keep perceptual ratings as an additional measure. The ratings can capture visual quality that geometry metrics omit, but they cannot replace those metrics.
+
+Pin the model version and generation settings. Save unsuccessful outputs and show results by scene type. A mean score across simple rooms and cluttered reflective spaces can hide where the representation stops holding together.
+
+Spatial intelligence becomes a testable research claim when the model must preserve a scene through operations that expose contradictions. The most useful new benchmark may be a carefully measured camera loop that a visually impressive system cannot yet complete consistently.
+
+## References
+
+[^atlas]: World Labs, "Atlas," September 1, 2026. Architecture and spatial capabilities. [Read the release](https://www.worldlabs.ai/blog/atlas).
+
+[^amd]: World Labs, "World Labs is Joining AMD," September 28, 2026. [Read the announcement](https://www.worldlabs.ai/blog/amd-announcement).
+
+[^taxonomy]: World Labs, "A Functional Taxonomy of World Models," June 3, 2026. [Read the essay](https://www.worldlabs.ai/blog/taxonomy-of-world-models).

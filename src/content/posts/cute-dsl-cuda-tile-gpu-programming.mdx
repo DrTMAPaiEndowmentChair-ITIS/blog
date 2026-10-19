@@ -1,0 +1,82 @@
+---
+title: 'CuTe DSL and CUDA Tile: Thinking in Tiles Without Losing the Hardware'
+pubDate: 2026-09-06
+author: 'Aadit Agrawal'
+category: 'Hardware & Systems'
+description: "Distinguish NVIDIA's CuTe DSL and CUDA Tile, then explore arithmetic intensity, shared-memory budgets, and pipelined GPU execution through interactive experiments."
+topics: ['GPU Programming', 'Compilers', 'NVIDIA']
+---
+
+import InteractiveLab from '../../components/viz/InteractiveLab.astro'
+
+A matrix multiplication has a short mathematical definition and a long implementation. The implementation must move tiles through memory, assign work to threads, synchronize producers with consumers, and choose instructions that match the device.
+
+NVIDIA is working at several levels of that problem. CuTe DSL brings the layout and hardware-oriented programming concepts of CUTLASS into Python. CUDA Tile introduces a tile-oriented programming model with compiler support for mapping tile operations to hardware.[^cute][^tile] The names sound similar, but choosing between them is a question about how much mapping detail the programmer wants to control.
+
+## A tile is a plan for reuse
+
+For $C=AB$, consider an output tile with dimensions $M\times N$ and a reduction extent $K$. The arithmetic performs approximately $2MNK$ floating-point operations.
+
+If each input tile is loaded once and the output is written once, the data movement for element width $b$ is:
+
+$$
+B=b(MK+KN+MN).
+$$
+
+This estimate assumes no read of an existing output and ignores cache-line effects. Dividing operations by bytes gives an arithmetic-intensity estimate for that particular boundary.
+
+<InteractiveLab kind="tile-reuse" />
+
+Increase the output tile size. Each loaded input element can contribute to more output elements, so the reuse estimate improves. The buffers also grow. At some settings, the proposed two-buffer plan exceeds the assumed shared-memory budget.
+
+The calculation does not include registers for accumulators. It also treats all stored elements as two bytes, while real kernels often accumulate at a different precision. A tile that fits in shared memory can still fail compilation, reduce occupancy sharply, or perform poorly.
+
+## CuTe DSL exposes a mapping problem
+
+CuTe's layout algebra describes how logical tensor coordinates map to storage and execution. The Python DSL provides access to those concepts and GPU code generation within the CUTLASS ecosystem.[^cute]
+
+That is valuable when a kernel author needs to reason about a particular layout, copy pattern, or instruction. It also creates obligations. The author must understand which threads own which data, what a synchronization operation guarantees, and how layout transformations affect the actual accesses.
+
+A compiler accepting the program is one check. Numerical agreement across boundary shapes is another. Race freedom, alignment, and performance need their own evidence.
+
+## CUDA Tile moves more mapping decisions into the compiler
+
+NVIDIA's CUDA Tile introduction describes tile-level operations and a compiler path intended to handle more of the hardware mapping.[^tile] This offers a different place to express an algorithm. The program describes work over tiles, while the compilation system chooses lower-level details within its supported model.
+
+The practical comparison should use the same operation and correctness requirements. A higher-level program may be shorter, but code length alone does not tell us its supported shape range or performance stability. A lower-level program may expose useful control while costing more engineering effort.
+
+Neither approach removes the need to inspect generated behavior. Record the exact frontend and compiler version, because a change in lowering can alter resource use without changing the source algorithm.
+
+## Pipelining hides a wait only when another resource can work
+
+Suppose a load takes $L$ time units and arithmetic takes $C$. Processing $n$ independent tiles serially costs $n(L+C)$. With ideal overlap, one load engine, one compute engine, and sufficient buffering, the time becomes:
+
+$$
+T=L+C+(n-1)\max(L,C).
+$$
+
+<InteractiveLab kind="kernel-pipeline" />
+
+Make loading slower than compute, then reverse the relationship. The slower stage determines the steady-state interval between completed tiles. Extra buffering cannot make that stage disappear.
+
+The diagram assumes independent tiles and no contention between memory traffic and arithmetic. A real kernel needs correct asynchronous-copy barriers and enough resources for overlapping stages. It may also compete with other blocks for the same bandwidth.
+
+This is why a pipeline diagram is useful before benchmarking. It produces an explicit expectation about which wait should shrink and which resource should become limiting.
+
+## Build the benchmark before tuning the tile
+
+Choose one operation with an unambiguous reference. Include aligned shapes, irregular edge shapes, small batches, and at least one case where the working set changes substantially. Compare output error under a stated tolerance before recording speed.
+
+Separate compilation, warmup, and timed execution. Record device model, driver, CUDA toolkit, package versions, precision, layouts, and synchronization around timing. Keep allocation and host transfers outside the timed region unless the application requires them there.
+
+Report a distribution over repeated measurements. An attractive minimum can hide clock changes or interference. Compare against an appropriate library implementation and explain whether the custom kernel fuses additional work.
+
+A useful early result might be a kernel that wins for one important shape and loses elsewhere. That tells a dispatch system when to use it. Claiming a universal speedup from one matrix size throws away that information.
+
+The research opportunity is to make these mapping choices more systematic. Better compiler abstractions can reduce the amount of hardware-specific code an author must maintain. The evidence should show where that reduction preserves correctness, predictable resource use, and useful performance across the shapes an application actually runs.
+
+## References
+
+[^cute]: NVIDIA CUTLASS 4.3.3 documentation, "CuTe DSL" and Python DSL overview. [Read the overview](https://docs.nvidia.com/cutlass/4.3.3/media/docs/pythonDSL/overview.html).
+
+[^tile]: NVIDIA Developer Blog, "Focus on Your Algorithm: NVIDIA CUDA Tile Handles the Hardware," December 2025. [Read the introduction](https://developer.nvidia.com/blog/focus-on-your-algorithm-nvidia-cuda-tile-handles-the-hardware/).

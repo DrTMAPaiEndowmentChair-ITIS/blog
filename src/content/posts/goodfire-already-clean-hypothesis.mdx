@@ -1,0 +1,94 @@
+---
+title: "Are Neural Networks Already Clean? Reading Goodfire's Hypothesis"
+pubDate: 2026-10-19
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: "Examine Goodfire's case for studying native neurons directly, the distinction between polysemanticity and superposition, and experiments that can test competing explanations."
+topics: ['Interpretability', 'Neurons', 'Superposition']
+---
+
+import InteractiveLab from '../../components/viz/InteractiveLab.astro'
+
+Mechanistic interpretability has a choice of starting points. Study the model's own neurons and connections, or learn another representation that makes its activations easier to describe. The choice affects what a researcher can see, and what the analysis might accidentally conceal.
+
+Nick Cammarata's Goodfire essay, [Neural Networks Are Already Clean](https://already-clean.goodfire.com/), argues for taking native mechanisms more seriously. It presents a working hypothesis rather than an established general result.[^goodfire]
+
+## The proposal changes where an investigation starts
+
+Cammarata argues that some canonical examples of apparently unrelated neuron functions reflect architectural problems, limited tools, or related functions that grew through what he calls recursive generalization. The essay reports more legible native neurons in modern models and retrained vision networks, and proposes investigating those mechanisms directly before assuming they need to be disentangled. It also labels the broader outlook speculative and points to a forthcoming technical companion for language-model experiments.[^goodfire]
+
+That is a research agenda worth testing. My reading is that the strongest practical consequence is a comparison: for a given behavior, how much can an investigation explain using native units, and what additional evidence does a learned dictionary provide?
+
+That comparison can succeed even when neither approach supplies a complete theory of the model. Its outcome should depend on the checkpoint, layer, task, and tools available.
+
+## Several meanings hide inside a clean neuron
+
+An activation can have a readable pattern without being a complete detector for that pattern. A detector can predict a label without carrying the downstream computation that uses the label. A causal intervention can change behavior while disturbing more than the proposed concept.
+
+Keep those claims separate. A useful native-neuron analysis needs examples, counterexamples, and a prediction about the neuron's downstream role. A label such as "expects a closing delimiter" should predict more than a list of strongly activating tokens.
+
+<InteractiveLab kind="neuron" />
+
+The toy starts with token-only examples. Reveal the surrounding context, then lower the activation threshold. The strong cases share a syntactic pattern that their isolated tokens hide. Lower-scoring examples also expose a false positive.
+
+Nothing in the visualization was collected from a neural network. It is an authored example of how an inspection interface can influence the hypothesis a researcher forms. Context helps, but a persuasive context display still needs a held-out test.
+
+Feature Visualization develops optimization-based tools for inspecting what excites neural-network units and discusses the effects of parameterization and regularization on the resulting images.[^visualization] Such tools contribute hypotheses; their presentation choices are part of what must be understood.
+
+## Polysemanticity does not identify its own cause
+
+A neuron responding to several apparent concepts is an observation about one coordinate. Explaining why those responses share a coordinate requires more evidence.
+
+Possible explanations include a genuine shared property, different roles in different contexts, an insufficiently specific label, and representations distributed across overlapping directions. These possibilities can coexist within one network.
+
+Toy Models of Superposition constructs small networks where sparse features can occupy more directions than the representation has dimensions. Its controlled settings demonstrate how interference, sparsity, and nonlinear reconstruction can make such arrangements useful.[^toy]
+
+Those constructions establish a mechanism under their assumptions. Extending that mechanism to a particular modern layer requires measurements that distinguish it from alternatives. Conversely, finding an understandable neuron does not establish that every feature in that layer aligns with a separate native unit.
+
+<InteractiveLab kind="geometry" />
+
+Here three directions occupy two dimensions. Rotate the coordinate system. The values read along the two displayed axes change, while the feature directions' pairwise angles remain fixed.
+
+This is a linear geometry demonstration. It is not an argument that a real model's neurons are arbitrary coordinates. Elementwise nonlinearities can privilege the native basis, and an arbitrary rotation generally changes that architecture. The point is to identify which claims concern geometry and which concern a particular computational unit.
+
+## An interpretable unit needs a sampling protocol
+
+Suppose two teams estimate how many units they can explain. Their numbers are difficult to compare unless they also agree about the sampled population and the standard for an explanation.
+
+Choose layers and units before examining their dashboards. Include positive and negative activation regimes when the architecture permits both. State whether the sample includes ordinary activations or only extreme cases, and whether a unit's role may depend on neighboring activations.
+
+Then write a testable explanation. A label that predicts a response on held-out examples is stronger evidence than a label written after seeing all the examples. Ask another evaluator to construct challenging cases without showing them which method produced the explanation.
+
+Network Dissection provides an earlier example of making interpretability measurable by comparing unit activations with labeled visual concepts.[^dissection] That turns a loose impression into a specified measurement, while also making the concept vocabulary part of the evaluation's scope.
+
+For language models, use several forms of evidence. Contrast prompts that preserve a proposed relation while changing surface wording. Include contexts that share the surface wording but lack the relation. Inspect what the model predicts next, since the current token alone may omit the relevant function.
+
+These are proposed evaluation choices, not a reproduction of Goodfire's audit.
+
+## Compare native and learned representations on the same job
+
+A fair study can give a native-neuron analysis and an SAE-based analysis the same behavior, discovery prompts, held-out prompts, and intervention budget.
+
+Measure the time needed to form a falsifiable explanation. Check how many held-out cases it predicts and how selectively its interventions change the target behavior. Preserve examples that neither representation explains.
+
+Avoid requiring both methods to produce the same shape of explanation. One native neuron may have a conditional role that needs several sentences. A learned feature may provide a simpler detector at the cost of reconstruction error. The question is whether either account predicts the model better under the investigation's constraints.
+
+The [SAE evaluation article](/sparse-autoencoder-evaluation) explains why an attractive feature dashboard is insufficient. Apply the same standard to native units. Readability should earn its place through coverage and causal checks.
+
+## A tractable starting point still needs an end-to-end audit
+
+Even a network full of individually understandable units can compose them into behavior that is difficult to predict. Long trajectories, attention routing, and interactions between representations remain separate objects of study.
+
+This is where [activation patching](/activation-patching-causal-experiments) can connect a local hypothesis to a behavioral effect. A proposed detector should predict which edits matter, where they matter, and which nearby cases remain unchanged.
+
+I would treat the essay as a reason to run more direct neuron-level investigations and compare them with learned decompositions. Its most useful outcome would be reproducible explanations that become cheaper to discover and better at predicting behavior. Whether that works broadly is an empirical question.
+
+## References
+
+[^goodfire]: Nick Cammarata, "Neural Networks Are Already Clean," Goodfire, 2026. Informal research essay and working hypothesis, accessed October 19, 2026. [Read the essay](https://already-clean.goodfire.com/).
+
+[^toy]: Nelson Elhage et al., "Toy Models of Superposition," Transformer Circuits, 2022. [Read the study](https://transformer-circuits.pub/2022/toy_model/index.html).
+
+[^dissection]: David Bau et al., "Network Dissection: Quantifying Interpretability of Deep Visual Representations," CVPR, 2017. [Read the paper](https://arxiv.org/abs/1704.05796).
+
+[^visualization]: Chris Olah, Alexander Mordvintsev, and Ludwig Schubert, "Feature Visualization," Distill, 2017. [Read the article](https://distill.pub/2017/feature-visualization/).

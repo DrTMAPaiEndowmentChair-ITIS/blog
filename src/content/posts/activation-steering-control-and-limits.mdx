@@ -1,0 +1,125 @@
+---
+title: 'Activation Steering: Controlling Behavior Through the Residual Stream'
+pubDate: 2026-10-01
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Understand contrastive steering vectors, intervention strength, confounded directions, and the evaluations needed to distinguish control from explanation.'
+topics: ['Interpretability', 'Activation Steering', 'Alignment']
+---
+
+import InteractiveLab from '../../components/viz/InteractiveLab.astro'
+
+An instruction changes the text a model reads. Activation steering changes an internal state while the model processes that text. In some settings, a fixed vector added during inference is enough to alter a recognizable behavior.
+
+That is a useful experimental handle. It also makes overinterpretation easy. A vector that increases agreement with a user might affect politeness, confidence, or answer copying. Calling it a "sycophancy direction" does not settle which of those changed.
+
+The question is how to turn a behavioral effect into a controlled, reproducible intervention, then determine how much it explains.
+
+## Extract a direction from a contrast
+
+Activation Addition uses differences between intermediate activations on contrasting prompts to construct steering interventions. Turner and colleagues demonstrated control over properties such as topic and sentiment without updating model weights.[^actadd]
+
+Contrastive Activation Addition, or CAA, estimates directions using paired examples. At a chosen layer and extraction position, let $h_i^+$ and $h_i^-$ be activations associated with the positive and negative behavior in pair $i$. The mean difference is:
+
+$$
+v=\frac{1}{n}\sum_{i=1}^n\left(h_i^+-h_i^-\right)
+$$
+
+The CAA study evaluated such directions on Llama 2 Chat using behavioral questions and open-ended generations.[^caa] The result supports a practical method for those settings. It does not establish that the average difference isolates one concept in every context.
+
+Consider an illustrative dataset for uncertainty expression. Each positive response acknowledges insufficient evidence; its paired negative response asserts a definite answer. If positive responses are also longer, the vector can include a length difference. If they all contain "I cannot determine," the contrast can capture that phrase's representation.
+
+Balance these properties where possible. Vary wording, topics, answer lengths, and label positions independently. Hold out whole template families so evaluation cannot succeed by repeating the extraction format.
+
+## Specify where the vector enters
+
+At a selected residual-stream site, a normalized additive intervention can be written as:
+
+$$
+h'_{\ell,t}=h_{\ell,t}+\alpha\hat v_\ell,
+\qquad
+\hat v_\ell=\frac{v_\ell}{\lVert v_\ell\rVert_2}
+$$
+
+Normalization makes the vector length explicit. The coefficient $\alpha$ is still specific to the checkpoint, layer, hook placement, and activation scale. A coefficient copied from another model has no automatic interpretation.
+
+Record whether steering occurs before or after a block, whether it affects prompt processing, and whether it continues at each generated position. These choices define different interventions. CAA's published procedure adds vectors at token positions after the user prompt.[^caa]
+
+The difference matters in a cached decoder. Applying a perturbation during prompt processing can affect keys and values stored for later use. Applying it only during subsequent generation leaves those prompt-cache entries unchanged. A report that says only "layer 15 steering" omits part of the experiment.
+
+## Addition and projection do different things
+
+Adding a fixed vector shifts every treated activation by the same displacement. Removing its component along a unit direction is a different operation:
+
+$$
+h'=h-\hat v\hat v^\top h
+$$
+
+The subtraction depends on the current activation. A negative additive coefficient applies a fixed displacement, so it generally does not equal projection removal.
+
+Keep this distinction in implementations and experiment logs. Otherwise a comparison of "positive" and "negative" steering can quietly become a comparison of two different operators.
+
+Arditi and colleagues identified a direction mediating refusal across thirteen tested open chat models. Removing that direction reduced refusal, while adding it could induce refusals on harmless requests.[^refusal] This is evidence for a causal handle on a particular behavior across the studied models. Refusal remains only one part of safety behavior; changing it does not measure factual judgment or the model's ability to recognize harm.
+
+## Treat strength as an experimental variable
+
+For small perturbations, a first-order approximation to a scalar output score $s$ is:
+
+$$
+\Delta s\approx\alpha\,\nabla_h s^\top\hat v
+$$
+
+This local approximation explains why a direction can have a predictable effect near one activation without providing a global control rule. Attention, nonlinearities, and later token choices can alter the trajectory as the perturbation grows.
+
+<InteractiveLab kind="steering" />
+
+The toy fixes two linear readers. Increasing their overlap increases the second task's response to the same steering vector. A real model needs measured gradients and behavioral tests; the chart illustrates the first-order assumption.
+
+Sweep the coefficient on a development set. Include zero, several small magnitudes, and both signs when the hypothesis predicts opposite effects. Report the curve alongside task performance. Choosing the strongest coefficient that produces a striking example hides the region where the intervention is useful.
+
+For uncertainty steering, measure whether expressions of uncertainty match actual errors. A model that adds "perhaps" to every sentence has changed its style. A model that distinguishes answerable questions from underspecified ones has changed a more useful behavior.
+
+## Compare against interventions with the same opportunity
+
+A reasonable evaluation holds generation settings fixed and compares several conditions:
+
+| Condition                         | Question it helps answer                               |
+| --------------------------------- | ------------------------------------------------------ |
+| Unmodified model                  | What happens without intervention?                     |
+| A matched instruction prompt      | Does ordinary prompting achieve the effect?            |
+| Learned steering direction        | Does the internal intervention generalize?             |
+| Matched-norm random directions    | Is generic perturbation enough?                        |
+| Label-shuffled contrast direction | Could extraction artifacts explain the result?         |
+| Prompt plus steering              | Does steering add anything under the same instruction? |
+
+Use held-out prompts and more than one behavioral measure. For a disagreement task, include cases where the user is correct as well as cases where the user is wrong. Reducing agreement indiscriminately is an easy way to improve an incomplete sycophancy metric.
+
+If an LLM judge scores the outputs, hide the condition labels and check agreement with human ratings on a sample. An intervention that produces more explicit language can alter the judge's score even when the underlying decision barely changes.
+
+## Test composition and transfer separately
+
+Two vectors can be added algebraically:
+
+$$
+h'=h+\alpha v+\beta w
+$$
+
+The resulting behaviors need not add. A concision intervention might remove the qualification that an uncertainty intervention introduced. Near-orthogonal vectors can still interact through downstream nonlinear computation.
+
+Evaluate combined interventions on a grid of coefficients. Check both target behaviors and the original task. A pair that works independently needs new evidence when used together.
+
+Transfer is another separate experiment. Pin the model revision, tokenizer, chat template, dtype, extraction corpus, and hook implementation with the vector. Re-evaluate after quantization or fine-tuning. Raw coordinates belong to a particular model representation; equal hidden dimensions do not make vectors interchangeable across checkpoints.
+
+## Control is useful before the explanation is complete
+
+Activation steering provides a way to ask whether moving an internal state changes a behavior. [Activation patching](/activation-patching-causal-experiments) can then help locate the inputs and downstream paths involved. [Sparse dictionaries](/sparse-autoencoder-evaluation) can help test whether the effect separates into narrower components.
+
+The strength of the claim should follow the experiment. A direction that changes behavior on held-out prompts is a useful control. Explaining that behavior requires identifying what the direction changes, when the model uses it, and which other computations move with it.
+
+## References
+
+[^actadd]: Alexander Matt Turner et al., "Steering Language Models With Activation Engineering," 2023, revised 2024. [Read the paper](https://arxiv.org/abs/2308.10248).
+
+[^caa]: Nina Rimsky et al., "Steering Llama 2 via Contrastive Activation Addition," ACL, 2024. [Read the paper](https://aclanthology.org/2024.acl-long.828/).
+
+[^refusal]: Andy Arditi et al., "Refusal in Language Models Is Mediated by a Single Direction," NeurIPS, 2024. [Read the paper](https://arxiv.org/abs/2406.11717).

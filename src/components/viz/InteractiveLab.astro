@@ -1,0 +1,348 @@
+---
+import { LABS, defaults, renderLab, type LabKind } from '../../utils/research-lab-registry'
+interface Props {
+  kind: LabKind
+}
+const { kind } = Astro.props
+const definition = LABS[kind]
+const initial = renderLab(kind)
+---
+
+<article-lab data-kind={kind}>
+  <figure class="interactive-lab">
+    <figcaption class="lab-heading">
+      <span>{definition.title}</span>
+      <button type="button" data-reset aria-label={`Reset ${definition.title}`}>Reset</button>
+    </figcaption>
+    <p class="lab-description">{definition.description}</p>
+    <div class="lab-controls">
+      {
+        definition.controls.map((control) => (
+          <label>
+            <span>
+              {control.label}
+              {control.type === 'range' && (
+                <output data-for={control.key}>
+                  {control.value}
+                  {control.unit}
+                </output>
+              )}
+            </span>
+            {control.type === 'range' ? (
+              <input
+                type="range"
+                data-control={control.key}
+                min={control.min}
+                max={control.max}
+                step={control.step}
+                value={control.value}
+                aria-label={control.label}
+              />
+            ) : (
+              <select data-control={control.key} aria-label={control.label}>
+                {control.options.map((option) => (
+                  <option value={option.value} selected={option.value === control.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </label>
+        ))
+      }
+    </div>
+    <div class="lab-chart" data-chart set:html={initial.chart} />
+    <p class="lab-legend" data-legend hidden={!initial.legend}>{initial.legend}</p>
+    <div class="lab-results" aria-live="polite" aria-atomic="true">
+      <dl data-metrics>
+        {
+          initial.metrics.map((metric) => (
+            <div>
+              <>
+                <dt>{metric.label}</dt>
+                <dd>{metric.value}</dd>
+              </>
+            </div>
+          ))
+        }
+      </dl>
+    </div>
+    <p class="lab-detail" data-detail>{initial.detail}</p>
+    <noscript>The default example is shown. Enable JavaScript to change the controls.</noscript>
+  </figure>
+</article-lab>
+
+<script>
+  import {
+    LABS,
+    defaults,
+    renderLab,
+    type LabKind,
+    type LabValues
+  } from '../../utils/research-lab-registry'
+
+  class ArticleLab extends HTMLElement {
+    private cleanup: AbortController | undefined
+    private observer: ResizeObserver | undefined
+
+    connectedCallback() {
+      if (this.cleanup) return
+      const key = this.dataset.kind
+      const kind = Object.keys(LABS).find((candidate): candidate is LabKind => candidate === key)
+      if (!kind) return
+      this.cleanup = new AbortController()
+      const chart = this.querySelector<HTMLElement>('[data-chart]')
+      const metrics = this.querySelector<HTMLElement>('[data-metrics]')
+      const detail = this.querySelector<HTMLElement>('[data-detail]')
+      const legend = this.querySelector<HTMLElement>('[data-legend]')
+      const controls = [
+        ...this.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-control]')
+      ]
+      if (!chart || !metrics || !detail || !legend) return
+      let values: LabValues = defaults(kind)
+      const update = () => {
+        const result = renderLab(kind, values, chart.clientWidth)
+        chart.innerHTML = result.chart
+        metrics.replaceChildren(
+          ...result.metrics.map((metric) => {
+            const item = document.createElement('div')
+            const label = document.createElement('dt')
+            const value = document.createElement('dd')
+            label.textContent = metric.label
+            value.textContent = metric.value
+            item.append(label, value)
+            return item
+          })
+        )
+        detail.textContent = result.detail
+        legend.textContent = result.legend ?? ''
+        legend.hidden = !result.legend
+        for (const control of LABS[kind].controls) {
+          const output = this.querySelector<HTMLOutputElement>(`[data-for="${control.key}"]`)
+          if (output)
+            output.value = `${values[control.key]}${control.type === 'range' ? (control.unit ?? '') : ''}`
+        }
+      }
+      for (const control of controls) {
+        control.addEventListener(
+          'input',
+          () => {
+            if (control.dataset.control)
+              values[control.dataset.control] =
+                control instanceof HTMLInputElement ? Number(control.value) : control.value
+            update()
+          },
+          { signal: this.cleanup.signal }
+        )
+      }
+      this.querySelector('[data-reset]')?.addEventListener(
+        'click',
+        () => {
+          values = defaults(kind)
+          for (const control of controls)
+            control.value = String(values[control.dataset.control ?? ''])
+          update()
+        },
+        { signal: this.cleanup.signal }
+      )
+      this.observer = new ResizeObserver(update)
+      this.observer.observe(chart)
+      this.dataset.ready = 'true'
+      update()
+    }
+
+    disconnectedCallback() {
+      this.cleanup?.abort()
+      this.observer?.disconnect()
+      this.cleanup = undefined
+    }
+  }
+  if (!customElements.get('article-lab')) customElements.define('article-lab', ArticleLab)
+</script>
+
+<style>
+  .interactive-lab {
+    margin: 2rem 0;
+    padding: clamp(1rem, 3vw, 1.5rem);
+    border: 1px solid var(--border);
+    background: var(--astro-code-background);
+    color: var(--text-primary);
+    text-align: left;
+    container-type: inline-size;
+  }
+  article-lab {
+    display: block;
+    min-width: 0;
+  }
+  .lab-heading {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    justify-content: space-between;
+  }
+  .interactive-lab figcaption {
+    font: 500 0.875rem/1.5 var(--mono);
+    color: var(--text-primary);
+    text-align: left;
+    text-wrap: balance;
+  }
+  button {
+    flex: 0 0 auto;
+    min-height: 44px;
+    padding: 0.4rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: 0;
+    background: var(--bg);
+    color: inherit;
+    font: 0.75rem var(--mono);
+    cursor: pointer;
+  }
+  .lab-description,
+  .lab-detail,
+  .lab-legend {
+    font: 0.8125rem/1.6 var(--sans);
+    color: var(--text-primary);
+    margin: 0.75rem 0;
+  }
+  .lab-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem 1.5rem;
+    padding: 1rem 0;
+  }
+  label {
+    display: grid;
+    align-content: start;
+    gap: 0.5rem;
+    min-width: 0;
+    font: 0.75rem/1.5 var(--mono);
+  }
+  label > span {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  output {
+    font-variant-numeric: tabular-nums;
+  }
+  input,
+  select {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    accent-color: var(--text-primary);
+  }
+  select {
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0;
+    background: var(--bg);
+    color: inherit;
+    font: 1rem var(--mono);
+  }
+  .lab-chart {
+    width: 100%;
+    min-width: 0;
+  }
+  .lab-chart :global(svg) {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+  .lab-chart :global(text) {
+    fill: var(--text-primary);
+    font: 12px var(--mono);
+  }
+  .lab-chart :global(.grid) {
+    stroke: var(--border);
+    fill: none;
+  }
+  .lab-chart :global(.frame) {
+    stroke: var(--border);
+    fill: none;
+  }
+  .lab-chart :global(.series) {
+    stroke: var(--text-primary);
+    stroke-width: 2;
+    fill: none;
+    stroke-linejoin: round;
+  }
+  .lab-chart :global(.secondary) {
+    stroke-dasharray: 5 4;
+    opacity: 0.65;
+  }
+  .lab-chart :global(.guide) {
+    fill: none;
+    stroke: var(--text-primary);
+    stroke-dasharray: 2 5;
+    opacity: 0.45;
+  }
+  .lab-chart :global(.point) {
+    fill: var(--bg);
+    stroke: var(--text-primary);
+    stroke-width: 1.5;
+  }
+  .lab-chart :global(.bar) {
+    fill: var(--text-primary);
+  }
+  .lab-chart :global(.secondary-fill) {
+    fill: var(--bg);
+    stroke: var(--text-primary);
+    stroke-width: 1.5;
+  }
+  .lab-results {
+    border-top: 1px solid var(--border);
+    margin-top: 1rem;
+  }
+  dl {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+  }
+  dt {
+    font: 0.75rem/1.5 var(--sans);
+  }
+  dd {
+    margin: 0.35rem 0 0;
+    font: 500 1rem/1.4 var(--mono);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+  .lab-detail {
+    border-top: 1px solid var(--border);
+    padding-top: 0.75rem;
+    margin-bottom: 0;
+  }
+  .lab-chart :global(.sample-list) {
+    font: 0.8125rem/1.6 var(--mono);
+  }
+  .lab-chart :global(.sample-list > div) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 80px;
+    gap: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    padding: 0.65rem 0;
+  }
+  .lab-chart :global(.sample-list code) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+  }
+  .lab-chart :global(.sample-list span),
+  .lab-chart :global(.sample-list b:last-child) {
+    text-align: right;
+  }
+  @container (max-width: 390px) {
+    .lab-controls {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

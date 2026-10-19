@@ -1,0 +1,76 @@
+---
+title: 'Kyutai and Streaming Audio: Models Have to Respect Time'
+pubDate: 2026-09-15
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: "Use Kyutai's speech and music research to examine streaming latency, interruption handling, timing resolution, and evaluations that preserve temporal behavior."
+topics: ['Audio', 'Streaming', 'Kyutai']
+---
+
+import InteractiveLab from '../../components/viz/InteractiveLab.astro'
+
+A spoken assistant can produce an accurate transcript after the conversation has already moved on. A music transcriber can identify the right pitches while placing them at the wrong times. In both cases, a content-only metric misses the failure the listener notices.
+
+Kyutai is a useful lab to follow because several of its projects make time part of the modeling problem. Moshi studies real-time spoken interaction. Later work addresses speech interactivity, and MuScriptor studies multi-instrument music transcription.[^moshi][^interactivity][^music] These are separate projects with different objectives. Their connection is an evaluation principle: preserve the temporal conditions of the task.
+
+## A conversation does not wait for a completed file
+
+A conventional offline pipeline can transcribe a full recording, generate text, and synthesize speech afterward. That sequence can be appropriate for a recorded lecture. A conversation instead requires the system to act while audio is arriving.
+
+Moshi's release presents an open speech-text model for real-time spoken dialogue.[^moshi] Its relevance extends beyond the generated voice. A streaming system has to represent overlapping activity and decide what information is available at each moment.
+
+An evaluation that gives the model future audio changes the task. A system that sounds fluent with the complete utterance may behave differently when it must begin before the speaker finishes.
+
+## Break response delay into observable waits
+
+A streaming path can wait for future input, spend time on model computation, and queue generated samples before playback. Network and device scheduling add other delays.
+
+<InteractiveLab kind="speech-timing" />
+
+Reduce compute in your mental model to zero. The two adjustable waits remain. A faster model cannot eliminate lookahead that the algorithm requires or audio that the player has already buffered.
+
+The chart adds its stages sequentially for clarity. Production systems can overlap stages, so the sum is not a universal latency formula. Measure timestamps at the actual boundaries: captured input, model-ready input, first generated sample, queued sample, and audible output.
+
+Interruption adds another path. The system must detect incoming speech, cancel outstanding generation when appropriate, and remove queued output. A player that keeps half a second of audio after cancellation can make an otherwise responsive model feel inattentive.
+
+Kyutai's June 2026 work explicitly targets post-training for better interactivity.[^interactivity] That makes conversational behavior a training target worth separating from ordinary speech recognition quality.
+
+## Timing quality has several denominators
+
+Report first-response delay over turns where a response was appropriate. Report false interruptions over opportunities where the user intended to continue. Include overlaps, brief acknowledgments, hesitations, and quiet speech.
+
+A single mean can hide the slow tail. Keep per-turn traces and latency percentiles, then inspect whether the worst delays occur after long utterances, speaker changes, or retrieval. If evaluation audio arrives faster than real time, document that shortcut and run a separate real-time pass.
+
+There is also a quality tradeoff. Less lookahead can make a system respond earlier while increasing revisions or turn-taking errors. Compare systems at matched behavioral quality, or display both outcomes instead of compressing them into one score.
+
+## Music exposes a different timing failure
+
+MuScriptor's July 2026 release concerns automatic multi-instrument transcription.[^music] A transcription system must represent events in time as well as identify their musical content.
+
+Imagine rounding each detected onset to a fixed temporal grid. With nearest rounding and bin width $\Delta t$, the numerical onset shift is bounded by $\Delta t/2$. That bound says nothing about whether the note was detected correctly.
+
+<InteractiveLab kind="music-timing" />
+
+Change the bin width and tempo. The same absolute time resolution occupies a different fraction of a beat at different tempos. Some notes barely move; others land near a bin boundary.
+
+This visualization uses eight authored onsets. It does not represent MuScriptor's decoder or measured accuracy. It demonstrates why a transcription report should state onset tolerance, note-matching rules, and the treatment of simultaneous notes.
+
+Pitch-only scoring would miss all the shifts shown here. A permissive onset tolerance may also count a musically awkward transcription as correct. Listening tests and event-level metrics answer related but distinct questions.
+
+## A reproducible small-lab setup
+
+For speech, begin with a fixed set of consented recordings and scripted interaction scenarios. Replay the input in real time while logging capture and playback clocks. Repeat with controlled network delay and a documented output-buffer size. Preserve cancellations and unfinished turns in the trace.
+
+For music, use a dataset with aligned note annotations and an explicit instrument split. Separate onset, offset, pitch, and instrument errors. Hold out recordings or performers as a group so that adjacent excerpts do not leak across the split.
+
+Pin the released checkpoint and code revision. Report microphone or file sample rate, resampling, chunk boundaries, precision, and hardware. The audio preprocessing belongs to the experiment, since a small timing mismatch can change every event boundary.
+
+The most informative contribution may be a better temporal evaluation rather than another average quality score. It can show whether a model listens, waits, interrupts, and aligns events under the conditions that make the task difficult.
+
+## References
+
+[^moshi]: Kyutai, "Moshi: a speech-text foundation model for real-time dialogue," September 2024. [Read the release](https://kyutai.org/blog/2024-09-18-moshi-release/).
+
+[^interactivity]: Kyutai, "Post-training speech models for better interactivity," June 10, 2026. [Read the research post](https://kyutai.org/blog/2026-06-10-interactivity/).
+
+[^music]: Kyutai, "MuScriptor: Automatic Multi-instrument Transcription," July 10, 2026. [Read the release](https://kyutai.org/blog/2026-07-10-muscriptor/).

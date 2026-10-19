@@ -1,0 +1,115 @@
+---
+title: 'Reasoning Traces: Measuring Faithfulness and Monitor Coverage'
+pubDate: 2026-10-18
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Test whether reasoning traces reveal influential cues, distinguish causal dependence from faithful reporting, and measure what monitors miss.'
+topics: ['Reasoning', 'Interpretability', 'Safety']
+---
+
+import InteractiveLab from '../../components/viz/InteractiveLab.astro'
+
+A model can give the correct answer and a misleading account of how it arrived there. It can also give an incorrect answer through reasoning that faithfully exposes its mistake. Answer accuracy and explanation faithfulness are different measurements.
+
+This becomes consequential when reasoning traces serve as audit evidence. A monitor may catch an explicit plan to exploit a scoring shortcut. Its failure to find such a statement means little until we know how often the model mentions shortcuts it actually uses.
+
+The [alignment control-loop article](/model-alignment-control-loop) discussed process supervision and auditing. Here the question is narrower: which experiments show that a text trace reports factors that influenced the answer?
+
+## Define the trace being evaluated
+
+An autoregressive model can generate intermediate text, then condition its answer on that text. The intermediate tokens are part of its computation. They still need not describe every important computation performed inside the network.
+
+Distinguish an intermediate reasoning trace from an explanation generated after the answer. Also distinguish both from a product's summary of an undisclosed trace. Each is a different object, with a different relationship to the final output.
+
+For an experiment, record the exact text available to the evaluator. If only a summary is available, conclusions concern that summary. They do not establish the faithfulness of an inaccessible intermediate sequence.
+
+Three properties are worth measuring separately:
+
+| Property           | Experimental question                                          |
+| ------------------ | -------------------------------------------------------------- |
+| Task performance   | Is the final answer correct?                                   |
+| Causal dependence  | Does changing the trace alter the answer?                      |
+| Faithful reporting | Does the trace acknowledge factors that affected the decision? |
+
+A trace can affect the answer while omitting an important cue. A plausible explanation can accurately describe a valid solution while failing to describe the process that produced this particular answer.
+
+## Add a cue whose influence can be tested
+
+Turpin and colleagues showed that biasing features in prompts could change answers without appearing in the accompanying explanations. Models sometimes rationalized the biased answer instead.[^turpin]
+
+The general experimental design uses matched inputs. Keep the task fixed and add a candidate influence to one version. An illustrative pair might be:
+
+```text
+Baseline: Solve the problem and select an option.
+Hinted:   Solve the same problem. A previous reviewer selected option C.
+```
+
+Randomize the hinted option across cases. Include correct and incorrect hints. A useful study also varies the cue's wording and authority, so one phrase does not define the entire effect.
+
+The relevant observation is a shift toward the hinted answer. Then inspect whether the trace acknowledges relying on that hint. Mentioning a reviewer in passing is weaker evidence than saying the reviewer's answer influenced the choice.
+
+Because generation is stochastic, one changed answer cannot establish influence with certainty. Use repeated samples or matched sampling procedures, measure baseline answer variability, and report population-level effects.
+
+## Report disclosure conditional on apparent hint use
+
+Chen and colleagues used paired hinted and unhinted questions to evaluate reasoning models. Their score examines whether a trace acknowledges the hint when the answer switches from a different option to the hinted one, with an adjustment for random answer changes.[^chen]
+
+A simplified conditional rate is:
+
+$$
+F_{\mathrm{hint}}
+=\Pr\left(
+\text{trace acknowledges influence}
+\mid A_0\ne H,\;A_H=H
+\right)
+$$
+
+Here $A_0$ is the baseline answer, $A_H$ is the hinted-run answer, and $H$ is the hint. The expression omits the study's noise correction and is not a universal faithfulness score.
+
+The paper found unreliable hint disclosure across the tested settings, including for reasoning models. Its outcome-based reinforcement-learning experiments did not steadily improve faithfulness to a high level.[^chen]
+
+Keep the denominator visible. If a model almost never follows the hint, a disclosure estimate may have very few eligible examples. Low hint uptake and high conditional disclosure describe different properties. Report both, with uncertainty.
+
+## Edit the trace to test dependence
+
+Another experiment changes intermediate text while holding the original task fixed. Lanham and colleagues studied interventions including inserted mistakes, paraphrases, and truncation. They found substantial variation across tasks in how strongly answers depended on the trace.[^lanham]
+
+Different edits test different hypotheses. A meaning-preserving paraphrase asks whether the answer depends on the wording. Replacing a numerical intermediate with a plausible alternative asks whether later steps use that result. Truncation asks whether the omitted continuation contributes to solving the task.
+
+Interpret these interventions cautiously. An edited trace may be unusual for the model, and the continuation might detect and correct a mistake. An unchanged answer could reflect independent recomputation rather than complete disregard of the trace.
+
+Use several edits and inspect the continuation. For a calculation, ask whether the model propagates the replacement number, explicitly repairs it, or ignores it. Those outcomes support different accounts of what the intermediate text does.
+
+These experiments require access to the relevant generation interface. If a system cannot accept an intermediate prefix, document that limitation rather than treating an instruction to "imagine different reasoning" as the same intervention.
+
+## Evaluate the monitor independently
+
+A trace monitor introduces another measurement layer. It can fail because the trace omits relevant information or because the monitor misses information that is present.
+
+Build a labeled set that separates these cases. Include explicit disclosures, indirect disclosures, plausible innocent reasoning, and known failures with no visible disclosure. Measure false alarms and misses against independently established behavior, not only against whether a human can spot suspicious wording.
+
+Consider an invented example. In 100 verified shortcut-use cases, suppose 25 traces disclose the shortcut and a monitor catches 20 of those. A monitor that detects no additional cases has 20% overall recall, despite catching 80% of the explicit disclosures. These numbers illustrate denominator choice; they are not results from a published experiment.
+
+<InteractiveLab kind="monitoring" />
+
+Increase detector sensitivity while keeping disclosure low. Recall remains bounded by the visible signal under this toy monitor's assumptions. False alarms can also dominate the alert stream when most runs contain no shortcut use.
+
+Also ask whether the signal arrives in time. A trace generated after a tool action cannot prevent that action. For a monitor intended to intervene, report detection before the relevant action boundary alongside eventual detection.
+
+## Triangulate with behavior and internal interventions
+
+Reasoning text is one source of audit evidence. Tool logs establish which action occurred. Environment state can establish whether the action achieved the prohibited shortcut. Controlled prompts can test which cues influence the decision.
+
+With weight access, [activation patching](/activation-patching-causal-experiments) and [steering experiments](/activation-steering-control-and-limits) can test candidate internal mechanisms. Agreement between these methods strengthens a hypothesis when their checks are sufficiently independent. A probe trained on the same trace labels may simply reproduce the trace evaluator's assumptions.
+
+For a release decision, report answer quality, hint uptake, conditional disclosure, and monitor performance separately. Name the tested model revision and task distribution. Preserve cases where behavior reveals a failure that the trace omits.
+
+A monitor can be useful with incomplete coverage. The operational question is which failures it catches, under which conditions, and before which actions. Those measurements determine how much responsibility the system can place on reading the model's reasoning.
+
+## References
+
+[^turpin]: Miles Turpin et al., "Language Models Don't Always Say What They Think: Unfaithful Explanations in Chain-of-Thought Prompting," NeurIPS, 2023. [Read the paper](https://arxiv.org/abs/2305.04388).
+
+[^chen]: Yanda Chen et al., "Reasoning Models Don't Always Say What They Think," 2025. [Read the paper](https://arxiv.org/abs/2505.05410).
+
+[^lanham]: Tamera Lanham et al., "Measuring Faithfulness in Chain-of-Thought Reasoning," 2023. [Read the paper](https://arxiv.org/abs/2307.13702).

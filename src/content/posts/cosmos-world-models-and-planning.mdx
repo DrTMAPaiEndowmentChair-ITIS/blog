@@ -1,0 +1,80 @@
+---
+title: 'NVIDIA Cosmos 3: When a Generated World Becomes a Planning Model'
+pubDate: 2026-10-05
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Study Cosmos 3 through action-conditioned prediction, compounding dynamics error, and planner evaluation that separates visual plausibility from useful simulation.'
+topics: ['World Models', 'Physical AI', 'NVIDIA']
+---
+
+import InteractiveLab from '../../components/viz/InteractiveLab.astro'
+
+A generated video can look plausible while giving a robot the wrong answer about what happens next. Planning requires predictions about the consequences of an action. Appearance is one part of that prediction, and often the easiest part for a viewer to judge.
+
+NVIDIA's Cosmos 3 puts several world-model functions into one research program. The project describes an omnimodal architecture spanning generation, understanding, dynamics prediction, and action-related tasks.[^project] That scope makes it useful to ask which capability each experiment actually establishes.
+
+The two simulations below are authored one-dimensional systems. They are not measurements or demonstrations of Cosmos.
+
+## Predicting the next view and predicting an intervention differ
+
+A model trained on video can learn which frames tend to follow one another. To support control, it must also distinguish what follows different actions in the same relevant situation.
+
+Let $s_t$ be a state and $a_t$ an action. A learned forward model predicts:
+
+$$
+\hat s_{t+1}=f_\theta(\hat s_t,a_t).
+$$
+
+A visual predictor may instead output an observation conditioned on a history. In either case, a planner needs the prediction to remain useful under the actions it considers, including actions uncommon in the training data.
+
+The Cosmos 3 technical report describes a unified mixture-of-transformers approach combining autoregressive and diffusion components across different input and output types.[^report] A shared architecture can support several tasks, but each task still needs an evaluation with the appropriate target and units.
+
+## Rollout error is a different measurement from one-step error
+
+Suppose a model slightly misestimates drag. One step can look almost right. Repeated predictions use the model's earlier outputs as inputs, allowing the discrepancy to grow.
+
+<InteractiveLab kind="dynamics-drift" />
+
+Match the two drag controls. The trajectories coincide. Separate them slightly, then increase the horizon. The final position error can become substantial even though both trajectories remain smooth and visually reasonable.
+
+This is a deterministic example with an exact reference. Learned visual systems add ambiguity about unobserved state, uncertainty about contact, and errors in the observation representation. Those sources should not be collapsed into a single video-quality score.
+
+A useful report measures error at several horizons and under several action distributions. Report the point where a prediction stops being useful for the downstream decision, rather than only averaging all frames together.
+
+## A planner can exploit a model's mistake
+
+A planner evaluates candidate actions using its model and selects the most promising. If the model's errors vary across actions, selection can favor the region where it is most overoptimistic.
+
+<InteractiveLab kind="model-planner" />
+
+The planner wants to reach position one while paying a small effort penalty. Change its assumed action gain. The solid objective moves, and the chosen action follows it. The dashed curve shows what the same action actually costs.
+
+Regret compares that choice with the best action from the same candidate set under the reference dynamics. Adding candidates improves the resolution of search. It does not guarantee a lower actual cost when the model is wrong.
+
+This distinction matters when evaluating more planning compute. Better optimization of an inaccurate objective can produce a more confidently wrong action. Record actual environment outcomes alongside predicted scores.
+
+## Synthetic experience needs its own contract
+
+Cosmos 3's release positions it as an open foundation model for physical AI.[^release] Openness helps researchers inspect and adapt a system. It does not establish that every generated trajectory is valid training data for a particular robot or vehicle.
+
+Specify what must be preserved when generating an example. It might be object identity, camera pose, depth ordering, action alignment, or contact behavior. A scene can satisfy one requirement and violate another.
+
+For a controlled study, keep the downstream policy and training budget fixed. Add generated data under a documented filtering rule, then test on independently collected episodes. Compare with a baseline that adds an equal amount of repeated or conventionally augmented real data. That helps determine whether the generator contributes useful variation beyond extra optimization exposure.
+
+## A realistic first research setup
+
+Start with a small environment where reference states and action effects can be measured. Separate observation reconstruction, one-step dynamics, long-rollout dynamics, and closed-loop planning into different evaluations.
+
+Hold out initial conditions and action sequences. Include interventions that distinguish plausible explanations of the same observed motion. For a rolling object, a short clip may not reveal whether motion came from a push or a slope; a new action can help distinguish them.
+
+Preserve model and simulator versions, camera calibration, action timing, and the planning budget. If a model uses multiple candidate rollouts, count all of them. Keep the policy's success metric separate from the generator's perceptual metric.
+
+NVIDIA's contribution is a set of models and systems that allow these questions to be studied across richer inputs and outputs. The strongest evidence for a world model is a decision that improves because its action-conditioned prediction was accurate where that decision depended on it.
+
+## References
+
+[^project]: NVIDIA Research, "Cosmos 3," 2026. Tasks, model description, and project resources. [Read the project](https://research.nvidia.com/labs/cosmos-lab/cosmos3/).
+
+[^report]: NVIDIA, "Cosmos 3" technical report, 2026. [Read the report](https://research.nvidia.com/labs/cosmos-lab/cosmos3/technical-report.pdf).
+
+[^release]: NVIDIA, "NVIDIA Launches Cosmos 3, the Open Frontier Foundation Model for Physical AI," May 31, 2026. [Read the announcement](https://nvidianews.nvidia.com/news/nvidia-launches-cosmos-3-the-open-frontier-foundation-model-for-physical-ai/).

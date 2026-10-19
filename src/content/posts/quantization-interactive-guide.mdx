@@ -1,0 +1,161 @@
+---
+title: 'Quantization, Visualized: Rounding, Outliers, Memory, and Speed'
+pubDate: 2026-08-16
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: 'Explore quantization through six interactive experiments covering discrete levels, clipping, group scales, rescaling, resident memory, and runtime bottlenecks.'
+topics: ['Quantization', 'Inference', 'Model Compression']
+---
+
+import InteractiveLab from '../../components/viz/InteractiveLab.astro'
+
+A 4-bit weight occupies half a byte before metadata. That fact tells us neither how much quality a model retains nor how quickly a device can execute it. Those outcomes depend on which values share a scale, how the rounding errors interact with inputs, and what the runtime does with the compressed representation.
+
+Quantization has a simple numerical core. The complexity comes from applying it to an entire inference system. The six experiments below follow that path, beginning with one scalar and ending with a memory and runtime budget.
+
+Every chart uses deterministic teaching data or an explicit analytical model. None presents measured model accuracy, perplexity, or device performance. The [low-precision architecture article](/quantization-aware-architecture) discusses architectural choices; this article makes the arithmetic behind them inspectable.
+
+## A scale gives integer codes a meaning
+
+An affine quantizer represents a real value with an integer code $q$, a positive scale $s$, and an integer zero point $z$:
+
+$$
+q=\operatorname{clip}\left(
+\operatorname{round}(x/s)+z,\;q_{\min},\;q_{\max}
+\right),\qquad
+\hat x=s(q-z)
+$$
+
+The stored code only becomes an approximate real value after decoding. Jacob and colleagues describe this affine representation and how integer arithmetic can carry it through neural-network inference.[^integer]
+
+For the first experiments, use a simpler symmetric convention with $z=0$. A $b$-bit code uses the integers from $-Q$ through $Q$, where:
+
+$$
+Q=2^{b-1}-1,\qquad s=c/Q
+$$
+
+The clipping bound is $c$. This convention leaves one signed code unused, so 4 bits provide fifteen decoded levels, including zero. Other formats can use a different code range or codebook. The visualization states its convention because changing that convention changes the arithmetic.
+
+<InteractiveLab kind="rounding" />
+
+Try 2 bits, then move the input slowly around zero. The decoded value stays fixed before jumping to the next level. More bits make the steps smaller without changing the clipping range.
+
+Inside the unclipped range, nearest rounding gives absolute error at most $s/2$. The experiment rounds exact ties away from zero. Production implementations can use other tie-breaking rules, so bit-for-bit reproduction requires matching the rounding rule too.
+
+## An outlier spends the range on itself
+
+With one shared symmetric scale, the largest absolute value determines the step size if the quantizer covers the entire range. Most values may occupy only a small part of that range.
+
+The next example contains sixty-three moderate values and one value at eight. At 4 bits, covering the outlier requires a step of $8/7$, which is larger than many ordinary values in the example. Some of those values round to zero.
+
+<InteractiveLab kind="clipping" />
+
+Lower the clipping bound. The smaller values receive finer steps, but the outlier can no longer be represented. Its error increases as the bound shrinks. Compare the total mean squared error with the error calculated only over the non-outlier values.
+
+Neither average is a universal quality metric. If the outlier carries an important computation, accepting a large error there can be costly even when most values improve. If it barely affects the deployed task, preserving it perfectly may be a poor use of the available levels.
+
+Calibration is how a quantizer estimates which ranges and inputs matter. A calibration corpus with short English prose may give a weak picture of long-context code or another language. Pin its provenance and evaluate on held-out workloads that resemble deployment.
+
+## A group scale localizes the damage
+
+Per-tensor quantization shares a scale widely. Per-channel and group-wise quantization reduce the number of values competing for that range. An outlier then affects fewer neighbors.
+
+<InteractiveLab kind="groups" />
+
+Set the group size to sixty-four, then reduce it. The final weight remains an outlier, but the scale it forces no longer applies to every other weight. The bars show actual reconstruction errors for this fixed vector; they do not estimate language-model accuracy.
+
+The cost is metadata. With $b$ code bits and one $s_b$-bit scale per group of $g$ weights, the nominal effective rate is:
+
+$$
+b_{\mathrm{effective}}=b+\frac{s_b}{g}
+$$
+
+At 4 bits with one FP16 scale per 128 weights, this is $4.125$ bits per weight. Add another sixteen bits per group for a zero point and it becomes $4.25$. A particular format may use quantized scales, shared exponents, mixed tensor types, or additional headers. Count its actual representation.
+
+This arithmetic explains why two files both described as "4-bit" can have different sizes. It also explains why reducing group size has a visible cost at low precision: metadata consumes a larger fraction of the remaining bytes.
+
+## Preserve the product while changing the ranges
+
+For a layer $Y=XW$, introduce an invertible diagonal channel-scaling matrix $S$:
+
+$$
+Y=(XS^{-1})(SW)
+$$
+
+The exact product is unchanged. The two operands now have different numerical ranges. SmoothQuant uses this equivalence to move quantization difficulty from activations into weights before low-precision execution.[^smoothquant]
+
+<InteractiveLab kind="rescaling" />
+
+The experiment uses four invented channels and a single test vector. Its scaling rule is:
+
+$$
+s_i=\frac{a_i^\alpha}{w_i^{1-\alpha}}
+$$
+
+Here $a_i$ and $w_i$ are the positive channel magnitudes shown in the toy. Changing $\alpha$ shifts the burden between the operands. The exact dot product stays at $6.31$; independently quantizing the rescaled operands changes the approximate product.
+
+This is a numerical demonstration of the equivalence, not a reproduction of SmoothQuant calibration or its reported W8A8 results. A full implementation must collect channel statistics, handle zero ranges, fold transformations where valid, and match the runtime's quantizers.
+
+Weight-only methods make different choices. GPTQ approximately minimizes layer-output reconstruction error using second-order information from calibration inputs.[^gptq] AWQ uses activation information to identify important weight channels and searches channel scalings that reduce quantization error.[^awq] Neither method is adequately described by choosing the nearest integer for each weight in isolation.
+
+To see why, let $\Delta W$ be weight error for a linear layer. On an input $x$:
+
+$$
+\Delta y=\Delta W x
+$$
+
+Two weight-error matrices with the same norm can produce different output errors on the input distribution. Evaluating only the stored weights omits the inputs that multiply them.
+
+## The model file is one part of resident memory
+
+For $N$ parameters at $b$ bits, $Nb/8$ is the code payload in bytes. It excludes scales, higher-precision tensors, the KV cache, and runtime buffers.
+
+For a conventional decoder with a full-context cache, the KV tensor estimate is:
+
+$$
+M_{\mathrm{KV}}=2LH_{\mathrm{KV}}d_h\,s_{\mathrm{KV}}\,T\,B
+$$
+
+The factors are layers, KV heads, head width, bytes per cached scalar, tokens per sequence, and concurrent sequences. The leading two counts keys and values. [The KV-cache guide](/kv-cache-memory-systems) covers architectures and allocation strategies that change this estimate.
+
+<InteractiveLab kind="memory" />
+
+Increase context length or concurrent requests after reducing the weight bits. The cache can consume the memory saved by weight compression. Weight-only quantization leaves cache precision unchanged unless the deployment separately configures cache quantization.
+
+The calculator reserves one percent of weights at FP16 and one GiB for workspace. Those are illustrative assumptions. It holds cache geometry fixed as parameter count changes, so it explores a memory budget rather than predicting a specific model family's architecture. Allocator fragmentation, packing padding, temporary buffers, and device offload remain outside the estimate.
+
+Be careful with units. Eight billion FP16 parameters require sixteen billion bytes, about $14.90$ GiB. A displayed GB value and a device's GiB capacity can differ without either measurement being wrong.
+
+## Compression changes the bottleneck
+
+A rough dense decode-step model compares weight-transfer time with arithmetic time:
+
+$$
+t_{\mathrm{step}}\gtrsim
+\max\left(
+\frac{M_{\mathrm{weights}}}{\mathrm{bandwidth}},\;
+\frac{2NB}{\mathrm{compute\ throughput}}
+\right)
+$$
+
+This assumes weights are read once for the batch and reused across its token computations. It omits attention-cache traffic and many runtime costs. Add an explicit overhead term for unpacking or dequantization to explore when compression stops helping.
+
+<InteractiveLab kind="runtime" />
+
+At small batches, weight traffic can dominate this simplified model. At larger batches, arithmetic grows while the weight read is shared. Reducing stored bits eventually stops changing the larger term. Added low-bit overhead can make the compressed path slower under the chosen assumptions.
+
+Actual kernels may also change arithmetic throughput. Some consume low-bit operands directly; others unpack weights into a higher precision. Fused dequantization can overlap work that a separate kernel would serialize. A measured result needs the exact device, kernel, shape, batch size, and output length.
+
+The practical comparison is a deployment experiment. Measure peak resident memory, prefill latency, decode latency, and task quality against the same reference checkpoint. Keep sampling settings and evaluation inputs fixed. Include the workloads that are sensitive to mistakes, such as code, tool arguments, and retrieval at the target context length.
+
+A bit width is a storage decision. The useful outcome is a measured combination of retained behavior, memory use, and latency for the system that will run it.
+
+## References
+
+[^integer]: Benoit Jacob et al., "Quantization and Training of Neural Networks for Efficient Integer-Arithmetic-Only Inference," CVPR, 2018. [Read the paper](https://arxiv.org/abs/1712.05877).
+
+[^smoothquant]: Guangxuan Xiao et al., "SmoothQuant: Accurate and Efficient Post-Training Quantization for Large Language Models," ICML, 2023. [Read the paper](https://arxiv.org/abs/2211.10438).
+
+[^gptq]: Elias Frantar et al., "GPTQ: Accurate Post-Training Quantization for Generative Pre-trained Transformers," ICLR, 2023. [Read the paper](https://arxiv.org/abs/2210.17323).
+
+[^awq]: Ji Lin et al., "AWQ: Activation-aware Weight Quantization for LLM Compression and Acceleration," MLSys, 2024. [Read the paper](https://arxiv.org/abs/2306.00978).

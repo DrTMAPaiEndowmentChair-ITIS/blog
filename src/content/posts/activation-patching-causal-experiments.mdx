@@ -1,0 +1,136 @@
+---
+title: 'Activation Patching: Designing Causal Experiments Inside Transformers'
+pubDate: 2026-08-25
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Design activation-patching experiments with matched prompts, explicit metrics, controlled interventions, and held-out causal predictions.'
+topics: ['Interpretability', 'Causal Inference', 'Circuits']
+---
+
+import InteractiveLab from '../../components/viz/InteractiveLab.astro'
+
+A heatmap can show where an intervention changes a model's answer. Explaining why that region matters requires another experiment.
+
+Activation patching gives mechanistic interpretability a way to run those experiments. Cache an internal state during one forward pass, transplant it into another, and measure the result. The difficult part is deciding what the transplant tests.
+
+The [earlier interpretability overview](/frontier-mechanistic-interpretability) surveyed feature dictionaries and circuit tracing. Here the unit of analysis is one causal claim, and the experimental choices needed to support it.
+
+## Start with a contrast the model understands
+
+Consider this illustrative prompt pair:
+
+```text
+Reference: After Maya and Leo entered the office, Maya gave the folder to
+Contrast:  After Maya and Leo entered the office, Leo gave the folder to
+```
+
+The intended completions differ. In the reference, Leo receives the folder. In the contrast, Maya does. Both sentences describe ordinary situations, which makes the comparison easier to interpret than arbitrary damage to the input.
+
+Check the unmodified model first. Does it distinguish the recipients across many name pairs and sentence templates? If it does not perform the task reliably, the experiment needs to explain that failure before claiming to recover a successful algorithm.
+
+Also inspect tokenization. A one-word name can occupy several tokens. Align semantic positions explicitly, including the repeated subject and final prediction position. Equal character counts do not establish equal token layouts.
+
+## The transplant defines the intervention
+
+Let $a_s(x)$ be the activation at site $s$ for prompt $x$. A site includes the layer, token position, and component output. The patched model runs on the contrast prompt $x_d$ while replacing that activation with its reference value:
+
+$$
+f_{s\leftarrow r}(x_d)
+=f\left(x_d;\;a_s\leftarrow a_s(x_r)\right)
+$$
+
+Everything downstream of the replacement is recomputed. This is the basic restoration experiment described in activation-patching tutorials.[^patching]
+
+Be precise about the replaced object. Patching the whole residual stream at a position transfers everything represented there. Patching one attention head's output transfers a narrower contribution. A result from the first experiment cannot automatically be attributed to a head contained within that stream.
+
+The recipient run is still a hybrid. Each cached activation came from a real model execution, but their combination may be unusual. A plausible input pair reduces one source of distortion; it does not guarantee a natural internal state.
+
+## Choose a metric before inspecting the heatmap
+
+For candidate answer tokens $y_r$ and $y_d$, define a logit difference:
+
+$$
+m(x)=z_{y_r}(x)-z_{y_d}(x)
+$$
+
+A positive value favors the reference answer. This assumes each candidate is a single token at the prediction position. For longer answers, define a sequence-level scoring procedure and state whether later tokens are teacher-forced.
+
+Zhang and Nanda found that both the corruption method and evaluation metric can change the components an experiment identifies. Their comparisons support logit differences and semantically matched token replacements as useful defaults in the tasks they studied.[^metrics]
+
+One common presentation is normalized recovery:
+
+$$
+R_s=
+\frac{m_{\mathrm{patched},s}-m_{\mathrm{contrast}}}
+{m_{\mathrm{reference}}-m_{\mathrm{contrast}}}
+$$
+
+Treat this as a relative score. It is not the fraction of the model's reasoning located at site $s$.
+
+For an invented numerical example, suppose the reference margin is $4$, the contrast margin is $-2$, and patching raises it to $1$. Recovery is $3/6=0.5$. The intervention recovered half the margin gap. It has not established that the site contains half the algorithm.
+
+Keep the raw margins beside the ratio. A nearly zero denominator makes recovery unstable. Values above one and below zero are possible and can contain useful information; clipping them conceals overshoot or interference.
+
+## Restoration and disruption answer different questions
+
+Restoration asks whether reference information at a chosen site can recover behavior in the contrast run. Reverse the transplant to ask whether contrast information disrupts the reference run.
+
+| Intervention                           | Observation                          | Immediate interpretation                                            |
+| -------------------------------------- | ------------------------------------ | ------------------------------------------------------------------- |
+| Reference activation into contrast run | Reference answer becomes more likely | This activation can restore the measured preference in that context |
+| Contrast activation into reference run | Reference answer becomes less likely | This replacement disrupts the measured preference                   |
+| Zero or mean replacement               | Performance degrades                 | The component matters under that ablation baseline                  |
+| Matched unrelated activation           | Similar degradation occurs           | Broad disruption may explain the apparent specificity               |
+
+Redundant routes complicate interpretation. Removing one route can leave another intact, while restoring one route can be enough to change the answer. Conversely, a computation may require several sites together, so individual patches appear weak. Heimersheim and Nanda discuss these distinctions when interpreting circuit evidence.[^patching]
+
+For a candidate pair of sites, compare their individual effects with their joint effect. Report the interaction rather than assuming that the individual scores add. A heatmap of isolated interventions can miss a mechanism that only appears when two inputs meet.
+
+<InteractiveLab kind="patching" />
+
+Switch between redundant paths and paths that are both required. A single-site experiment can look decisive in the first system and unimportant in the second. These are chosen causal toy models, not measurements of a transformer.
+
+## A location needs a computational explanation
+
+Suppose a head near the end of the prompt has a large effect. Several explanations remain possible. It might retrieve the recipient name, suppress the repeated subject, or convey a grammatical distinction that another component uses.
+
+Design new contrasts that separate those hypotheses. Reverse which name appears first. Change the subject repetition while preserving the recipient. Introduce an unrelated third name. Each variation should have a predicted outcome before it is run.
+
+The indirect-object-identification study in GPT-2 small is a useful precedent. It combined interventions with an account of several head roles, then evaluated the proposed circuit's faithfulness, completeness, and minimality.[^ioi] Those properties require more evidence than a component ranking.
+
+Automated Circuit Discovery searches for behavior-preserving subgraphs by pruning connections under a chosen dataset and metric.[^acdc] This can reduce manual search, but the resulting circuit still inherits the experiment's definition of behavior. A circuit selected on one template family must earn claims about another.
+
+## Make the next experiment reproducible
+
+For a small study, the most useful artifact is a record that another researcher can rerun:
+
+```yaml
+task: indirect-object completion
+model_revision: pinned-checkpoint-hash
+prompt_pairs: held-out-pairs.jsonl
+token_alignment: semantic-positions.json
+patch_site: attention-head-output
+recipient_run: contrast
+donor_run: reference
+metric: reference-minus-contrast-logit
+controls:
+  - identity patch
+  - unrelated donor
+  - reverse transplant
+```
+
+These are illustrative fields, not results from a model run. Include hook placement, dtype, attention implementation, and raw per-example scores in the actual record. An identity patch should reproduce the unpatched output within the expected numerical tolerance. If it does not, debug the intervention code before interpreting the experiment.
+
+Choose sites on a discovery set, then freeze them. Test new names and templates on a held-out set, with uncertainty estimated over examples. Otherwise, repeatedly examining heatmaps can turn the evaluation set into another source of experimental tuning.
+
+A useful final claim names the model, task distribution, intervention, and predicted effect. "This head carries recipient information across these held-out contrasts" is an explanation another experiment can challenge. The heatmap is where that investigation begins.
+
+## References
+
+[^patching]: Stefan Heimersheim and Neel Nanda, "How to use and interpret activation patching," 2024. [Read the tutorial](https://arxiv.org/abs/2404.15255).
+
+[^metrics]: Fred Zhang and Neel Nanda, "Towards Best Practices of Activation Patching in Language Models: Metrics and Methods," 2023, revised 2024. [Read the paper](https://arxiv.org/abs/2309.16042).
+
+[^ioi]: Kevin Wang et al., "Interpretability in the Wild: a Circuit for Indirect Object Identification in GPT-2 small," 2022. [Read the paper](https://arxiv.org/abs/2211.00593).
+
+[^acdc]: Arthur Conmy et al., "Towards Automated Circuit Discovery for Mechanistic Interpretability," NeurIPS, 2023. [Read the paper](https://arxiv.org/abs/2304.14997).

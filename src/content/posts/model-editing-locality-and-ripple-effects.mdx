@@ -1,0 +1,119 @@
+---
+title: 'Model Editing: Changing a Fact Without Changing Everything Else'
+pubDate: 2026-09-23
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: 'Explore rank-one model edits, shared representation geometry, locality constraints, downstream ripple effects, and the cost of repeated updates.'
+topics: ['Model Editing', 'Interpretability', 'Evaluation']
+---
+
+import InteractiveLab from '../../components/viz/InteractiveLab.astro'
+
+Changing one answer is easy to demonstrate. Establishing that a model has consistently updated a fact requires a much wider test.
+
+Suppose a fictional organization moves its headquarters from Pune to Kochi. A successful edit should change answers about its current headquarters, including paraphrased questions. It should preserve unrelated organizations and distinguish the new location from historical statements. Questions that require knowing the headquarters' state should now resolve to Kerala.
+
+Those requirements pull in different directions. Locality asks the edit to leave other knowledge alone. Consistency asks it to change the related consequences. Model editing is the attempt to specify and control that boundary inside the weights.
+
+## A factual association can have an editable computation
+
+ROME, or Rank-One Model Editing, uses a targeted weight update to change a factual association. Meng and colleagues combined causal interventions with editing experiments to study the role of feed-forward modules in factual recall, evaluating both the desired update and its specificity and generalization.[^rome]
+
+This connects model editing with [activation patching](/activation-patching-causal-experiments), but the operations differ. Patching replaces an activation in a particular execution. A weight edit persists and can affect later executions with different inputs.
+
+The changed matrix therefore needs evaluation beyond the prompt used to create the edit. Its role in one successful intervention cannot establish all the computations it will affect elsewhere.
+
+## Rank one still has a broad reach
+
+For a linear map $W$, a rank-one update has the form:
+
+$$
+W'=W+uv^\top
+$$
+
+For any input key $k$, the output changes by:
+
+$$
+\Delta y=uv^\top k
+$$
+
+The vector $u$ determines the output-change direction. The scalar $v^\top k$ determines how strongly the update affects this key. An edit aimed at one key also affects other keys that overlap with $v$.
+
+<InteractiveLab kind="editing" />
+
+The experiment uses a two-dimensional linear memory, not a language model. Increase the neighbor's similarity to the target. Its output change grows even though the matrix update remains rank one. Increasing the edit strength scales both changes.
+
+This is a geometric reason to measure locality empirically. A small update can have a broad behavioral effect when many relevant inputs align with its read direction. Matrix rank alone does not bound the number of affected prompts.
+
+ROME uses additional structure, including a preservation objective, to choose an update.[^rome] The toy isolates one algebraic consequence; it does not reproduce that algorithm or predict its benchmark performance.
+
+## Preserving one neighbor does not preserve every input
+
+Add a constraint. Let the target key be $k_t=(1,0)$ and a neighboring unit key be:
+
+$$
+k_n=\left(\rho,\sqrt{1-\rho^2}\right)
+$$
+
+We want a read direction $v$ satisfying $v^\top k_t=1$ and $v^\top k_n=0$. For $0\leq\rho<1$, one solution is:
+
+$$
+v=\left(1,\frac{-\rho}{\sqrt{1-\rho^2}}\right)
+$$
+
+As the keys approach parallel, the second coordinate becomes large. The update can preserve the neighbor while strongly affecting another key aligned with that coordinate.
+
+<InteractiveLab kind="locality" />
+
+Compare preservation on and off. Near similarity $0.99$, protecting the neighbor requires a much larger update norm than an unconstrained edit. The orthogonal key exposes a change that a target-and-neighbor-only evaluation would miss.
+
+These are exact calculations in the toy. Real representation geometry has many dimensions and may permit better solutions. It also contains many more candidate neighbors. The experiment explains why choosing the preservation set is part of the editing problem.
+
+## A consistent edit has intended consequences
+
+For the fictional headquarters example, returning Kochi to the original question is the direct target. Returning Kochi to a paraphrase tests generalization. Returning Kerala to a question about the headquarters' state tests propagation through a relation.
+
+RippleEdits evaluates this distinction by testing consequences of factual edits. Cohen and colleagues found that the editing methods they studied often failed to make consistent changes across those related facts.[^ripple]
+
+Write intended consequences before running an editor. Otherwise it is too easy to classify any changed answer as a useful ripple and any unchanged one as desirable locality.
+
+| Query family                              | Desired behavior after the hypothetical move  |
+| ----------------------------------------- | --------------------------------------------- |
+| Current headquarters                      | Answer Kochi                                  |
+| Paraphrased current-headquarters question | Answer Kochi                                  |
+| State containing the current headquarters | Answer Kerala                                 |
+| Headquarters before the move              | Preserve Pune, with the relevant time scope   |
+| A different organization's headquarters   | Preserve its original answer                  |
+| A question lacking the move's date        | Resolve or acknowledge the temporal ambiguity |
+
+Time scope is particularly easy to lose. Updating a current fact does not imply that earlier events occurred in the new location. An evaluation without dates can reward a model for overwriting useful historical distinctions.
+
+## Batch editing and repeated editing are different workloads
+
+MEMIT extends direct weight editing to many associations and demonstrated updates involving thousands of memories on the tested models.[^memit] A batch solve can consider interactions among its target keys.
+
+A sequence of edits faces another problem. Each new update acts on weights that earlier updates already changed. It may interfere with previous edits or shift the representation geometry assumed by the editor.
+
+Gupta and colleagues evaluated repeated ROME and MEMIT edits and reported declining editability, forgetting of earlier edits, and downstream degradation, including abrupt failures in their studied settings.[^forgetting]
+
+Track the age of each edit in a sequential evaluation. Measure whether the next update succeeds, whether earlier updates survive, and whether unrelated tasks deteriorate. A final average can hide a short interval where one large failure occurred.
+
+## Match the mechanism to the update requirement
+
+Weight editing is one way to change model behavior. Retrieval can supply dated facts and their sources at inference time. An instruction can provide a temporary counterfactual. Fine-tuning can update a wider set of behaviors, with its own interference risks.
+
+The choice depends on the intended lifetime and scope. A fictional counterfactual used in one conversation needs a different mechanism from a durable correction across many tasks. Source attribution, revocation, auditability, and the ability to restore a previous checkpoint also matter.
+
+For a weight-editing experiment, preserve the base checkpoint and the exact update. Evaluate the original prompt, paraphrases, intended consequences, temporal distinctions, and unrelated behaviors on held-out examples. Report sequential-edit results separately from isolated updates.
+
+An edit becomes useful when its changed answers have a predictable boundary. Testing that boundary is as much of the work as constructing the update.
+
+## References
+
+[^rome]: Kevin Meng et al., "Locating and Editing Factual Associations in GPT," NeurIPS, 2022. [Read the paper](https://arxiv.org/abs/2202.05262).
+
+[^memit]: Kevin Meng et al., "Mass-Editing Memory in a Transformer," ICLR, 2023. [Read the paper](https://arxiv.org/abs/2210.07229).
+
+[^ripple]: Roi Cohen et al., "Evaluating the Ripple Effects of Knowledge Editing in Language Models," TACL, 2024. [Read the paper](https://aclanthology.org/2024.tacl-1.16/).
+
+[^forgetting]: Akshat Gupta et al., "Model Editing at Scale leads to Gradual and Catastrophic Forgetting," Findings of ACL, 2024. [Read the paper](https://aclanthology.org/2024.findings-acl.902/).

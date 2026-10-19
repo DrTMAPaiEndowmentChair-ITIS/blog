@@ -1,0 +1,82 @@
+---
+title: 'Evo 2: Genome Models, Long Context, and the Cost of Biological Evidence'
+pubDate: 2026-08-11
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: "Study Arc Institute and NVIDIA's Evo 2 through long-context scaling, sequence likelihoods, and a reproducible evaluation design for biological models."
+topics: ['Genomics', 'Long Context', 'NVIDIA']
+---
+
+import InteractiveLab from '../../components/viz/InteractiveLab.astro'
+
+A genome model can assign a probability to a sequence. Biology asks harder questions. Does a change affect a cell? Does the effect depend on the organism, tissue, or surrounding sequence? A convincing answer needs evidence that a sequence score alone cannot supply.
+
+Evo 2 makes that distinction worth studying. Arc Institute's collaboration with NVIDIA and academic researchers brought large-scale sequence modeling, long contexts, and biological evaluation into the same project. It is also a useful example of NVIDIA contributing model architecture and training systems alongside accelerated compute.[^arc]
+
+The experiments here use analytical work estimates and invented scores. They do not run Evo 2 or assess a biological variant.
+
+## What a genome model learns to predict
+
+An autoregressive model learns a distribution over successive sequence symbols. For a sequence $x$, its log probability decomposes into conditional terms:
+
+$$
+\log p_\theta(x)=\sum_{i=1}^{L}\log p_\theta(x_i\mid x_{<i}).
+$$
+
+The training task rewards predictions that fit the observed sequence distribution. Functional regularities can help those predictions, but the objective does not directly identify which regularity caused an experimental outcome.
+
+Arc describes Evo 2 as a family trained across DNA from many domains of life, with context extending to one million nucleotides and a StripedHyena 2 hybrid architecture. The release includes models and tools for downstream investigation.[^arc] The subsequent Nature study develops the biological evaluations.[^paper] Those details suggest an ambitious research instrument. They do not remove the need to specify what each downstream measurement means.
+
+## Long context is an architectural problem
+
+A million positions makes an ordinary dense attention matrix enormous. The number of pairs is $10^{12}$ before accounting for heads, batches, or layers. Practical systems therefore need to consider which interactions require explicit pairwise computation and which can be represented through other sequence operations.
+
+The systems paper associated with Evo 2 studies convolutional multi-hybrid language models at scale.[^systems] Hybrid designs require their own kernels, numerical checks, and distributed execution choices. Architecture and implementation have to be evaluated together.
+
+<InteractiveLab kind="sequence-scaling" />
+
+Increase the sequence length. The chart compares quadratic pair counting with an $L\log_2L$ work proxy. Its vertical axis is logarithmic, so a modest-looking gap can represent a large ratio.
+
+This is an asymptotic comparison with unit constants. A particular convolution algorithm may have different costs, and a hybrid model includes operations absent from both curves. A useful benchmark must report the actual model, precision, sequence length, and hardware. The proxy explains the motivation for efficient sequence operators, not the runtime of Evo 2.
+
+## A likelihood ratio changes when its window changes
+
+One possible score compares an alternative sequence with a reference:
+
+$$
+\Delta=\log p_\theta(x^{\mathrm{alt}})-\log p_\theta(x^{\mathrm{ref}}).
+$$
+
+The tempting interpretation is that the score belongs entirely to the changed position. Under autoregressive scoring, later conditional probabilities can also change. A longer scored window can therefore alter the total even when the local edit stays fixed.
+
+<InteractiveLab kind="sequence-score" />
+
+The central position in this fixture favors one alternative. Each additional flank contributes a small authored difference. Increase the window until the accumulated flank outweighs the central term. The reversal follows directly from adding log scores.
+
+This construction exposes a scoring choice. It does not establish how Evo 2 behaves on any particular locus. Report whether a method scores the changed symbol, downstream positions, both directions, or a normalized window. Otherwise, two apparent disagreements may concern different quantities.
+
+## Build an evaluation that cannot win through related examples
+
+For a first computational study, use an established public assay dataset with documented permissions and fixed labels. Keep the biological task narrow enough that the label has a clear meaning. Predicting an assay readout and predicting clinical significance are different projects.
+
+Split related examples together. Randomly separating near-duplicate sequences can let shared context appear on both sides of the evaluation. Depending on the task, hold out gene families, genomic regions, species, or experimental batches. State which kind of generalization each split tests.
+
+Freeze the checkpoint, tokenizer, context construction, strand treatment, and scoring window before looking at the final test labels. Compare with simple baselines and include a calibration plot. A ranking score can order examples well while assigning probabilities that are poorly calibrated.
+
+NVIDIA's contribution becomes especially concrete when recording the execution setup. Log device memory, precision, chunking strategy, kernel versions, and wall time separately from biological quality. A faster sequence scorer improves the experiment's reach; it does not strengthen the assay labels.
+
+## Interpretability can help choose the next experiment
+
+Arc's release points to an interpretability collaboration with Goodfire.[^arc] Such tools can suggest sequence patterns worth testing. A readable activation still needs a testable account of what it detects and how the model uses it. Genome models pose the same question with an additional biological layer.
+
+A unit may respond to a recurring motif because that motif predicts surrounding sequence. Establishing a functional role requires an intervention and an appropriate measurement. Model-side activation changes and biological effects should have separate names in the results.
+
+The strongest small project would release its split definitions, scoring code, and failure cases alongside a resource budget. That gives another lab something precise to reproduce. A long-context model becomes more scientifically useful when its outputs are attached to a clear question and an evaluation that can prove it wrong.
+
+## References
+
+[^arc]: Arc Institute, "Evo 2," February 2025. Project announcement, collaborators, model release, and interpretation resources. [Read the release](https://arcinstitute.org/news/evo2).
+
+[^systems]: Jerome Ku et al., "Systems and Algorithms for Convolutional Multi-Hybrid Language Models at Scale," 2025. [Find the paper and resources](https://arxiv.org/abs/2503.01868).
+
+[^paper]: Brixi et al., "Genome modelling and design across all domains of life with Evo 2," Nature, 2026. [Read the study](https://www.nature.com/articles/s41586-026-10176-5).

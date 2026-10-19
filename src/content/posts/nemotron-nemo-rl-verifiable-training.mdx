@@ -1,0 +1,79 @@
+---
+title: 'Nemotron and NeMo RL: The Verifier Is Part of the Training System'
+pubDate: 2026-09-18
+author: 'Aadit Agrawal'
+category: 'Models & Training'
+description: "Connect NVIDIA's Nemotron reasoning research with NeMo RL, reward validity, multi-domain training, and the resource allocation behind verifiable post-training."
+topics: ['Reinforcement Learning', 'Reasoning', 'NVIDIA']
+---
+
+import InteractiveLab from '../../components/viz/InteractiveLab.astro'
+
+A model writes a solution. A verifier assigns a reward. Training increases the probability of outputs that receive that reward. The loop looks simple until the verifier accepts a wrong solution or rejects a correct one.
+
+NVIDIA's Nemotron research and NeMo RL infrastructure make this loop concrete. The contribution includes model checkpoints, training recipes, data, and execution tools. To understand what those releases establish, we need to inspect both the reward and the system that optimizes it.
+
+## Open recipes expose more than a final checkpoint
+
+Nemotron-Cascade 2 describes supervised training followed by a sequence of reinforcement-learning stages across domains, with multi-domain on-policy distillation using strong intermediate teachers to recover regressions.[^cascade] The intermediate stages matter because improving one capability can change another.
+
+The September 2026 Nemotron mathematics report provides a separate open recipe for olympiad problem solving, including released models, data, code, and an evaluation set of newly constructed problems.[^math] Such releases give researchers more of the process to inspect than a final leaderboard score.
+
+They still require careful reproduction. Training data composition, reward definitions, inference budgets, and selection rules can each change the result. A recipe is useful because those decisions become objects of study.
+
+## A reward is a measurement with errors
+
+Suppose $p$ is the fraction of generated answers that are truly correct. Let $\alpha$ be the verifier's false-positive rate on wrong answers and $\beta$ its false-negative rate on correct answers. Then:
+
+$$
+P(\text{correct}\mid\text{rewarded})=
+\frac{p(1-\beta)}{p(1-\beta)+(1-p)\alpha}.
+$$
+
+The base correctness rate belongs in the denominator. A verifier with the same error rates can produce very different rewarded populations as the policy changes.
+
+<InteractiveLab kind="verifier-noise" />
+
+The fixture fixes the underlying correct fraction at 70%. Increase false positives and inspect how much of the rewarded data is wrong. Increase false negatives and see how many useful answers lose their training signal.
+
+Real errors are rarely independent of content. A verifier may be excellent on ordinary outputs and weak on a particular formatting trick. Training can concentrate probability on that weakness. Evaluate adversarially selected outputs as well as a random held-out sample.
+
+## Verifiable outcomes leave room for ambiguous processes
+
+An exact final-answer check can be appropriate for a constrained mathematical task. It does not establish that every intermediate step is valid. A program passing a test suite may still fail outside the tested inputs.
+
+Separate outcome verification, proof checking, and process evaluation in the report. If several candidates are generated and one is selected, include the total generation and verification budget. A result obtained with many attempts answers a different question from a single sampled solution.
+
+Keep the verifier version fixed during a comparison. When the verifier changes, rerun a shared reference set to reveal which judgments changed. Preserve rejected examples too; they can expose systematic false negatives that a success-only collection would hide.
+
+## Reinforcement learning also has a scheduling problem
+
+Generating responses and learning from them consume different resources. Long reasoning traces can make generation expensive even when the optimizer step is fast.
+
+NeMo RL provides an open framework for distributed post-training.[^nemo] Its role is to coordinate training components; it cannot by itself establish that a reward measures the intended capability.
+
+<InteractiveLab kind="rl-pipeline" />
+
+Allocate more of the eight hypothetical GPUs to generation. Rollouts become faster while learning loses devices. The ideal allocation depends on both rates and the response length.
+
+The overlap estimate assumes that generation and learning can proceed as independent stages. In practice, synchronization, memory pressure, variable-length responses, and policy staleness change the tradeoff. A system processing more tokens per second may train on older policy outputs or on a different mixture of accepted examples.
+
+## Design a replication that can locate a regression
+
+A tractable experiment uses a modest released model, a narrow task distribution, and a fixed compute budget. Begin with a verifier audit before launching policy optimization. Sample accepted and rejected outputs for independent assessment.
+
+Freeze development and test problems. Deduplicate related problem families and keep the final evaluation outside prompt construction, reward tuning, and checkpoint selection. Report per-domain scores throughout training so that gains in one domain do not hide losses in another.
+
+Log generated tokens, accepted tokens, verifier time, optimizer time, weight synchronization, and end-to-end wall time. Pair those system measurements with correctness under an independent check. The joint report explains whether a change improved the policy, the scheduler, or merely the reward's apparent success rate.
+
+For mathematics, preserve submitted solutions and the exact inference configuration. For code, preserve test versions and execution limits. If a claimed replication cannot match the original budget, state the smaller experiment's scope precisely.
+
+The most useful question is whether the released process survives this audit. An open training system makes it possible to find a verifier weakness, measure a cross-domain regression, and test a correction. Those are substantive research contributions even when the final score moves only slightly.
+
+## References
+
+[^cascade]: NVIDIA, "Nemotron-Cascade 2," March 2026. [Read the technical report](https://research.nvidia.com/labs/nemotron/files/Nemotron-Cascade-2.pdf).
+
+[^math]: NVIDIA et al., "An Open Recipe for IMO Gold: Training Nemotron for Olympiad Mathematics," September 2026. [Read the paper](https://arxiv.org/abs/2609.10712).
+
+[^nemo]: NVIDIA NeMo RL, open distributed reinforcement-learning framework. [Read the code and documentation](https://github.com/NVIDIA-NeMo/RL).

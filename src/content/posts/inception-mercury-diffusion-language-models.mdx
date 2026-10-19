@@ -1,0 +1,81 @@
+---
+title: "Inception's Mercury 2: What Diffusion Changes About Language Decoding"
+pubDate: 2026-09-28
+author: 'Aadit Agrawal'
+category: 'Inference & Deployment'
+description: "Explore parallel refinement in diffusion language models, commitment schedules, latency versus work, and a fair evaluation setup for Inception's Mercury 2."
+topics: ['Diffusion', 'Language Models', 'Inception']
+---
+
+import InteractiveLab from '../../components/viz/InteractiveLab.astro'
+
+A language model need not finalize every word from left to right. It can maintain an incomplete sequence, revise multiple positions together, and repeat until the output is ready. That changes the dependency structure of decoding and the hardware workload that follows.
+
+Inception's Mercury 2 applies parallel refinement to a reasoning language model. Its release reports high generation throughput on NVIDIA Blackwell GPUs and describes production-oriented reasoning and tool capabilities.[^mercury] Those are vendor-reported results under a particular serving setup. The architectural idea deserves a closer look without treating one throughput figure as a universal speed guarantee.
+
+## Refinement changes when a position becomes final
+
+An autoregressive decoder conditions the next token on an already chosen prefix. A diffusion-style language decoder instead learns to recover sequence content through successive updates to an incomplete or corrupted representation.
+
+LLaDA gives a research example of masked diffusion language modeling.[^llada] It is useful background for the field, but its specific training and sampling procedure should not be assumed to describe Mercury 2. Different systems can use different schedules, blocks, and commitment rules.
+
+<InteractiveLab kind="denoising-grid" />
+
+Compare the two authored commitment orders. Both eventually fill eight positions. In one, the frontier advances from the left; in the other, positions become committed according to a fixed confidence-like ordering.
+
+The grid does not contain model probabilities. It makes a dependency question visible. If a later decision would change an already committed position, can the decoder revise it? If revisions are allowed, what tells a streaming client that a token is now stable?
+
+These choices affect editing, constrained output, and tool calls. A function argument that may still change should not trigger an external action merely because it appeared in an intermediate draft.
+
+## Fewer sequential steps can mean more total work
+
+A conventional decoder generating $L$ tokens makes roughly $L$ sequential next-token decisions. A refinement decoder performing $K$ rounds can expose more positions to parallel computation within each round.
+
+The time comparison depends on the cost of a round. A useful first approximation is:
+
+$$
+T_{\mathrm{AR}}\approx L\,t_{\mathrm{token}},\qquad
+T_{\mathrm{refine}}\approx K\,t_{\mathrm{round}}(L).
+$$
+
+<InteractiveLab kind="denoising-cost" />
+
+The toy gives each refinement round a fixed overhead plus a length-dependent cost. Increase the number of rounds until the advantage disappears. Then increase output length and inspect both latency and the count of positions processed.
+
+The authored cost curve is intentionally simple. Dense attention, sparse updates, caching, batching, and device utilization can change it. Processing $KL$ positions is only a work proxy, since a cached autoregressive step and a full-sequence refinement do different operations.
+
+The experiment explains why "parallel" is insufficient as a performance argument. Measure the executed system at a stated quality target.
+
+## NVIDIA's role includes competing decoding designs
+
+Blackwell hardware is part of Mercury 2's reported serving setup.[^mercury] NVIDIA Research also studies diffusion language modeling directly. Nemotron Labs Diffusion describes a tri-mode language model connecting autoregressive, diffusion, and self-speculative execution.[^trimode]
+
+That research is a useful reminder that decoding strategies need not be mutually exclusive product categories. Training and execution can support several modes, each with a different balance of sequential dependence and parallel work.
+
+It would be a mistake to transfer results between those systems without matching the model and execution path. A paper demonstrating several modes does not tell us how a commercial API implements its own refinement loop.
+
+## Streaming changes the user-visible metric
+
+Tokens per second usually summarizes output production over an interval. A user also experiences time to the first stable content, pauses between stable chunks, and time to a completed valid answer.
+
+For a schema-constrained task, the first few visible characters may be less useful than the first valid object. For an editor, an early stable replacement can matter more than total output length. Evaluate the application event the user needs.
+
+Reasoning comparisons need a budget too. Record how many internal steps, output tokens, candidates, and retries are allowed. If the API exposes only part of that information, state what was observable and compare under that limitation.
+
+## A fair experiment can be small
+
+Choose fixed sets of extraction, editing, and tool-selection tasks. Preserve prompt text, output requirements, and scoring rules. Run multiple samples when decoding is stochastic, and score correctness independently of latency.
+
+Measure first stable output, completed valid output, total generated length, error rate, and latency percentiles under several concurrency levels. Include short outputs, where setup overhead can dominate, and long outputs, where parallel refinement may have more opportunity.
+
+For a hosted API, record the model identifier and test date. For a local research implementation, pin the checkpoint, sampler, precision, and device. Avoid presenting an API-versus-local difference as an architectural result when network and serving conditions also changed.
+
+Diffusion language modeling creates a serious research question about the shape of inference. The persuasive result is a reproducible quality-latency curve that shows which tasks benefit and what the system spends to obtain that benefit.
+
+## References
+
+[^mercury]: Inception, "Introducing Mercury 2," February 2026. Product release and vendor-reported serving results. [Read the release](https://www.inceptionlabs.ai/blog/introducing-mercury-2).
+
+[^llada]: Nie et al., "Large Language Diffusion Models," 2025. [Read the paper](https://arxiv.org/abs/2502.09992).
+
+[^trimode]: NVIDIA Research, "Nemotron Labs Diffusion: A Tri-Mode Language Model Unifying Autoregressive, Diffusion, and Self-Speculation Decoding," May 2026. [Read the publication](https://research.nvidia.com/publication/2026-05_nemotron-labs-diffusion-tri-mode-language-model-unifying-autoregressive).

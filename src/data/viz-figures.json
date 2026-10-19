@@ -1,6 +1,22 @@
 {
   "figures": [
     {
+      "slug": "activation-patching-causal-experiments",
+      "index": 0,
+      "file": "activation-patching-causal-experiments-0.webp",
+      "textHash": "0f19db2755110775",
+      "width": 513,
+      "height": 331
+    },
+    {
+      "slug": "activation-steering-control-and-limits",
+      "index": 0,
+      "file": "activation-steering-control-and-limits-0.webp",
+      "textHash": "4dcd34dca1a11abc",
+      "width": 513,
+      "height": 612
+    },
+    {
       "slug": "ai-cluster-networking",
       "index": 0,
       "file": "ai-cluster-networking-0.webp",
@@ -81,6 +97,38 @@
       "height": 802
     },
     {
+      "slug": "cosmos-world-models-and-planning",
+      "index": 0,
+      "file": "cosmos-world-models-and-planning-0.webp",
+      "textHash": "aa6ceaadd44dc239",
+      "width": 513,
+      "height": 832
+    },
+    {
+      "slug": "cosmos-world-models-and-planning",
+      "index": 1,
+      "file": "cosmos-world-models-and-planning-1.webp",
+      "textHash": "e376e197f968f976",
+      "width": 513,
+      "height": 794
+    },
+    {
+      "slug": "cute-dsl-cuda-tile-gpu-programming",
+      "index": 0,
+      "file": "cute-dsl-cuda-tile-gpu-programming-0.webp",
+      "textHash": "373a5f7a7edc4776",
+      "width": 513,
+      "height": 742
+    },
+    {
+      "slug": "cute-dsl-cuda-tile-gpu-programming",
+      "index": 1,
+      "file": "cute-dsl-cuda-tile-gpu-programming-1.webp",
+      "textHash": "e747e0ee62e70fe4",
+      "width": 513,
+      "height": 717
+    },
+    {
       "slug": "diffusion-flow-matching",
       "index": 0,
       "file": "diffusion-flow-matching-0.webp",
@@ -137,6 +185,22 @@
       "height": 681
     },
     {
+      "slug": "evo2-genome-models-and-nvidia",
+      "index": 0,
+      "file": "evo2-genome-models-and-nvidia-0.webp",
+      "textHash": "1923e1d39cb607d1",
+      "width": 513,
+      "height": 772
+    },
+    {
+      "slug": "evo2-genome-models-and-nvidia",
+      "index": 1,
+      "file": "evo2-genome-models-and-nvidia-1.webp",
+      "textHash": "c499abd8064eece1",
+      "width": 513,
+      "height": 794
+    },
+    {
       "slug": "frontier-mechanistic-interpretability",
       "index": 0,
       "file": "frontier-mechanistic-interpretability-0.webp",
@@ -159,6 +223,38 @@
       "textHash": "85a11b8de7d6d845",
       "width": 512,
       "height": 712
+    },
+    {
+      "slug": "goodfire-already-clean-hypothesis",
+      "index": 0,
+      "file": "goodfire-already-clean-hypothesis-0.webp",
+      "textHash": "6ed87f4dda430a5d",
+      "width": 513,
+      "height": 704
+    },
+    {
+      "slug": "goodfire-already-clean-hypothesis",
+      "index": 1,
+      "file": "goodfire-already-clean-hypothesis-1.webp",
+      "textHash": "73cdfa250254934c",
+      "width": 513,
+      "height": 713
+    },
+    {
+      "slug": "gr00t-isaac-lab-sim-to-real",
+      "index": 0,
+      "file": "gr00t-isaac-lab-sim-to-real-0.webp",
+      "textHash": "43fdbb060263cfce",
+      "width": 513,
+      "height": 681
+    },
+    {
+      "slug": "gr00t-isaac-lab-sim-to-real",
+      "index": 1,
+      "file": "gr00t-isaac-lab-sim-to-real-1.webp",
+      "textHash": "d5f9949dd248a9a0",
+      "width": 513,
+      "height": 893
     },
     {
       "slug": "groq-cerebras-accelerators",
@@ -185,6 +281,22 @@
       "height": 439
     },
     {
+      "slug": "inception-mercury-diffusion-language-models",
+      "index": 0,
+      "file": "inception-mercury-diffusion-language-models-0.webp",
+      "textHash": "477a004f7ef0adce",
+      "width": 513,
+      "height": 632
+    },
+    {
+      "slug": "inception-mercury-diffusion-language-models",
+      "index": 1,
+      "file": "inception-mercury-diffusion-language-models-1.webp",
+      "textHash": "3aa312da6ccbf6fc",
+      "width": 513,
+      "height": 656
+    },
+    {
       "slug": "j-space-global-workspace",
       "index": 0,
       "file": "j-space-global-workspace-0.webp",
@@ -207,6 +319,22 @@
       "textHash": "6fa93c94e628482d",
       "width": 512,
       "height": 391
+    },
+    {
+      "slug": "kyutai-streaming-speech-and-musical-time",
+      "index": 0,
+      "file": "kyutai-streaming-speech-and-musical-time-0.webp",
+      "textHash": "0bc04bfeadc4b692",
+      "width": 513,
+      "height": 647
+    },
+    {
+      "slug": "kyutai-streaming-speech-and-musical-time",
+      "index": 1,
+      "file": "kyutai-streaming-speech-and-musical-time-1.webp",
+      "textHash": "1916925ea3dc5baa",
+      "width": 513,
+      "height": 728
     },
     {
       "slug": "llm-evaluation",
@@ -329,6 +457,22 @@
       "height": 396
     },
     {
+      "slug": "model-editing-locality-and-ripple-effects",
+      "index": 0,
+      "file": "model-editing-locality-and-ripple-effects-0.webp",
+      "textHash": "284cec045456cc53",
+      "width": 513,
+      "height": 683
+    },
+    {
+      "slug": "model-editing-locality-and-ripple-effects",
+      "index": 1,
+      "file": "model-editing-locality-and-ripple-effects-1.webp",
+      "textHash": "d3f4ac6a53450b44",
+      "width": 513,
+      "height": 684
+    },
+    {
       "slug": "modern-attention-kernels",
       "index": 0,
       "file": "modern-attention-kernels-0.webp",
@@ -345,12 +489,116 @@
       "height": 333
     },
     {
+      "slug": "nemotron-nemo-rl-verifiable-training",
+      "index": 0,
+      "file": "nemotron-nemo-rl-verifiable-training-0.webp",
+      "textHash": "71c27e4737dbb8c6",
+      "width": 513,
+      "height": 681
+    },
+    {
+      "slug": "nemotron-nemo-rl-verifiable-training",
+      "index": 1,
+      "file": "nemotron-nemo-rl-verifiable-training-1.webp",
+      "textHash": "7f3480922e550b72",
+      "width": 513,
+      "height": 842
+    },
+    {
+      "slug": "nvidia-dynamo-nixl-distributed-inference",
+      "index": 0,
+      "file": "nvidia-dynamo-nixl-distributed-inference-0.webp",
+      "textHash": "a5db01c9cb552ee5",
+      "width": 513,
+      "height": 799
+    },
+    {
+      "slug": "nvidia-dynamo-nixl-distributed-inference",
+      "index": 1,
+      "file": "nvidia-dynamo-nixl-distributed-inference-1.webp",
+      "textHash": "d2fea6926cb3b375",
+      "width": 513,
+      "height": 633
+    },
+    {
       "slug": "on-device-multimodal-ai",
       "index": 0,
       "file": "on-device-multimodal-ai-0.webp",
       "textHash": "480439068d57278d",
       "width": 512,
       "height": 394
+    },
+    {
+      "slug": "physical-intelligence-pi07-memory-control",
+      "index": 0,
+      "file": "physical-intelligence-pi07-memory-control-0.webp",
+      "textHash": "e752c1abeeb6f79c",
+      "width": 513,
+      "height": 774
+    },
+    {
+      "slug": "physical-intelligence-pi07-memory-control",
+      "index": 1,
+      "file": "physical-intelligence-pi07-memory-control-1.webp",
+      "textHash": "d2c2044a59bb9aae",
+      "width": 513,
+      "height": 681
+    },
+    {
+      "slug": "quantization-interactive-guide",
+      "index": 0,
+      "file": "quantization-interactive-guide-0.webp",
+      "textHash": "56b4e0b27651b50c",
+      "width": 513,
+      "height": 688
+    },
+    {
+      "slug": "quantization-interactive-guide",
+      "index": 1,
+      "file": "quantization-interactive-guide-1.webp",
+      "textHash": "b8e8ebd65bcfe358",
+      "width": 513,
+      "height": 721
+    },
+    {
+      "slug": "quantization-interactive-guide",
+      "index": 2,
+      "file": "quantization-interactive-guide-2.webp",
+      "textHash": "f3bd5efb2cf8266d",
+      "width": 513,
+      "height": 674
+    },
+    {
+      "slug": "quantization-interactive-guide",
+      "index": 3,
+      "file": "quantization-interactive-guide-3.webp",
+      "textHash": "069ae3ae9123c39a",
+      "width": 513,
+      "height": 891
+    },
+    {
+      "slug": "quantization-interactive-guide",
+      "index": 4,
+      "file": "quantization-interactive-guide-4.webp",
+      "textHash": "c93c2551a0b5dcd3",
+      "width": 513,
+      "height": 984
+    },
+    {
+      "slug": "quantization-interactive-guide",
+      "index": 5,
+      "file": "quantization-interactive-guide-5.webp",
+      "textHash": "480b3d25101683b7",
+      "width": 513,
+      "height": 882
+    },
+    {
+      "slug": "reasoning-traces-faithfulness",
+      "index": 0,
+      "file": "reasoning-traces-faithfulness-0.webp",
+      "textHash": "a8af67ad4af69ac7",
+      "width": 513,
+      "height": 331
     },
     {
       "slug": "retrieval-systems",
@@ -385,6 +633,22 @@
       "height": 792
     },
     {
+      "slug": "sakana-evolving-agents-and-selection",
+      "index": 0,
+      "file": "sakana-evolving-agents-and-selection-0.webp",
+      "textHash": "cf61edb4e3b13594",
+      "width": 513,
+      "height": 794
+    },
+    {
+      "slug": "sakana-evolving-agents-and-selection",
+      "index": 1,
+      "file": "sakana-evolving-agents-and-selection-1.webp",
+      "textHash": "7bd1c8b4d9168d26",
+      "width": 513,
+      "height": 741
+    },
+    {
       "slug": "scaling-laws-regimes",
       "index": 0,
       "file": "scaling-laws-regimes-0.webp",
@@ -415,6 +679,14 @@
       "textHash": "cdb3727960dff972",
       "width": 512,
       "height": 836
+    },
+    {
+      "slug": "sparse-autoencoder-evaluation",
+      "index": 0,
+      "file": "sparse-autoencoder-evaluation-0.webp",
+      "textHash": "b67a5abccf27b81c",
+      "width": 513,
+      "height": 731
     },
     {
       "slug": "speculative-decoding",
@@ -671,6 +943,22 @@
       "textHash": "3f0329929fa8ba08",
       "width": 512,
       "height": 703
+    },
+    {
+      "slug": "world-labs-atlas-spatial-intelligence",
+      "index": 0,
+      "file": "world-labs-atlas-spatial-intelligence-0.webp",
+      "textHash": "623edbbe54180ec5",
+      "width": 513,
+      "height": 778
+    },
+    {
+      "slug": "world-labs-atlas-spatial-intelligence",
+      "index": 1,
+      "file": "world-labs-atlas-spatial-intelligence-1.webp",
+      "textHash": "f8ce0696517690fd",
+      "width": 513,
+      "height": 751
     }
   ]
 }

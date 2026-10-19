@@ -75,6 +75,17 @@ changing a `viz/*` component**. The feed hashes each diagram's text against the 
 back to a captioned link, warning during the build, whenever an image is missing or stale. Data
 tables are kept as inline markup rather than pictures.
 
+To export only changed articles while preserving the other figure images, pass their slugs:
+
+```bash
+bun run viz-figures --slugs=quantization-interactive-guide,goodfire-already-clean-hypothesis
+```
+
+The interactive research figures use deterministic teaching models in `src/utils/article-labs.ts` and
+`src/utils/frontier-labs.ts`, combined by `src/utils/research-lab-registry.ts`.
+Run `bun test src/utils/article-labs.test.ts src/utils/frontier-labs.test.ts` to check their arithmetic
+and edge cases. These fixtures are teaching examples, not measured benchmarks of the named models.
+
 ## Commands
 
 - `pnpm new <title>` - Create a new post (use `_title` for drafts)
