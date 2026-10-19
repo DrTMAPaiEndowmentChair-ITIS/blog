@@ -33,19 +33,9 @@ export default defineConfig({
       config: imageConfig
     }
   },
-  // Visible internal links prefetch as soon as they enter the viewport (not
-  // only on hover), so index→post navigation is usually a cache hit before
-  // the pointer even settles. Touch/hover still re-triggers for offscreen links.
-  prefetch: {
-    prefetchAll: true,
-    defaultStrategy: 'viewport'
-  },
-  experimental: {
-    // Upgrades those prefetches to real speculation-rules prerenders where the
-    // browser supports it: the next page is parsed and painted off-screen, so
-    // the transition starts against a live document instead of a fresh parse.
-    clientPrerender: true
-  },
+  // The client router consumes a bounded tab-local document cache. Native
+  // prerendering cannot be activated by its fetch-and-swap navigation.
+  prefetch: { prefetchAll: false, defaultStrategy: 'tap' },
   // Extensionless conveniences for anyone typing one into a browser. A static
   // build renders these as an HTML meta refresh rather than a 301, so the paths
   // a feed reader actually probes — /feed.xml and /index.xml — are served as

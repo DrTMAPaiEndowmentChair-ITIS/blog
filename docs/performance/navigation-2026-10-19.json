@@ -1,0 +1,187 @@
+{
+  "date": "2026-10-19",
+  "baselineCommit": "85a9e2a7949a719bbc72ecff3570b29a3d4f717c",
+  "method": {
+    "browser": "Chromium 154, T3 shared browser",
+    "viewport": {
+      "width": 360,
+      "height": 900
+    },
+    "builds": "Production Astro builds on localhost, ports 4323 and 4322",
+    "route": "Index to Goodfire article and back",
+    "navigationsPerBuild": 8,
+    "preNavigationWaitMs": 400,
+    "networkAndCpuThrottling": "None",
+    "metric": "click capture to ViewTransition.finished, milliseconds"
+  },
+  "medianMs": {
+    "before": 472.20000000298023,
+    "after": 20.550000000745058
+  },
+  "before": [
+    {
+      "to": "/goodfire-already-clean-hypothesis/",
+      "preparation": 10.900000005960464,
+      "swap": 52.100000001490116,
+      "loaded": 72.40000000596046,
+      "finished": 473.30000000447035
+    },
+    {
+      "to": "/",
+      "preparation": 16,
+      "swap": 45,
+      "loaded": 46.399999998509884,
+      "finished": 443.3999999985099
+    },
+    {
+      "to": "/goodfire-already-clean-hypothesis/",
+      "preparation": 17.69999999552965,
+      "swap": 49.19999999552965,
+      "loaded": 49.600000001490116,
+      "finished": 471.1000000014901
+    },
+    {
+      "to": "/",
+      "preparation": 12,
+      "swap": 55,
+      "loaded": 56.899999998509884,
+      "finished": 447.79999999701977
+    },
+    {
+      "to": "/goodfire-already-clean-hypothesis/",
+      "preparation": 27.799999997019768,
+      "swap": 69.29999999701977,
+      "loaded": 70,
+      "finished": 509.20000000298023
+    },
+    {
+      "to": "/",
+      "preparation": 16.600000001490116,
+      "swap": 123.39999999850988,
+      "loaded": 126.5,
+      "finished": 593
+    },
+    {
+      "to": "/goodfire-already-clean-hypothesis/",
+      "preparation": 19.700000002980232,
+      "swap": 63.600000001490116,
+      "loaded": 64.10000000149012,
+      "finished": 481.30000000447035
+    },
+    {
+      "to": "/",
+      "preparation": 21.399999998509884,
+      "swap": 48.399999998509884,
+      "loaded": 49.70000000298023,
+      "finished": 452.8999999985099
+    }
+  ],
+  "after": [
+    {
+      "to": "/goodfire-already-clean-hypothesis/",
+      "preparation": 1.8999999985098839,
+      "swap": 23.600000001490116,
+      "loaded": 41.30000000447035,
+      "finished": 25
+    },
+    {
+      "to": "/",
+      "preparation": 2,
+      "swap": 15.899999998509884,
+      "loaded": 18,
+      "finished": 16.100000001490116
+    },
+    {
+      "to": "/goodfire-already-clean-hypothesis/",
+      "preparation": 1.7999999970197678,
+      "swap": 30,
+      "loaded": 30.899999998509884,
+      "finished": 30.19999999552965
+    },
+    {
+      "to": "/",
+      "preparation": 1.7999999970197678,
+      "swap": 8.899999998509884,
+      "loaded": 10.899999998509884,
+      "finished": 9
+    },
+    {
+      "to": "/goodfire-already-clean-hypothesis/",
+      "preparation": 1.6000000014901161,
+      "swap": 31.299999997019768,
+      "loaded": 32,
+      "finished": 31.399999998509884
+    },
+    {
+      "to": "/",
+      "preparation": 2.2999999970197678,
+      "swap": 14.299999997019768,
+      "loaded": 16.399999998509884,
+      "finished": 14.399999998509884
+    },
+    {
+      "to": "/goodfire-already-clean-hypothesis/",
+      "preparation": 1.5,
+      "swap": 31.80000000447035,
+      "loaded": 32.70000000298023,
+      "finished": 32
+    },
+    {
+      "to": "/",
+      "preparation": 2,
+      "swap": 13,
+      "loaded": 15,
+      "finished": 13.099999994039536
+    }
+  ],
+  "functional": {
+    "filter": {
+      "query": "?q=quantization",
+      "state": {
+        "index": 0,
+        "scrollX": 0,
+        "scrollY": 0
+      },
+      "visible": 8
+    },
+    "backFilter": {
+      "value": "quantization",
+      "url": "http://localhost:4322/?q=quantization"
+    },
+    "forward": {
+      "url": "/quantization-interactive-guide/",
+      "labs": 6
+    },
+    "scrollRestore": 400,
+    "theme": {
+      "changed": true,
+      "animations": [
+        {
+          "duration": 440,
+          "name": "theme-wipe-reveal"
+        }
+      ],
+      "settled": true
+    },
+    "failedPrefetchRetry": {
+      "attempts": 2,
+      "url": "/kyutai-streaming-speech-and-musical-time"
+    },
+    "dataSaver": {
+      "backgroundFetches": 0,
+      "navigation": "/model-cold-starts"
+    },
+    "cancellation": {
+      "url": "/nvidia-dynamo-nixl-distributed-inference",
+      "loading": false
+    },
+    "errors": []
+  },
+  "widgets": {
+    "articles": 18,
+    "labs": 36,
+    "controls": 82,
+    "failures": [],
+    "errors": []
+  }
+}

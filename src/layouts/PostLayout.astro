@@ -121,15 +121,4 @@ const ogImage = `/open-graph/${postSlug}.png`
     background-color: var(--surface-strong);
     color: var(--text-secondary);
   }
-
-  /*
-    The other half of the shared-element morph: the card art the reader clicked
-    on the index grows into this banner. Only one banner exists per post, so
-    unlike the index side the name can be declared statically.
-  */
-  @media not (prefers-reduced-motion: reduce) {
-    .post-banner {
-      view-transition-name: post-art;
-    }
-  }
 </style>

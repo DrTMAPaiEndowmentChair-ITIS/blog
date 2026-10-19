@@ -86,6 +86,18 @@ The interactive research figures use deterministic teaching models in `src/utils
 Run `bun test src/utils/article-labs.test.ts src/utils/frontier-labs.test.ts` to check their arithmetic
 and edge cases. These fixtures are teaching examples, not measured benchmarks of the named models.
 
+### Navigation
+
+The client router preloads HTML into a tab-local cache through its documented loader hook.
+It keeps at most eight documents and 3 MiB of estimated HTML text, with a 60-second lifetime.
+Up to four visible destinations are warmed per page, two at a time; pointer, touch, and keyboard
+intent can warm other links. Data saver and slow connections disable this background work.
+Styles and modules are preloaded without executing a hidden page. Cache misses, forms, redirects,
+and failed speculative requests use Astro's normal loader. Navigation swaps immediately; the
+independent theme-switch effect remains available.
+
+Run `bun test src/utils/navigation-cache.test.ts` for route-key, expiry, and eviction checks.
+
 ## Commands
 
 - `pnpm new <title>` - Create a new post (use `_title` for drafts)

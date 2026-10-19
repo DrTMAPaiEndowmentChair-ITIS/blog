@@ -20,7 +20,7 @@ const finalWidth = shouldUseCustomWidth ? `${widthValue}rem` : '25rem'
 <html lang={language}>
   <head>
     <ThemeManager />
-    {fadeAnimation && <ClientRouter />}
+    {fadeAnimation && <ClientRouter fallback="swap" />}
     <slot name="head" />
   </head>
   <body

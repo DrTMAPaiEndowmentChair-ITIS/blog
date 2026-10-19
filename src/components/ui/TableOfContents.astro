@@ -175,7 +175,7 @@ const { toc = [] }: TOCProps = Astro.props
 
       if (link.classList.contains('toc-title')) {
         window.scrollTo({ top: 0, behavior: 'smooth' })
-        history.pushState(null, null, '#')
+        history.pushState(history.state, '', '#')
         setActive('')
       } else {
         const href = link.getAttribute('href')
@@ -184,7 +184,7 @@ const { toc = [] }: TOCProps = Astro.props
           if (target) {
             const offset = target.getBoundingClientRect().top + window.scrollY - 96
             window.scrollTo({ top: offset, behavior: 'smooth' })
-            history.pushState(null, null, href)
+            history.pushState(history.state, '', href)
             setActive(href.substring(1))
           }
         }
