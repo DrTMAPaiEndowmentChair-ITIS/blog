@@ -75,7 +75,11 @@ export default defineConfig({
   },
   integrations: [
     playformInline({
-      Exclude: [(file) => file.toLowerCase().includes('katex')],
+      // Hairline's self-contained pages keep their validated kernel and bench verbatim.
+      Exclude: [
+        (file) =>
+          file.toLowerCase().includes('katex') || file.includes(path.sep + 'explainers' + path.sep)
+      ],
       Beasties: {
         /*
           Inlining decides per page which rules are needed above the fold, but

@@ -6,6 +6,8 @@ description: 'Tune MLX-LM by separating prefill from decode, budgeting quantized
 topics: ['Apple Silicon', 'MLX', 'Quantization', 'Benchmarking', 'KV cache']
 ---
 
+import WeightReuseExplainer from '../../components/viz/WeightReuseExplainer.astro'
+
 A Mac Studio can have enough unified memory to load a model and still deliver disappointing token latency. Capacity answers whether the allocations fit. Speed depends on how often kernels read those allocations, how much useful arithmetic each read supports, and how the runtime schedules the work.
 
 Start with a supported model and an explicit workload. The [MLX introduction](/apple-mlx-guide) covers the array framework. Here the target is an existing decoder served through MLX-LM.
@@ -42,6 +44,8 @@ $$
 $P$ is sustainable arithmetic throughput for the selected kernel and dtype; $B$ is sustainable bandwidth for its access pattern. Advertised peaks are weaker inputs than measured values.
 
 For a dense weight matrix with $N$ elements and $m$ token rows, the matrix multiplication performs about $2mN$ operations. If weights dominate traffic and occupy $b_w$ bytes per element, its weight-only arithmetic intensity is roughly $2m/b_w$. Decode at one token has little weight reuse. Prefill has many rows that can reuse each weight tile.
+
+<WeightReuseExplainer />
 
 A toy decoder reading 4 GiB of weights per step at an assumed effective 400 GiB/s has a weight-transfer lower bound of 10 ms, or 100 steps/s. This excludes attention, sampling, launches, and synchronization. Neither number is a Mac benchmark. Batching four sequences could reuse weights across four token rows, but their KV reads and output latency still grow.
 
