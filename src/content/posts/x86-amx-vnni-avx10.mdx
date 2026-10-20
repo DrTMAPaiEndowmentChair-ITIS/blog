@@ -1,0 +1,106 @@
+---
+title: 'VNNI, Intel AMX, and AVX10: dot products, tile state, and usable kernels'
+pubDate: 2026-10-21
+category: 'Hardware & Systems'
+description: 'Understand integer dot products, BF16 accumulation, AMX packing and Linux permissions, and the revised AVX10.2 architecture contract.'
+topics: ['CPU inference', 'Intel AMX', 'VNNI', 'AVX10']
+---
+
+Low-precision inference needs more than narrow weight storage. The kernel must multiply the chosen representations, accumulate without unintended overflow, apply scales, and handle matrix edges. VNNI reduces the instruction work for short dot products. Intel AMX gives matrix kernels tile registers and tile multiplication. AVX10 reorganizes the vector ISA contract. These are related parts of a stack, with different requirements.
+
+[x86 SIMD and AVX-512](/x86-simd-avx512-inference/) covers lanes and bandwidth limits. Start here when a profiler already identifies supported dense arithmetic as expensive.
+
+## A dot product has signedness and grouping
+
+For the non-saturating `VPDPBUSD` operation, each INT32 accumulator receives four products of unsigned bytes from one operand and signed bytes from the other:
+
+$$
+c_j \leftarrow c_j + \sum_{r=0}^{3} \operatorname{u8}(a_{4j+r})\operatorname{s8}(b_{4j+r}).
+$$
+
+A 256-bit operand holds 32 bytes. The operation forms eight groups, updating eight INT32 accumulators. These are 32 byte multiplications and their accumulations, not 32 independent output elements. The saturating `VPDPBUSDS` variant has a different overflow contract.[^vnni]
+
+VNNI does not require a 512-bit kernel. AVX-512_VNNI provides EVEX forms, with shorter forms dependent on VL; AVX-VNNI provides VEX-encoded 128-bit and 256-bit forms. Later signedness extensions are separate capabilities. Match the exact instruction, encoding, operand width, and accumulator semantics to detection.
+
+Asymmetric quantization introduces corrections beyond that dot product. If $a=s_a(q_a-z_a)$ and $b=s_b(q_b-z_b)$, then:
+
+$$
+\sum ab=s_as_b\left[\sum q_aq_b-z_b\sum q_a-z_a\sum q_b+Kz_az_b\right].
+$$
+
+A runtime can precompute weight sums, fuse corrections, or choose a representation with zero weight offset. Those choices affect packing and memory traffic. A stored INT4 model may unpack to INT8 for VNNI or dequantize to floating point. Its file format alone cannot establish the arithmetic path. See [quantization-aware architecture](/quantization-aware-architecture/) for scale and outlier decisions.
+
+BF16 has its own path. `VDPBF16PS` multiplies pairs of BF16 elements and accumulates into FP32. BF16 retains FP32's exponent width with fewer fraction bits; it is neither IEEE FP16 nor an integer format. AVX-512_BF16 conversion and dot-product support does not establish arbitrary BF16 elementwise arithmetic support.[^bf16]
+
+## AMX keeps a matrix block in architectural state
+
+Intel Advanced Matrix Extensions separates tile management, AMX-TILE, from datatype-specific computation such as AMX-INT8 and AMX-BF16. CPUID describes tile palette limits and multiplication capabilities. In palette 1, eight tile registers can each hold up to 16 rows of 64 bytes, giving up to 1 KiB per tile. These are limits for the documented palette, not a universal shape for future facilities.[^tiles]
+
+A configuration describes row counts and bytes per row. The kernel loads this configuration, loads operand tiles using memory strides, initializes accumulators, issues TMUL instructions, stores results, and releases tile state. `TILELOADD` does not magically transpose a conventional matrix into the layout multiplication expects.
+
+Consider an illustrative INT8 microkernel computing a $16\times16$ output tile across $K=64$. The left operand occupies 16 rows of 64 bytes. The packed right operand groups four consecutive reduction elements for each output column. It occupies 16 packed rows of 64 bytes. The INT32 output tile occupies 16 rows of 64 bytes as well. Useful arithmetic is $16\times16\times64=16,384$ integer multiply-accumulates. That arithmetic count says nothing about cycles.
+
+Packing is necessary because the right-hand tile represents groups along the reduction dimension in the instruction's required arrangement. A row-major $K\times N$ tensor is not automatically such a tile. For BF16, the corresponding reduction grouping is pairs instead of four bytes. A runtime should prepack immutable weights once and reuse them, while accounting separately for dynamic activation preparation.
+
+Partial $M$ or $N$ blocks can use smaller legal tile shapes. The reduction grouping still constrains $K$: pad to a supported grouping or use a cleanup kernel. Padding asymmetric integer inputs requires the quantized representation of zero and consistent correction terms. Multiplying arbitrary padding bytes can silently change outputs.
+
+AMX-INT8 accumulates integer products into INT32; AMX-BF16 accumulates into FP32. FP16 and newer datatype facilities require their own hardware and software support. Do not assume all AMX implementations execute every announced extension, or that AMX-INT8 directly consumes packed INT4 weights.
+
+Intel AMX is unrelated to the Apple matrix hardware sometimes called AMX. The instruction encodings, state, and software interfaces do not transfer. Apple's supported backend choices belong in [Apple inference backends](/apple-inference-backends/); standardized Arm SME is covered in [Neon, SVE, and SME](/arm-neon-sve-sme/).
+
+## Linux permission is a separate gate
+
+AMX tile configuration and tile data are XSTATE components 17 and 18. Linux dynamically enables the large tile-data state for applications that request permission. CPUID and XCR0 alone are insufficient. Permission is process-wide, inherited across `fork`, and cleared by `exec`; the kernel allocates the larger save buffer for an individual task at first use.[^linux]
+
+After checking the required AMX feature bits and supported XSTATE components, a Linux x86-64 application can request tile-data permission. This fragment belongs in initialization code with suitable kernel headers:
+
+```c
+#define _GNU_SOURCE
+#include <asm/prctl.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+
+static int request_amx_tile_data(void) {
+    const unsigned long xfeature_tile_data = 18;
+    return syscall(SYS_arch_prctl, ARCH_REQ_XCOMP_PERM,
+                   xfeature_tile_data) == 0;
+}
+```
+
+The request does not prove the required datatype extension exists. A failed request must select a supported fallback, with the error recorded for diagnosis.
+
+Signal handling is part of initialization. Alternate signal stacks need room for the expanded signal frame and the application's handlers. Linux checks existing stacks when granting permission and enforces sufficient size on later installations. Audit every worker's `sigaltstack` setup, use the platform's dynamic sizing information such as `AT_MINSIGSTKSZ`, and allow additional handler space. A legacy hardcoded 2 KiB allocation is unsafe. Permission, stack preparation, and first-use allocation should finish outside the timed steady-state experiment.
+
+## Read the revised AVX10 contract
+
+The official Intel link resolves, at this article's verification date, to AVX10.2 specification 361050-007US, revision 7.0, April 2026. Earlier AVX10/256 descriptions are obsolete. The revised contract includes 128-bit, 256-bit, and 512-bit vector lengths; the former per-width CPUID fields are reserved at one.[^avx10]
+
+Detection uses the AVX10 feature bit at CPUID leaf 7, subleaf 1, EDX bit 19, and the version in leaf `0x24`, subleaf 0, EBX bits 7:0. Check leaf availability first. AVX10.1 establishes the converged existing vector capability set; AVX10.2 adds instructions including expanded BF16 arithmetic and conversions. Version detection still needs enabled OS vector state. The specification also describes separately enumerated auxiliary features, so follow its requirements for the actual instructions used.
+
+GCC 15 changed its AVX10 options to reflect the width revision, including `-mavx10.1` and `-mavx10.2` using a 512-bit maximum. Older options describing a 256-bit-only configuration are deprecated. A compiler accepting a flag proves code-generation support, not that a deployment CPU implements it.[^gcc15]
+
+## Prove which path executes
+
+For an application that uses oneDNN, its verbose mode identifies primitive implementations and reorder operations. Run the actual inference command with logging enabled:[^verbose]
+
+```sh
+ONEDNN_VERBOSE=1 ./your-inference-program
+```
+
+`your-inference-program` is a placeholder for a built application linked to oneDNN. Record the library version and exact implementation string rather than expecting a fixed string across releases. Look for datatype, dimensions, chosen implementation, and reorders. A machine advertising AMX can still select vector kernels because the operator, shape, build, or permissions do not match.
+
+Measure cold initialization, packing, warm primitive execution, and complete request latency separately. Compare tiny decode shapes with larger prefill batches. Reuse the same packed weights across warm iterations, then run an additional experiment including preparation cost. Check outputs against a higher-precision reference, including extreme integer inputs and non-multiple dimensions. A faster multiplication that loses its gain to repeated packing is a runtime integration problem, and the trace should make that cost visible.
+
+[^vnni]: LLVM, [AVX-VNNI intrinsic definitions](https://github.com/llvm/llvm-project/blob/main/clang/lib/Headers/avxvnniintrin.h), for 128/256-bit forms, signedness, grouping, and saturation variants.
+
+[^bf16]: Intel, [Deep Learning Boost BF16 instructions](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-deep-learning-boost-new-instruction-bfloat16.html), for conversions and FP32 dot-product accumulation.
+
+[^tiles]: Intel, [AMX detection source](https://github.com/intel/Intel-AMX-Detection/blob/main/amx_detection.c) and the instruction references linked by the [Intrinsics Guide](https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html), for palette enumeration and tile multiplication contracts.
+
+[^linux]: Linux, [Using XSTATE features in user space](https://docs.kernel.org/arch/x86/xstate.html), for dynamic permission, task allocation, and signal-stack obligations.
+
+[^avx10]: Intel, [AVX10.2 architecture specification](https://cdrdv2.intel.com/v1/dl/getContent/828965), revision 7.0, especially changes, enumeration, state management, and new instructions.
+
+[^gcc15]: Intel, [GCC 15 optimization and ISA support](https://www.intel.com/content/www/us/en/developer/articles/technical/next-gen-performance-gcc-15.html), for revised AVX10 flags and separately enabled AMX facilities.
+
+[^verbose]: Intel oneDNN, [verbose mode](https://uxlfoundation.github.io/oneDNN/dev_guide_verbose.html), for implementation and reorder inspection.

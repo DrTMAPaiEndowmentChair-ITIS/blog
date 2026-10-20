@@ -1,0 +1,125 @@
+---
+title: 'A map of modern CPU and SoC accelerators'
+pubDate: 2026-10-21
+category: 'Hardware & Systems'
+description: 'Separate core instructions, programmable engines, fixed-function blocks, and memory infrastructure, then trace each to the software that can use it.'
+topics: ['Accelerators', 'CPU architecture', 'Inference', 'SoCs']
+---
+
+A processor package can contain several computers and several machines that barely resemble computers. The CPU executes instructions. A GPU runs scheduled kernels. An NPU compiler places a graph onto specialized execution resources. A video decoder consumes a compressed bitstream through a codec interface. All can shorten an inference pipeline, but they accept different kinds of work.
+
+The useful inventory records four things for each block: its operation, its programming interface, its memory access, and the evidence that your application uses it. The broader [AI hardware survey](/ai-hardware-landscape/) compares accelerator architectures. This article maps the less tidy collection inside a CPU core or SoC package.
+
+## Instructions describe work; execution units perform it
+
+A scalar floating-point unit handles individual values. A fused multiply-add computes $ab+c$ with a single final rounding. Vector instructions apply arithmetic to multiple lanes, while shuffle, mask, conversion, and reduction instructions arrange those lanes into a useful algorithm. The ISA defines observable results; it does not promise a particular number of physical arithmetic pipelines.
+
+For an illustrative 512-bit FP32 vector, there are $512/32=16$ lanes. One vector FMA represents 32 floating-point operations under the usual multiply-plus-add counting convention. That says nothing about instructions issued per cycle, frequency, memory stalls, or whether a particular chip implements that instruction. Intel and AMD implement selected x86 extensions; Arm CPUs implement selected Neon, SVE, and related extensions. See [AVX-512 mechanics](/x86-simd-avx512-inference/) and [Arm vector and matrix execution](/arm-neon-sve-sme/) for the actual programming contracts.[^intrinsics]
+
+Dot-product instructions combine several narrow products into wider accumulators. Matrix instructions expose more reuse through tile or matrix state. Intel VNNI, Intel AMX, Arm integer matrix multiplication extensions, and Arm SME occupy different points in that design space. SME adds streaming execution and ZA storage; software must obey its state and calling conventions. Neither the word "Arm" nor an `amx_*` inventory flag establishes a working specialized kernel.[^sme]
+
+Storage precision is another independent property. Four-bit weights might expand into integer lanes, convert into FP16, or feed a fused mixed-precision kernel. "INT4 model" alone does not identify the multiply or accumulator.
+
+## A package inventory by operation
+
+This table lists representative interfaces, not a promise that every member of a processor family includes each block.
+
+| Class                       | What performs the work                                 | Public software route                                                   |
+| --------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------- |
+| Scalar, FMA, vector         | CPU execution pipelines                                | Compiler output, intrinsics, BLAS, oneDNN, XNNPACK                      |
+| Dot product and matrix/tile | Specialized CPU arithmetic resources                   | Runtime-dispatched VNNI/AMX, Arm dot/I8MM/SME kernels                   |
+| Integrated GPU              | Programmable shader/compute cores                      | Metal, Vulkan, Direct3D/DirectML, supported oneAPI or ROCm paths        |
+| GPU matrix engines          | Matrix hardware within selected GPU designs            | Intel XMX through supported SYCL joint-matrix kernels, vendor libraries |
+| Graphics fixed function     | Texture, raster, depth, and ray-intersection resources | Graphics pipelines and supported ray-tracing APIs                       |
+| NPU                         | Graph-oriented tensor execution resources              | Core ML, OpenVINO NPU plugin, Ryzen AI, Qualcomm QNN                    |
+| DSP                         | Programmable signal-processing cores and vector units  | Vendor DSP SDKs; Qualcomm Hexagon interfaces                            |
+| Media codec                 | Dedicated bitstream-processing pipelines               | VideoToolbox, VA-API, oneVPL, platform media APIs                       |
+| Image pipeline              | Camera/ISP and image-processing blocks                 | Camera frameworks, supported image-processing APIs                      |
+| Crypto/hash/CRC             | CPU instruction resources or separate engines          | Crypto-library dispatch, operating-system APIs, QAT integration         |
+| Security and entropy        | Isolated processors, key engines, random generators    | Platform security and random-number services                            |
+| Copy/DMA                    | Device engines moving or transforming buffers          | Drivers, transfer queues, Intel DML/DSA                                 |
+| Compression/analytics       | Dedicated compression and filtering engines            | Intel QAT libraries; QPL/IAA                                            |
+| Network offload             | Integrated or attached NIC packet-processing hardware  | Driver-managed checksum and segmentation offloads                       |
+| Cache, memory, fabric       | Storage and transport infrastructure                   | NUMA policy, allocation, affinity, runtime memory management            |
+
+Integrated GPUs still require driver and runtime support. A shared physical DRAM pool does not make every allocation immediately accessible in every API. Layouts, visibility rules, synchronization, and cache ownership can require work even when no PCIe transfer occurs. XMX is a particular matrix implementation, not a synonym for all Intel graphics. Intel's joint-matrix guide explicitly requires hardware with XMX.[^xmx]
+
+On Apple systems, distinguish GPU compute from the Neural Engine. Core ML permits combinations of compute devices and chooses a compatible execution plan. Ordinary MLX GPU execution does not establish Neural Engine use. [Apple inference backends](/apple-inference-backends/) explains the choices; [Mac Studio tuning](/mac-studio-mlx-optimization/) follows the MLX execution path.[^coreml]
+
+## DSPs, NPUs, and media share a package, not an API
+
+DSPs often combine scalar control with wide vector execution and explicitly managed local memory. Qualcomm describes Hexagon HVX vector resources and HMX matrix resources within its NPU architecture. That makes "DSP versus NPU" an incomplete classification: a marketed NPU can contain programmable vector machinery as well as matrix hardware. The exposed SDK and compiler determine how much of it applications can program.[^hexagon]
+
+An NPU generally accepts a compiled graph or supported subgraph. Operator coverage includes attributes, tensor shapes, layout, and precision. A supported convolution does not imply every convolution variant works. A model with unsupported normalization or dynamic control flow can split across devices, creating intermediate conversions and synchronization. [NPU, DSP, and media deployment](/npu-dsp-media-inference/) examines those boundaries.
+
+A media decoder implements codec-specific parsing, prediction, reconstruction, and related stages. It can save CPU time before a vision encoder sees a frame. It cannot accept an arbitrary transformer GEMM merely because some internal arithmetic resembles matrix operations. Apple's VideoToolbox exposes encode/decode services. Similar distinctions apply to camera ISPs, image scaling hardware, display engines, and audio pipelines.[^video]
+
+The optimization opportunity is often buffer reuse. Decode a supported video format into a buffer that the next stage can consume, then avoid an unnecessary readback and color conversion. Verify the actual pixel format and ownership rules. "Hardware decoded" does not prove the frame stayed in a useful memory representation.
+
+## Graphics, security, and network blocks have narrower contracts
+
+GPU compute cores share a device with resources built for graphics. Texture units sample and filter images; raster and depth hardware determine pixel coverage and visibility. Ray-tracing interfaces organize geometry into acceleration structures and query intersections. Hardware support varies by GPU family, and an API exposing ray queries does not by itself establish a dedicated intersection unit. Apple's Metal capability tables distinguish software-facing features by family.[^graphics] These facilities can help rendering, simulation, or image preprocessing around a model. They do not accept a general matrix multiplication through the ray-tracing API.
+
+Display engines compose and scan out surfaces. Media blocks encode and decode supported formats; image pipelines scale, convert, and process camera data. Audio processing can run on DSP resources with its own real-time firmware and interfaces. Classify the operation and public API rather than counting every marketing name as another programmable neural processor. A device may combine several operations in one engine or distribute them across multiple blocks.
+
+Security processors combine isolation with dedicated cryptographic hardware. Apple's Secure Enclave has its own processor, protected memory machinery, a true random-number generator, AES hardware, and a public-key accelerator for asymmetric operations.[^security] The acceleration stays behind the security interface and key-access rules. A secure key store is not spare tensor memory. Hardware entropy also serves a different purpose from a model's reproducible pseudorandom sampling stream; applications should use the platform's random service for cryptographic randomness.
+
+Network controllers can calculate supported checksums and segment a large transmitted buffer into packets. Linux distinguishes hardware TCP segmentation offload from generic segmentation performed in software, and documents which checksum state the driver must provide.[^network] Such a controller can be integrated into a server SoC or attached as a separate device. It reduces packet-processing work in distributed serving, rather than executing attention. Treat RDMA, protocol offload, encryption offload, and ordinary DMA as separate capabilities; their presence and access depend on the particular controller and driver.
+
+## Crypto, copies, and compressed bytes
+
+AES rounds, carry-less polynomial multiplication, SHA transformations, and CRC instructions operate within the CPU instruction stream. Dedicated QAT, DSA, and IAA devices have a different model. Software submits work through drivers and queues, then observes completion. Intel DML targets DSA data movement; QPL targets IAA compression and analytics. Neither library makes arbitrary tensor multiplication faster.[^data]
+
+These blocks can still matter to inference. TLS transport, checkpoint validation, compressed input, retrieval filters, host copies, and cache migration consume real time. [Crypto, compression, and copy offload](/crypto-compression-copy-engines/) follows descriptors, batching, and the size at which offload overhead becomes worthwhile.
+
+DMA changes who moves bytes. It does not eliminate those bytes or their contention with model reads. Device DMA addresses can also differ from CPU physical and virtual addresses. Drivers use DMA mapping interfaces and, where supported, IOMMU translation rather than assuming a userspace pointer is a universally usable address.[^dma]
+
+## Infrastructure sets the useful ceiling
+
+Caches, prefetchers, memory controllers, DRAM channels, translation caches, and coherent fabrics feed arithmetic. They are not independent tensor accelerators. Their effect can dominate a workload nonetheless.
+
+For a toy decoder that must read 4 GB of uncached weights per step at an assumed effective 100 GB/s, the weight-read floor is 40 ms. Doubling an idle matrix unit's peak rate cannot lower that floor. Increasing reuse, reducing bytes, or improving effective bandwidth can. The [CPU and NUMA guide](/cpu-numa-inference-tuning/) works through the bound and its limits.
+
+Shared infrastructure also explains why engine rates cannot be added. The CPU, GPU, NPU, and decoder can compete for DRAM, power, and thermal headroom. The fastest isolated engine configuration may lose when all stages run together.
+
+## Turn the map into evidence
+
+Start with a read-only Linux inventory:
+
+```bash
+lscpu
+ls /sys/class/drm
+ls /sys/class/accel
+python3 - <<'PY'
+import importlib.metadata
+for name in ('torch', 'onnxruntime', 'openvino', 'mlx'):
+    try:
+        print(name, importlib.metadata.version(name))
+    except importlib.metadata.PackageNotFoundError:
+        pass
+PY
+```
+
+Some directories will not exist. A missing entry is unresolved evidence, particularly inside containers. Next, ask the installed runtime for devices, compile the actual model, inspect placement, and profile a representative request. Keep each result attached to its OS, driver, runtime, model revision, and shape. The downloadable [hardware-aware agent workflow](/hardware-inference-agent-workflow/) provides a concrete record format. An inventory nominates a candidate. A trace and a correctness check establish what it did.
+
+[^intrinsics]: [Intel Intrinsics Guide](https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html), including the distinct FMA, VNNI, and AMX families and their instruction requirements.
+
+[^sme]: Arm, [Scalable Matrix Extension introduction](https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/arm-scalable-matrix-extension-introduction), on streaming mode and ZA storage.
+
+[^xmx]: Intel, [Programming XMX using the SYCL joint-matrix extension](https://www.intel.com/content/www/us/en/docs/oneapi/optimization-guide-gpu/2024-2/programming-intel-xmx-using-sycl-joint-matrix.html).
+
+[^coreml]: Apple, [MLComputeUnits](https://developer.apple.com/documentation/coreml/mlcomputeunits), which defines the compute-device combinations a model configuration permits.
+
+[^hexagon]: Qualcomm, [Hexagon-MLIR FAQ](https://github.com/qualcomm/hexagon-mlir/blob/main/docs/faq.md), describing HVX, HMX, and kernel-library access.
+
+[^video]: Apple, [VideoToolbox](https://developer.apple.com/documentation/videotoolbox), the codec service interface.
+
+[^data]: Intel, [QPL and DML data manipulation interfaces](https://www.intel.com/content/www/us/en/developer/articles/technical/optimize-data-manipulation-with-qpl-and-dml.html).
+
+[^dma]: Linux kernel, [Dynamic DMA mapping guide](https://docs.kernel.org/core-api/dma-api-howto.html), on CPU, physical, and DMA addresses.
+
+[^graphics]: Apple, [Metal feature-set tables](https://developer.apple.com/metal/capabilities/) and [ray tracing with acceleration structures](https://developer.apple.com/documentation/metal/ray-tracing-with-acceleration-structures), for the graphics and intersection interfaces and per-family support.
+
+[^security]: Apple, [The Secure Enclave](https://support.apple.com/en-gb/guide/security/sec59b0b31ff/web), for isolated execution, entropy, AES, and public-key blocks.
+
+[^network]: Linux kernel, [Checksum offloads](https://docs.kernel.org/networking/checksum-offloads.html) and [segmentation offloads](https://docs.kernel.org/networking/segmentation-offloads.html), for the hardware and software processing contracts.

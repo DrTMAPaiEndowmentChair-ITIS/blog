@@ -1,0 +1,120 @@
+---
+title: 'Making NPUs, DSPs, and media engines useful for inference'
+pubDate: 2026-10-21
+category: 'Hardware & Systems'
+description: 'Inspect graph placement, operator coverage, precision, shape limits, and buffer transfers across Apple, Intel, AMD, and Qualcomm inference engines.'
+topics: ['NPUs', 'DSPs', 'Edge & on-device', 'Inference backends']
+---
+
+An NPU can be present, enabled, and visible while most of an application's model runs elsewhere. The compiler might reject a shape, delegate only a subgraph, or introduce conversions that cost more than the accelerated arithmetic saves. A useful deployment report therefore names the graph partitions and their transfers, not merely the selected provider.
+
+The [accelerator taxonomy](/modern-cpu-accelerator-map/) separates these engines from CPU instructions. This guide follows the practical interfaces. The constraints below describe the cited documentation, including OpenVINO 2026 and Ryzen AI 1.8. Pin the installed runtime and driver when reproducing them; an operator table is a versioned contract.
+
+## Four engines with overlapping arithmetic
+
+A GPU runs programmable parallel kernels and may contain specialized matrix units. An NPU emphasizes tensor execution, local storage, and compiler scheduling under its supported graph model. A DSP adds programmable scalar/vector processing suited to signal-processing loops. Those categories overlap physically. Qualcomm Hexagon includes HVX vector execution and HMX matrix execution, so the compiler's target can contain both DSP-like and tensor machinery.[^hexagon]
+
+Media engines accept narrower interfaces. A decoder consumes a supported compressed video stream and produces frames. An ISP applies supported camera processing. Codec motion compensation or a fixed transform cannot be repurposed by passing it transformer weights. These blocks can accelerate the input pipeline for a vision or audio model without executing that model's neural layers.
+
+Track the complete buffer path. A decoder can output a YUV surface while the neural model expects normalized RGB in another layout. Color conversion, scaling, synchronization, and allocation may dominate the handoff. A GPU may perform the preprocessing efficiently, but the subsequent NPU partition may require another representation. The [Apple backend guide](/apple-inference-backends/) covers platform choices, and [on-device multimodal inference](/on-device-multimodal-ai/) covers the surrounding workload.
+
+## Apple Neural Engine through Core ML
+
+For application developers, Core ML is the supported high-level route to Neural Engine execution. Its compute-unit configuration specifies permitted devices. `.all` permits available devices; `.cpuAndNeuralEngine` excludes the GPU while retaining CPU execution. Neither value proves that the whole graph executes on the Neural Engine.
+
+For an already compiled local model, a minimal configuration is:
+
+```swift
+import CoreML
+import Foundation
+
+let url = URL(fileURLWithPath: "/absolute/path/Model.mlmodelc")
+let configuration = MLModelConfiguration()
+configuration.computeUnits = .all
+let model = try MLModel(contentsOf: url, configuration: configuration)
+```
+
+Use the model structure and `MLComputePlan` facilities available in the target SDK to inspect supported and preferred compute devices for operations. A compute plan describes the compiled plan; pair it with Instruments measurements of real predictions. Conversion success, a Neural Engine core count, and a fast CPU/GPU trace each answer different questions.[^apple]
+
+Model representation, supported operators, flexible-shape constraints, and precision affect placement. Restricting allowed devices can change compilation decisions and speed. Test the actual input shapes and quality corpus with each configuration, recording compile/load time separately. MLX's usual CPU/GPU path and Metal GPU kernels do not demonstrate Neural Engine activity. [Porting models and kernels to MLX](/mlx-model-porting-and-kernels/) covers that separate route.
+
+## Intel NPU through OpenVINO
+
+The OpenVINO NPU plugin needs a supported Intel NPU, driver, and matching software stack. Device enumeration is the first check, followed by querying the model and compiling it for the explicitly named device:
+
+```python
+import openvino as ov
+
+core = ov.Core()
+print(core.available_devices)
+model = core.read_model("model.xml")
+supported = core.query_model(model, "NPU")
+print(supported)
+compiled = core.compile_model(model, "NPU")
+print(compiled.inputs, compiled.outputs)
+```
+
+This is an inspection example for an existing OpenVINO IR, not a complete model conversion or generation client. `query_model` reports support; it does not measure achieved performance. An explicit `NPU` compilation is also a different experiment from an automatic or heterogeneous device mode.
+
+OpenVINO 2026 documents F32/F16 and quantized U8 internal primitive data types, with hardware floating-point computation in FP16. Do not equate an accepted F32 model with FP32 arithmetic throughout. The generic dynamic-shape preview starts with NPU40XX and requires Windows driver 32.0.100.4621 or Linux driver 1.30 or newer. It uses Compiler-In-Plugin and accepts bounded dimensions. Its validated coverage is limited to vision workloads such as super-resolution. That is not a promise of arbitrary dynamic LLM graphs.[^intel]
+
+OpenVINO's specialized GenAI paths can make additional model-specific transformations. A supported exported LLM is evidence for that export and configuration. It does not override the generic plugin's constraints for unrelated ONNX models. Record model export arguments, prompt limits, KV representation, and compile-cache state.
+
+## AMD XDNA through Ryzen AI
+
+Ryzen AI 1.8's compatibility table separates generations. It lists CNN INT8 for Phoenix/Hawk Point and Strix/Krackan Point families, while CNN BF16, NLP BF16, and the listed OGA LLM path belong to the latter group. A Ryzen brand name alone cannot select the correct flow.[^amdrelease]
+
+The supported-operator table further separates BF16, A16W8, A8W8, and XINT8 coverage, with restrictions on particular operator configurations. "MatMul supported" is insufficient when its neighboring operators, shapes, or quantization representation differ. Consult the exact row and export recipe rather than treating precision labels as interchangeable.[^amdops]
+
+AMD's deployment interface uses ONNX Runtime with `VitisAIExecutionProvider` and target-specific configuration, compilation caches, and model preparation. Its documentation provides compile-time and inference-time AI Analyzer options. BF16 deployment is restricted to supported newer devices. Capture the analyzer output and distinguish CPU partitions from NPU partitions before comparing elapsed time.[^amddeploy]
+
+Shape support belongs to a flow as well as a chip. A dynamic-resolution diffusion pipeline may compile or select supported resolutions, while another export requires fixed dimensions. Preserve the supported shape set in the deployment artifact. Do not copy a claim about a diffusion demo into a generic dynamic-shape guarantee for a language model.
+
+## Qualcomm Hexagon through QNN
+
+The QNN execution provider translates supported ONNX subgraphs to Qualcomm's runtime backends. The HTP backend targets the NPU; choosing a QNN CPU backend is a different execution path. Operator support and tensor precision depend on the runtime, target, and graph pattern.
+
+The current provider documentation requires fixed shapes and lists a subset of ONNX operators. Its HTP path supports both floating-point and quantized models, with options and target restrictions. Older advice that every HTP graph must be INT8 is too broad. Calibration and supported quantize/dequantize patterns still matter when selecting an integer path.[^qnn]
+
+On a supported Windows deployment with the correct QNN package and dependencies, this example checks an existing prepared model and rejects unsupported CPU partitions:
+
+```python
+import onnxruntime as ort
+
+options = ort.SessionOptions()
+options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+session = ort.InferenceSession(
+    "model.qdq.onnx",
+    sess_options=options,
+    providers=[("QNNExecutionProvider", {"backend_path": "QnnHtp.dll"})],
+)
+print(session.get_inputs())
+```
+
+Android uses the documented shared-library path and platform packaging instead. The no-fallback setting establishes provider coverage, not that every operation maps to HMX or that every tensor avoids conversion. Inspect QNN profiling and the complete request timeline. It is useful for a comparison to fail visibly when coverage changes.
+
+For Android generally, NNAPI was deprecated in Android 15. Google provides a migration guide covering supported alternatives. Choose the maintained runtime and accelerator integration for the actual device; an old tutorial using an NNAPI delegate is not enough to establish a current production path.[^android]
+
+## A partition is useful only after its boundary costs
+
+For a toy serial graph, suppose all-CPU inference takes 10 ms. A delegated subgraph previously consumed 6 ms and now consumes 2 ms. If the two boundaries together add 5 ms of conversions, copies, and synchronization, the result is $4+2+5=11$ ms. The accelerated arithmetic is faster; the request is slower. These are illustrative values.
+
+A reproducible comparison retains the same model semantics, representative shapes, and input corpus. Measure initialization, warm inference, sustained behavior, and quality separately. Save device placement and boundary buffers alongside latency samples. Test an all-CPU baseline, the intended accelerator configuration, and any deliberately allowed mixed path. For streaming models, include prefill and state updates, not only a stateless matrix benchmark.
+
+Shared memory can remove a physical copy while leaving synchronization and layout conversion. Conversely, a single large transfer can be worthwhile when it encloses substantial work. Count boundaries and inspect their sizes. The [hardware-aware experiment workflow](/hardware-inference-agent-workflow/) turns these observations into a candidate, a correctness gate, and a recorded decision. No Mac or NPU execution measurement is claimed here.
+
+[^hexagon]: Qualcomm, [Hexagon-MLIR FAQ](https://github.com/qualcomm/hexagon-mlir/blob/main/docs/faq.md), including HVX and HMX execution resources.
+
+[^apple]: Apple, [MLComputePlan device usage](https://developer.apple.com/documentation/coreml/mlcomputeplandeviceusage), for per-operation supported and preferred devices. Compute-unit configuration permits devices; placement needs a model-specific plan.
+
+[^intel]: Intel, [OpenVINO 2026 NPU device](https://docs.openvino.ai/2026/openvino-workflow/running-inference/inference-devices-and-modes/npu-device.html), including inference data types and the bounded dynamic-shape preview.
+
+[^amdrelease]: AMD, [Ryzen AI 1.8 release notes and compatibility table](https://ryzenai.docs.amd.com/projects/WinML/en/stable/relnotes.html).
+
+[^amdops]: AMD, [Ryzen AI 1.8 supported operators](https://ryzenai.docs.amd.com/projects/WinML/en/stable/ops_support.html), organized by quantization type.
+
+[^amddeploy]: AMD, [Ryzen AI model compilation and deployment](https://ryzenai.docs.amd.com/projects/WinML/en/stable/modelrun.html), including provider options and analyzer settings.
+
+[^qnn]: ONNX Runtime, [QNN execution provider](https://onnxruntime.ai/docs/execution-providers/QNN-ExecutionProvider.html), for backend selection, current model requirements, precision, profiling, and the no-CPU-fallback option.
+
+[^android]: Google, [NNAPI migration guide](https://developer.android.com/ndk/guides/neuralnetworks/migration-guide).

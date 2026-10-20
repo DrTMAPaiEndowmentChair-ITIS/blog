@@ -1,0 +1,84 @@
+/* Orange palette from the companion website's app/globals.css.
+   Keep the blog's neutral surfaces, typography, and layout. Explicit root
+   selectors also cover the theme manager's early light/dark styles. */
+html:root,
+html:root.light,
+html:root.dark {
+  --accent: oklch(0.646 0.222 41.116);
+  /* Reserved for graphic labels that need a darker orange on light paper. */
+  --accent-text: oklch(0.47 0.157 37.304);
+  --accent-hover: oklch(0.408 0.123 38.172);
+  --accent-muted: color-mix(in oklab, var(--accent) 9%, transparent);
+  --highlight: color-mix(in oklab, var(--accent) 65%, transparent);
+  --highlight-muted: color-mix(in oklab, var(--accent) 5%, transparent);
+  --selection: color-mix(in oklab, var(--accent) 18%, transparent);
+  --mark: color-mix(in oklab, var(--accent) 13%, transparent);
+}
+
+html:root.dark {
+  --accent: oklch(0.705 0.213 47.604);
+  --accent-text: var(--accent);
+  --accent-hover: oklch(0.837 0.128 66.29);
+  --accent-muted: color-mix(in oklab, var(--accent) 12%, transparent);
+  --highlight-muted: color-mix(in oklab, var(--accent) 7%, transparent);
+}
+
+html:root .prose a {
+  color: var(--text-primary);
+  text-decoration-color: var(--text-tertiary);
+}
+
+html:root .prose a:hover {
+  color: var(--text-primary);
+  text-decoration-color: var(--accent);
+}
+
+html:root .prose :is(.code-lang, .diagram-block.accent) {
+  color: var(--text-primary);
+}
+
+html:root .post-directory .chip[aria-pressed='true'],
+html:root .post-directory .chip[aria-pressed='true']:hover,
+html:root .post-directory .view-row .segmented button[aria-pressed='true'] {
+  background-color: var(--accent-muted);
+  color: var(--text-primary);
+}
+
+html:root .post-directory .chip[aria-pressed='true'] {
+  border-color: color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+html:root .post-directory .chip[aria-pressed='true'] .chip-count {
+  color: inherit;
+  opacity: 1;
+}
+
+html:root [data-post-art] {
+  background-color: color-mix(in oklab, var(--accent) 8%, var(--surface));
+}
+
+html:root [data-post-art] > .thumb,
+html:root .nav-actions .feed-link {
+  color: var(--accent);
+}
+
+html:root .toc-link.active,
+html:root .prose .taxonomy .category {
+  color: var(--text-primary);
+}
+
+html:root .toc-link.active::before {
+  background-color: var(--accent);
+}
+
+/* Scoped component styles own the focus outline's width and offset.
+   The shared brand theme owns its color across all those components. */
+:focus-visible {
+  outline-color: var(--accent) !important;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  html:root .nav-actions .theme-toggle:hover {
+    color: var(--accent);
+  }
+}

@@ -1,0 +1,144 @@
+---
+title: 'Moving inference across CPU, CUDA, ROCm, Metal, Vulkan, SYCL, and NPUs'
+pubDate: 2026-10-21
+category: 'Ecosystems & Tooling'
+description: 'Separate checkpoint, graph, quantization, kernel, and performance portability, then verify backend coverage and fallback with repeatable inspection commands.'
+topics: ['Inference backends', 'Portability', 'GPU', 'NPU', 'Validation']
+---
+
+A model file loading on two machines proves that two loaders accepted it. It does not prove equal outputs, equivalent device placement, or similar speed. Inference portability crosses several contracts, and each can fail independently.
+
+The best migration artifact is a small verification suite plus a manifest of the model and runtime. [Inference engine architectures](/inference-engine-architectures) explains why engines optimize different layers. Here the problem is preserving model behavior while moving those layers between hardware targets.
+
+## Decide what is supposed to move
+
+Checkpoint portability concerns weights, tensor names, dtypes, and metadata. Graph portability concerns operators, semantics, shapes, and state transitions. Kernel portability concerns compiled device code and the hardware instructions it expects. Performance portability concerns whether the resulting execution keeps the new device busy without excessive traffic or synchronization.
+
+These properties are separable. Safetensors can carry weights without implementing their model. ONNX carries a graph with operator semantics, but an execution provider still needs kernels or a supported compiled subgraph. GGUF can preserve a supported model's quantized representation while different llama.cpp backends choose different kernels.
+
+Keep an original higher-precision checkpoint where possible. Treat converted and packed files as derived artifacts. Record the conversion tool revision, model configuration, quantization recipe, tokenizer, calibration data if used, and output hashes. [The MLX porting guide](/mlx-model-porting-and-kernels) gives a concrete example of the layout checks this requires.
+
+## Map the available execution path
+
+| Target      | Runtime path to inspect                                          | Common migration work                                            |
+| ----------- | ---------------------------------------------------------------- | ---------------------------------------------------------------- |
+| CPU         | Native kernels, SIMD dispatch, BLAS or another numerical library | Threading, instruction coverage, packed weights, NUMA placement  |
+| NVIDIA GPU  | CUDA kernels and libraries                                       | Supported GPU architecture, arithmetic mode, memory placement    |
+| AMD GPU     | ROCm libraries and HIP kernels                                   | Supported device and driver, wave behavior, kernel coverage      |
+| Apple GPU   | Metal kernels, MPS, or MLX                                       | GPU family, graph integration, cache and quantization support    |
+| Vulkan GPU  | Compute pipelines compiled for the driver's capabilities         | Extensions, shader types, subgroup and matrix-operation coverage |
+| SYCL device | A particular SYCL compiler and runtime                           | Target support, device selection, tuned kernel implementation    |
+| NPU         | Vendor compiler/runtime or a corresponding execution provider    | Graph partitioning, supported precision, shapes, state, driver   |
+
+This is a map of paths to verify, not a support guarantee for any device. llama.cpp documents separate CPU, CUDA, HIP, Metal, Vulkan, and SYCL builds.[^build] A single binary only contains the backends and kernels actually built or loaded for it.
+
+For SYCL, separate the language standard from a specific backend. llama.cpp's SYCL documentation primarily targets Intel GPUs and specifies its compiler and runtime requirements.[^sycl] "Uses SYCL" does not establish that a released binary runs on every vendor's accelerator.
+
+For CPU targets, [runtime ISA dispatch](/runtime-isa-dispatch) explains why hardware support, OS state, compilation, and selected kernel are separate checks. A container cannot add AVX-512 to a CPU that lacks it.
+
+## Tensor cores are GPU facilities
+
+NVIDIA Tensor Cores and other vendors' GPU matrix hardware accelerate tile operations under a GPU execution model. They are distinct from CPU vector or matrix instruction extensions. CUDA's programming guide places Tensor Cores inside the GPU's streaming multiprocessor hardware.[^cuda]
+
+Using them requires a suitable kernel, supported operand formats, tile layout, and enough useful work. A matrix unit's peak assumes particular arithmetic. An FP16 peak says little about a four-bit weight path that spends most of its time loading, unpacking, and scaling data.
+
+Also separate weight storage from arithmetic. A quantized file can feed a floating-point matmul after unpacking; another backend may perform integer dot products and apply scales afterward. Equal file sizes do not prove equal compute paths. For a workload dominated by memory traffic, a smaller stored format may help even without native low-bit multiplication.
+
+## Repacking can change the memory budget
+
+Suppose a toy runtime stores 64 four-bit values per group with four bytes of metadata. That is 36 bytes per group. Another kernel expects each group expanded to FP16, which occupies 128 bytes. Holding both representations while repacking needs 164 bytes per group before other allocations.
+
+For $N$ groups, the temporary peak is at least $164N$ bytes under those assumptions, although the final FP16 weights require only $128N$. A model can therefore fit after conversion but fail during conversion. Streaming conversion, freeing source shards, or converting offline can change that peak.
+
+This is illustrative arithmetic, not a claim that every backend expands weights. Read the selected kernel and allocator path. Some kernels consume packed codes directly; others produce transient tiles without creating a full floating-point copy.
+
+ONNX quantization also distinguishes operator-oriented and quantize/dequantize graph representations. Runtime support and fusion determine whether the graph uses an efficient quantized path.[^quantization] A matching bit count is not a sufficient conversion specification.
+
+## Graph fallback can dominate the result
+
+ONNX Runtime asks execution providers which regions they support, partitions the graph, and uses the default provider for remaining operations.[^partition] The resulting cost includes boundary synchronization and data preparation. Counting accelerated nodes is a weak metric: one fallback operation inside a repeated decode loop can matter more than many accelerated setup operations.
+
+For an NPU, require the exact device, firmware or driver, compiler, operator set, input shapes, and precision in the deployment record. A supported matrix multiplication does not establish support for a complete decoder with dynamic cache updates. Test the compiled model's partition and state handling. [NPU and DSP inference](/npu-dsp-media-inference) examines those accelerator-specific constraints.
+
+Use a profile to inspect provider execution. This script accepts a model, an NPZ file containing correctly named model inputs, and an installed provider name:
+
+```python
+import collections
+import json
+import sys
+import numpy as np
+import onnxruntime as ort
+
+model_path, inputs_path, provider = sys.argv[1:4]
+if provider not in ort.get_available_providers():
+    raise RuntimeError(f"Provider is unavailable: {provider}")
+providers = list(dict.fromkeys([provider, "CPUExecutionProvider"]))
+options = ort.SessionOptions()
+options.enable_profiling = True
+session = ort.InferenceSession(
+    model_path, sess_options=options, providers=providers
+)
+with np.load(inputs_path, allow_pickle=False) as archive:
+    inputs = {name: archive[name] for name in archive.files}
+for _ in range(3):
+    outputs = session.run(None, inputs)
+profile_path = session.end_profiling()
+with open(profile_path) as source:
+    events = json.load(source)
+counts = collections.Counter(
+    event["args"]["provider"] for event in events
+    if event.get("cat") == "Node"
+    and "provider" in event.get("args", {})
+)
+print({"registered": session.get_providers(), "node_events": dict(counts)})
+```
+
+These are verified ONNX Runtime session and profiling APIs.[^ort] The inputs must match the graph's names, dtypes, and shapes. Event counts include repeated runs and fused partitions; they are not a percentage of model work. Inspect durations and placement in the emitted trace. Provider registration alone cannot prove full graph coverage.
+
+## Bind memory after establishing correctness
+
+Host-array inputs to a GPU session can introduce copies into its execution time. ONNX Runtime I/O Binding permits inputs and outputs to reside on the intended device and can avoid unnecessary host transfers.[^binding] Correct binding still requires compatible buffers, valid lifetimes, and synchronization with their producer.
+
+The same concern appears on integrated GPUs. Shared physical memory does not guarantee that two frameworks share an allocation or agree on tensor strides. A layout conversion may remain necessary. [Apple backend placement](/apple-inference-backends) follows this case in detail.
+
+## Reproduce one backend change at a time
+
+Inside a pinned llama.cpp checkout with the required SDK installed, use a separate build directory for each configuration. For example:
+
+```bash
+cmake -S . -B build-cuda -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build-cuda --parallel 8
+
+cmake -S . -B build-vulkan -DGGML_VULKAN=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build-vulkan --parallel 8
+```
+
+The corresponding current switches include `GGML_HIP` and `GGML_SYCL`; their toolchain requirements differ. Metal is enabled by default on macOS in the documented build. Explicitly inspect the configuration rather than assuming an old build directory picked up a new option.[^build]
+
+For a compatible local GGUF file, inspect devices and run separate prompt-processing and generation tests:
+
+```bash
+./build-cuda/bin/llama-bench --list-devices
+./build-cuda/bin/llama-bench \
+  -m ./model.gguf -p 512 -n 128 -ngl 99 -r 5 -o json
+```
+
+`llama-bench` documents prompt length, generation length, offloaded-layer count, repetitions, and machine-readable output.[^bench] Confirm actual offload in logs. Change the executable path for the other build and keep model bytes and test sizes fixed. These synthetic tests omit much of a production service.
+
+Before comparing speed, compare fixed-input logits or reference outputs, teacher-forced cached decoding, long-context behavior, and task quality. Then measure cold load, warm prefill, decode latency, concurrency, memory peaks, and host transfers separately. Keep the deployment only when both its behavior and its measured execution path satisfy the workload.
+
+[^build]: [llama.cpp build instructions for CPU and accelerator backends](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md).
+
+[^sycl]: [llama.cpp SYCL backend targets and toolchain requirements](https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/SYCL.md).
+
+[^cuda]: [NVIDIA CUDA guide, GPU hardware and Tensor Cores](https://docs.nvidia.com/cuda/cuda-programming-guide/03-advanced/advanced-kernel-programming.html).
+
+[^quantization]: [ONNX Runtime quantization representations and execution constraints](https://onnxruntime.ai/docs/performance/model-optimizations/quantization.html).
+
+[^partition]: [ONNX Runtime architecture and graph partitioning](https://onnxruntime.ai/docs/reference/high-level-design.html).
+
+[^ort]: [ONNX Runtime Python sessions, providers, and profiling](https://onnxruntime.ai/docs/api/python/api_summary.html).
+
+[^binding]: [ONNX Runtime I/O Binding and device-resident inputs and outputs](https://onnxruntime.ai/docs/performance/tune-performance/iobinding.html).
+
+[^bench]: [llama.cpp benchmark arguments and output formats](https://github.com/ggml-org/llama.cpp/blob/master/tools/llama-bench/README.md).

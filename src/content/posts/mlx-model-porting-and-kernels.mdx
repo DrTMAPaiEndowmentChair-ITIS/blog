@@ -1,0 +1,151 @@
+---
+title: 'Porting a model to MLX without changing its meaning'
+pubDate: 2026-10-21
+category: 'Models & Training'
+description: 'Build a verifiable MLX port by checking tokenizer identity, tensor layouts, group quantization, RoPE, cache semantics, compilation, and custom Metal kernels.'
+topics: ['MLX', 'Model conversion', 'Kernels', 'Quantization', 'Validation']
+---
+
+A checkpoint port succeeds when the destination computes the intended model. Matching tensor names and shapes is necessary, but a wrong head permutation or rotary-position convention can pass both checks.
+
+Keep an executable reference until the port passes numerical comparisons. First establish equivalence without weight quantization or custom kernels. Then change one source of error at a time. [Checkpoint formats](/checkpoint-formats) explains containers; this article follows the meaning assigned to the bytes inside them.
+
+## Freeze the model contract
+
+Record the source revision, tokenizer files, special-token IDs, chat template, model configuration, and reference runtime version. Store a few test prompts as token IDs as well as text. Unicode normalization, beginning-of-sequence insertion, tool templates, and padding can change IDs before a matrix multiplication ever runs.
+
+Inspect how the destination loader selects an implementation. MLX-LM reads the configuration, resolves the model class, applies architecture-specific weight sanitation when present, and loads parameters. Its implementation has model-type remappings; a familiar repository name alone does not establish compatibility.[^loader]
+
+Build a conversion manifest with one record per tensor:
+
+```text
+source: attention.query.weight
+destination: model.layers.0.self_attn.q_proj.weight
+source_shape: [query_heads * head_dim, hidden_size]
+transform: identity
+reason: both operators store output channels in rows
+```
+
+This is an illustrative record, not a universal MLX-LM naming rule. Require an explanation for each transpose, slice, permutation, and discarded tensor. Fail on unexplained missing keys. An absent tied output matrix may be intentional; an absent untied one is a broken model.
+
+## Transpose according to the operator
+
+MLX `nn.Linear` stores weights as `[output_dims, input_dims]` and computes $Y=XW^T+b$.[^linear] A PyTorch linear weight ordinarily has the same orientation. Some other checkpoint conventions store `[input_dims, output_dims]` instead.
+
+A square matrix hides this bug because transposition preserves its dimensions. Use a toy nonsymmetric matrix when testing a conversion rule. For example,
+
+$$
+W=\begin{bmatrix}1&2\\3&4\end{bmatrix},
+\quad x=\begin{bmatrix}1&0\end{bmatrix}
+$$
+
+produces $xW^T=[1,3]$, while $xW=[1,2]$. Real shape validation would accept either square matrix. Numerical validation distinguishes them immediately.
+
+For fused QKV tensors, locate the source's actual order. A contiguous Q-then-K-then-V arrangement differs from an interleave by head or projection group. GQA gives Q and KV different row counts. Also verify convolution channel order, expert axes, normalization epsilon, activation formula, and whether embeddings share storage with the output head.
+
+## Quantization is an additional file contract
+
+Four-bit weights are not interchangeable between runtimes. MLX affine quantization groups adjacent elements along each row, stores packed codes, and retains scale and bias arrays. Its documented four-bit packing puts eight codes in a 32-bit word, starting at the low bits.[^packing]
+
+The reconstruction for a group has the form
+
+$$
+\widetilde{w}_i=s_gq_i+\beta_g.
+$$
+
+Converting a quantized source requires its exact signedness, code ordering, grouping axis, scale dtype, bias convention, and any higher-level scales. Renaming GPTQ, AWQ, or GGUF tensors to MLX names does not implement those transformations. Prefer the original floating-point checkpoint when available. Dequantizing one lossy representation and requantizing another can compound error.
+
+For a new packing implementation, test the destination matmul against a destination floating-point matmul using the reconstructed weights. This isolates code decoding and scale application from quantization approximation. Separately compare reconstructed weights and outputs against the original weights to measure the approximation itself. Keep these as different error reports.
+
+## Position and cache semantics need their own tests
+
+Read the model implementation beside the paper. MLX-LM's Llama-family attention reshapes Q separately from K and V, applies RoPE using the cache offset, updates cache state, and then evaluates attention.[^attention] That order matters. A cache must not repeatedly rotate an already rotated key.
+
+Check the rotary dimension, base frequency, adjacent-pair versus split-half convention, and any position-dependent frequency scaling. Long-context variants require their exact scaling policy. MLX-LM contains multiple RoPE implementations and chooses them from configuration; replacing them with a generic "RoPE enabled" flag loses information.[^rope]
+
+For GQA, queries share KV heads according to the architecture's grouping. Expanding K and V physically can produce correct small outputs while wasting memory; grouping them in the wrong order can produce plausible but wrong outputs. Masking must account for the prefix offset. A chunk of three new tokens over a cached prefix has a different mask from a fresh three-token sequence.
+
+For a supported ordinary causal decoder, this inspection script compares full-sequence inference with chunked cache execution. Point it at an unquantized local conversion first:
+
+```python
+import mlx.core as mx
+from mlx_lm import load
+from mlx_lm.models.cache import make_prompt_cache
+
+model, tokenizer = load("./unquantized-mlx-model")
+model.eval()
+ids = tokenizer.encode("A cache must preserve the next-token distribution.")
+full = model(mx.array([ids]))
+mx.eval(full)
+
+cache = make_prompt_cache(model)
+parts = []
+for start in range(0, len(ids), 3):
+    chunk = mx.array([ids[start:start + 3]])
+    logits = model(chunk, cache=cache)
+    mx.eval(logits, [entry.state for entry in cache])
+    parts.append(logits)
+
+cached = mx.concatenate(parts, axis=1)
+error = mx.max(mx.abs(full.astype(mx.float32) - cached.astype(mx.float32)))
+print({"max_logit_error": error.item()})
+```
+
+`make_prompt_cache` permits model-specific cache construction, so do not replace every architecture's state with a generic pair of tensors.[^cache] Recurrent and hybrid models need tests appropriate to their state transitions. The script checks internal consistency; it cannot prove equivalence to the source model.
+
+For that second comparison, export reference logits for identical IDs and teacher-forced continuations. Compare the first token and later positions, then locate the first divergent layer if error appears. Report maximum absolute error, a stabilized relative error, and distribution divergence. Choose tolerances for the reference dtype and reduction order; do not invent one universal threshold. Sampled text is too unstable to diagnose a port.
+
+Repeat with single-token chunks, uneven chunks, left padding if supported, and positions around sliding-window boundaries. Include an empty cache, resumed cache, and a divergent continuation. These cases catch off-by-one errors that a short prefill-only test misses.
+
+## Compile after equivalence
+
+`mx.compile` can fuse operations and eliminate repeated work. It traces a function, so shape changes, dtype changes, and captured Python state deserve attention. State omitted from explicit inputs may become a constant; Python side effects do not become a dependable per-token update mechanism.[^compile]
+
+Start with a pure, repeatedly used block. Treat cache state as explicit input and output, or use the documented state-capture arguments carefully. Record first-call compilation separately from steady execution. Shape-independent compilation requires that the function itself handle variable shapes correctly. A traced reshape using the first input's dimensions can still be wrong.
+
+Fusion reduces intermediate traffic and launches, but can increase register usage or specialize poorly. Benchmark the actual prefill and decode shapes after rerunning numerical checks.
+
+## Keep a narrow custom-kernel boundary
+
+MLX exposes `mx.fast.metal_kernel` for custom Metal code. The following is a toy pointwise function for a nonempty contiguous one-dimensional FP32 input, not an optimized model operation:
+
+```python
+import mlx.core as mx
+
+polynomial = mx.fast.metal_kernel(
+    name="porting_polynomial",
+    input_names=["x"],
+    output_names=["y"],
+    source="""
+        uint i = thread_position_in_grid.x;
+        y[i] = x[i] * x[i] + 0.25f * x[i];
+    """,
+)
+x = mx.arange(513, dtype=mx.float32) / 513
+y = polynomial(
+    inputs=[x], grid=(x.size, 1, 1), threadgroup=(256, 1, 1),
+    output_shapes=[x.shape], output_dtypes=[x.dtype],
+)[0]
+mx.eval(y)
+print(mx.max(mx.abs(y - (x * x + 0.25 * x))).item())
+```
+
+Create the kernel once and reuse it. The API dispatches the stated grid, and its default contiguous-input handling may copy strided inputs.[^metal] Include that preparation cost in timings. A custom reduction also needs correct synchronization, accumulation precision, masking, and partial-tile handling. A transformer attention kernel is a much larger project than this example.
+
+Test unusual lengths, noncontiguous views, supported dtypes, and special numerical values against a plain reference. Preserve that reference when replacing kernels. Then run the full checkpoint, cache, and task suite again. [Mac optimization](/mac-studio-mlx-optimization) supplies the timing discipline; [portable backends](/portable-inference-backends) explains which parts of this work must repeat on another runtime.
+
+[^loader]: [MLX-LM configuration resolution and weight loading](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/utils.py).
+
+[^linear]: [MLX `nn.Linear` weight orientation](https://ml-explore.github.io/mlx/build/html/python/nn/_autosummary/mlx.nn.Linear.html).
+
+[^packing]: [MLX quantization groups, reconstruction, and packed ordering](https://ml-explore.github.io/mlx/build/html/python/_autosummary/mlx.core.quantize.html).
+
+[^attention]: [MLX-LM Llama-family attention implementation](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/models/llama.py).
+
+[^rope]: [MLX-LM rotary-position implementations and configuration](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/models/rope_utils.py).
+
+[^cache]: [MLX-LM cache construction and state interfaces](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/models/cache.py).
+
+[^compile]: [MLX compilation, state capture, and shape handling](https://ml-explore.github.io/mlx/build/html/usage/compile.html).
+
+[^metal]: [MLX custom Metal kernels, dispatch, and contiguous input behavior](https://ml-explore.github.io/mlx/build/html/dev/custom_metal_kernels.html).

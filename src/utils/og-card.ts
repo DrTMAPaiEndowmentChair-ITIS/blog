@@ -65,9 +65,10 @@ const BLOCK_BOTTOM = FOOTER_RULE_Y - 28
 
 /** `--bg` */
 const PAGE_BG = '#fafaf8'
-/** `--surface`, the well the artwork sits in on the site. */
-const BANNER_BG = '#f1f1ed'
-/** The ink the artwork and dividers are drawn in. */
+/** Warm orange artwork well, matching the companion site's accent. */
+const BANNER_BG = '#f5e6df'
+const ART_INK = '#f54900'
+/** Neutral divider ink. Text has its own neutral palette below. */
 const INK = '#1c1c1c'
 const RULE_OPACITY = 0.1
 
@@ -144,7 +145,7 @@ async function renderBackground(art: OgArt) {
   const rule = (x: number, y: number, width: number) =>
     `<rect x="${x}" y="${y}" width="${width}" height="1" fill="${INK}" fill-opacity="${RULE_OPACITY}"/>`
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${OG_WIDTH}" height="${OG_HEIGHT}" color="${INK}">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${OG_WIDTH}" height="${OG_HEIGHT}" color="${ART_INK}">
     <rect width="${OG_WIDTH}" height="${OG_HEIGHT}" fill="${PAGE_BG}"/>
     <rect width="${OG_WIDTH}" height="${BANNER_H}" fill="${BANNER_BG}"/>
     <svg x="0" y="0" width="${OG_WIDTH}" height="${BANNER_H}" viewBox="${viewBox}">${markup}</svg>

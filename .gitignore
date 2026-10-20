@@ -11,6 +11,10 @@ public/open-graph/
 # Dependencies
 node_modules/
 
+# Python tool and test caches
+__pycache__/
+*.pyc
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

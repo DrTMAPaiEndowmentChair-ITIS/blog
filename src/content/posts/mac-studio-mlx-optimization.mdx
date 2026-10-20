@@ -1,0 +1,149 @@
+---
+title: 'Making Mac Studio inference faster with MLX'
+pubDate: 2026-10-21
+category: 'Inference & Deployment'
+description: 'Tune MLX-LM by separating prefill from decode, budgeting quantized weights and KV state, timing lazy execution correctly, and validating quality.'
+topics: ['Apple Silicon', 'MLX', 'Quantization', 'Benchmarking', 'KV cache']
+---
+
+A Mac Studio can have enough unified memory to load a model and still deliver disappointing token latency. Capacity answers whether the allocations fit. Speed depends on how often kernels read those allocations, how much useful arithmetic each read supports, and how the runtime schedules the work.
+
+Start with a supported model and an explicit workload. The [MLX introduction](/apple-mlx-guide) covers the array framework. Here the target is an existing decoder served through MLX-LM.
+
+## Establish the execution path
+
+MLX-LM accepts a local model directory or a Hugging Face repository. Its documented examples include `mlx-community/Mistral-7B-Instruct-v0.3-4bit`; architecture support comes from the installed MLX-LM implementation, rather than the presence of a Safetensors file alone.[^models]
+
+On an Apple silicon Mac, create an isolated environment and record its packages:
+
+```bash
+uv venv
+uv pip install mlx-lm
+uv pip freeze > versions.txt
+uv run mlx_lm.generate \
+  --model mlx-community/Mistral-7B-Instruct-v0.3-4bit \
+  --prompt 'Explain why decode and prefill stress different hardware.' \
+  --max-tokens 128 --temp 0
+```
+
+Also record the downloaded model revision, macOS version, chip, memory capacity, prompt token IDs, and power conditions. A repository name can point to different files next month. An instruction model needs its intended chat template; comparing different templates measures different inputs.
+
+MLX on this path executes CPU and Metal GPU operations. A large Neural Engine specification does not establish that this program uses it. [Apple inference backends](/apple-inference-backends) explains how to inspect that distinction.
+
+## Compute two rooflines
+
+For a kernel doing $F$ operations and transferring $D$ bytes, an approximate lower bound is
+
+$$
+t \geq \max\left(\frac{F}{P},\frac{D}{B}\right),
+\qquad I=\frac{F}{D}.
+$$
+
+$P$ is sustainable arithmetic throughput for the selected kernel and dtype; $B$ is sustainable bandwidth for its access pattern. Advertised peaks are weaker inputs than measured values.
+
+For a dense weight matrix with $N$ elements and $m$ token rows, the matrix multiplication performs about $2mN$ operations. If weights dominate traffic and occupy $b_w$ bytes per element, its weight-only arithmetic intensity is roughly $2m/b_w$. Decode at one token has little weight reuse. Prefill has many rows that can reuse each weight tile.
+
+A toy decoder reading 4 GiB of weights per step at an assumed effective 400 GiB/s has a weight-transfer lower bound of 10 ms, or 100 steps/s. This excludes attention, sampling, launches, and synchronization. Neither number is a Mac benchmark. Batching four sequences could reuse weights across four token rows, but their KV reads and output latency still grow.
+
+Long contexts can shift decode toward cache traffic. Mixture-of-experts routing changes active weight traffic; small kernels can instead hit dispatch overhead. Use the equation to form an experiment, then inspect the trace.
+
+## Count the bytes behind "4-bit"
+
+In MLX's affine group quantization, values share a scale and bias. Assume 64 weights per group, four bits per weight, and FP16 scale and bias. The group occupies
+
+$$
+64\times\frac{4}{8}+2+2=36\text{ bytes},
+\qquad \frac{36}{64}=0.5625\text{ bytes/weight}.
+$$
+
+That is 4.5 effective bits per weight before padding and unquantized tensors. Smaller groups spend more metadata to fit local ranges more closely. MLX's other quantization modes have different scale formats; this arithmetic describes affine groups only.[^quantize]
+
+To make a controlled variant from an unquantized supported checkpoint:
+
+```bash
+uv run mlx_lm.convert \
+  --hf-path mistralai/Mistral-7B-Instruct-v0.3 \
+  --mlx-path ./mistral-affine-q4-g64 \
+  --quantize --q-mode affine --q-bits 4 --q-group-size 64
+```
+
+The destination must be a new path. Keep the source revision and conversion settings with the artifact.[^convert] Quantized storage saves reads; it does not prove every multiplication uses native four-bit arithmetic. Kernels may unpack and combine values with higher-precision activations or accumulators.
+
+For full-attention layers, an unquantized cache estimate is
+
+$$
+M_{KV}=2LSH_{kv}d_h b_{kv}C.
+$$
+
+With 32 layers, eight KV heads, head width 128, FP16 state, and one sequence, each token costs 128 KiB. An 8,192-token context costs 1 GiB. Four independent contexts cost 4 GiB. This is illustrative, excludes allocator overhead, and does not describe recurrent or mixed-cache architectures. [The cache memory guide](/kv-cache-memory-systems) treats sharing and fragmentation in detail.
+
+MLX-LM exposes `--kv-bits`, `--kv-group-size`, and `--quantized-kv-start`. Quantization applies where the cache supports conversion. `--max-kv-size` can select bounded rotating state on supported paths; it changes retained context and must undergo long-context quality testing. It is not lossless memory compression.[^generation]
+
+## Time completed work
+
+Constructing an MLX expression can merely construct a lazy graph. An unevaluated matrix multiplication is a poor stopwatch target.[^lazy] This isolated example times completed repeated operations with inputs already materialized:
+
+```python
+import time
+import mlx.core as mx
+
+x = mx.random.normal((8, 1024)).astype(mx.float16)
+w = mx.random.normal((1024, 1024)).astype(mx.float16)
+mx.eval(x, w)
+for _ in range(3):
+    mx.eval(x @ w)
+
+mx.synchronize()
+start = time.perf_counter()
+for _ in range(20):
+    y = x @ w
+    mx.eval(y)
+elapsed = time.perf_counter() - start
+print({"milliseconds_per_call": 1000 * elapsed / 20})
+```
+
+This deliberately includes one completion boundary per call. It measures neither model throughput nor the best pipelined schedule. For generation, separate model loading, first-run specialization, prompt processing, and steady decode. Record client TTFT independently of the runtime's prompt throughput.
+
+`mx.async_eval` submits evaluation without blocking the caller and remains an experimental API. It can overlap CPU token handling with device work. Immediately calling `.item()` on every intermediate array can remove that overlap. Enqueuing an unbounded chain creates another problem: growing pending work and delayed cancellation.[^async] Place evaluation boundaries where results or bounded resource lifetimes require them.
+
+## Reuse prefixes and control admission
+
+For a fixed document prefix, MLX-LM provides a persisted prompt-cache path:
+
+```bash
+uv run mlx_lm.cache_prompt \
+  --model mlx-community/Mistral-7B-Instruct-v0.3-4bit \
+  --prompt - --prompt-cache-file document-cache.safetensors < document.txt
+
+uv run mlx_lm.generate \
+  --prompt-cache-file document-cache.safetensors \
+  --prompt 'List the assumptions in that document.' --max-tokens 128
+```
+
+The saved prefix precedes the supplied prompt, and the CLI can recover the model identity from cache metadata.[^models] Verify the resulting token sequence against the uncached request. A document cache does not automatically reproduce the message boundaries of a chat conversation. In a service, cache identity also includes model revision, adapter, positions, and any multimodal inputs.
+
+Use batch generation or the runtime's scheduler for concurrency. Independent Python processes each loading the weights can consume the memory that should have held cache state. Increase concurrency while measuring per-request token gaps, rather than assuming aggregate throughput predicts responsiveness. [The custom Mac stack](/building-mac-inference-stack) explains admission and cancellation.
+
+Reserve space for weights, admitted cache growth, prefill temporaries, and the rest of macOS. Unified CPU/GPU memory access removes some transfers but does not create separate RAM for each processor.[^unified] Observe Activity Monitor memory pressure and swap growth alongside process allocations. Raising allocation limits does not add bandwidth or memory.
+
+## A repeatable optimization run
+
+Keep a fixed set of short, long, and prefix-sharing requests. Measure uncached and reused-prefix TTFT separately. Sweep prompt chunk size and concurrency independently. Smaller `--prefill-step-size` values reduce peak prompt-processing memory but can add execution overhead.[^generation]
+
+For every candidate, report median and tail token latency, total output tokens divided by wall time, peak allocation, swap growth, and quality results. Keep actual output length because early termination changes the denominator. Compare held-out token loss and task checks against the higher-precision model, including structured output, rare tokens, retrieval over long contexts, and stop behavior. A faster wrong answer is a failed configuration.
+
+No Mac measurements accompany this article. The commands define the experiment; the byte calculations explain what to look for when running it on the target machine.
+
+[^models]: [MLX-LM README, supported model paths, batching, and prompt caching](https://github.com/ml-explore/mlx-lm).
+
+[^quantize]: [MLX `quantize`, affine packing and scale formats](https://ml-explore.github.io/mlx/build/html/python/_autosummary/mlx.core.quantize.html).
+
+[^convert]: [MLX-LM conversion implementation and command arguments](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/convert.py).
+
+[^generation]: [MLX-LM generation arguments and cache quantization checks](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/generate.py).
+
+[^lazy]: [MLX lazy evaluation and explicit evaluation](https://ml-explore.github.io/mlx/build/html/usage/lazy_evaluation.html).
+
+[^async]: [MLX `async_eval` API and experimental status](https://ml-explore.github.io/mlx/build/html/python/_autosummary/mlx.core.async_eval.html).
+
+[^unified]: [MLX unified memory and CPU/GPU execution](https://ml-explore.github.io/mlx/build/html/usage/unified_memory.html).

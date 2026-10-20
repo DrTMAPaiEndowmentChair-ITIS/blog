@@ -1,0 +1,137 @@
+---
+title: 'Where Apple inference actually runs: MLX, MPS, BNNS, and Core ML'
+pubDate: 2026-10-21
+category: 'Hardware & Systems'
+description: 'Trace Apple inference through CPU, GPU, Neural Engine, and GPU Neural Accelerators, with concrete ways to inspect placement, synchronization, and graph boundaries.'
+topics: ['Apple Silicon', 'MLX', 'Metal', 'Core ML', 'Inference backends']
+---
+
+An Apple silicon chip contains several processors that can participate in inference. A framework decides which operations reach them. Unified memory changes data access, but it does not turn the CPU, GPU, and Neural Engine into one interchangeable execution device.
+
+Choose a backend by the model operations and service behavior it supports. Then verify placement on the deployment machine. The [Metal ecosystem overview](/apple-metal-ml-ecosystem) introduces the libraries; this article focuses on boundaries that affect a real execution trace.
+
+## Four different hardware claims
+
+The CPU executes host code, tokenizer work, numerical libraries, and CPU model kernels. SIMD and matrix facilities depend on the particular chip and runtime implementation. Calling Accelerate does not give application code a universal contract for an instruction informally called Apple AMX. Intel AMX is a separate architecture. See [the CPU accelerator map](/modern-cpu-accelerator-map) for that distinction.
+
+The GPU executes Metal work. GPU matrix instructions and specialized matrix hardware remain part of the GPU execution path. They do not become CPU opcodes when a CPU thread submits a command buffer.
+
+The Neural Engine is a separate accelerator. A framework must have a supported route to it and must accept the model's operations, precision, shapes, and state representation. Its presence on a chip does not establish that an arbitrary Python tensor operation can use it.
+
+Newer GPU Neural Accelerators are another category. Apple's M5 and A19 technical presentation describes Neural Accelerators inside GPU cores and access through Metal's tensor facilities.[^neural] They are distinct from the Neural Engine. Neither an M4 GPU nor an older Mac acquires that hardware by installing an SDK.
+
+## MLX and PyTorch expose different array contracts
+
+On a Mac, MLX operations can execute on CPU or Metal GPU, while its arrays use a unified memory model. Choosing the stream or device for an operation determines where that operation executes. This is useful when CPU control work and GPU computation need the same arrays. It does not provide a general Neural Engine dispatch route.
+
+MLX-LM supplies model implementations, quantized layers, caches, and generation on top of those arrays. If the desired architecture exists there, that can remove substantial conversion work. [MLX optimization](/mac-studio-mlx-optimization) covers that execution path, while [model porting](/mlx-model-porting-and-kernels) covers unsupported layouts and operators.
+
+PyTorch's `mps` device targets Apple's GPU backend. PyTorch documents it as a mapping through MPSGraph and tuned Metal kernels.[^pytorch] Moving a model to `mps` does not request Neural Engine execution. It also does not make CUDA-specific extensions available.
+
+Probe an installed environment before choosing it for a model:
+
+```python
+import time
+import torch
+
+print({"torch": torch.__version__,
+       "mps_built": torch.backends.mps.is_built(),
+       "mps_available": torch.backends.mps.is_available()})
+if not torch.backends.mps.is_available():
+    raise RuntimeError("This environment cannot execute the MPS probe")
+
+with torch.inference_mode():
+    x = torch.randn((8, 1024), device="mps", dtype=torch.float32)
+    w = torch.randn((1024, 1024), device="mps", dtype=torch.float32)
+    for _ in range(3):
+        y = x @ w
+    torch.mps.synchronize()
+    start = time.perf_counter()
+    for _ in range(20):
+        y = x @ w
+    torch.mps.synchronize()
+    print({"mean_ms": 1000 * (time.perf_counter() - start) / 20})
+```
+
+This measures repeated matmul submission through completion, with allocations and warmup excluded. It is an inspection example, not a model benchmark or a reported measurement. Small inference graphs may spend more time submitting work than computing.
+
+PyTorch documents `PYTORCH_ENABLE_MPS_FALLBACK=1` for unsupported MPS operations.[^fallback] Test once without it to expose missing coverage. If fallback is required, inspect its frequency. CPU work between GPU operations can introduce synchronization, temporary allocations, and materialization even when physical RAM is shared.
+
+## Metal, MPS, and MPSGraph sit at different levels
+
+Metal is the GPU programming API. MPS supplies optimized operations. MPSGraph represents computations as a graph that can be compiled, optimized, and executed. A graph compiler can fuse adjacent operations or choose a better layout; it does not eliminate dependencies between operations.
+
+Apple's current MPSGraph framework overview describes use of multiple compute blocks, including CPU, GPU, and Neural Engine.[^graph] That broad framework description does not establish that a specific PyTorch invocation or a graph bound to a Metal device routes onto all of them. Inspect the actual framework integration and execution configuration. "Uses MPSGraph" is insufficient evidence for a Neural Engine claim.
+
+At this layer, a custom operation can also become an optimization boundary. A framework may need to write an intermediate, invoke the custom kernel, and read the result into its next scheduled stage. A fused kernel can save those writes, but requires the layouts, dtypes, and synchronization expected by both sides.
+
+## Accelerate and BNNS are CPU choices
+
+Accelerate includes CPU numerical libraries such as BLAS and vDSP. BNNS supplies neural-network operations, and BNNSGraph can optimize a supported whole network. Apple's BNNSGraph presentation specifically targets CPU inference, including real-time workloads with controlled allocation and threading.[^bnns]
+
+A CPU path is useful for a small model with a tight response deadline or an audio callback where GPU queueing is undesirable. It can also handle preprocessing without a GPU round trip. That does not make BNNS a generic replacement for an MLX-LM decoder with a growing cache. Check graph coverage, state handling, supported compilation, and deployment availability first.
+
+Keep the public library call separate from its internal implementation. The hardware that a numerical library chooses may change across chip generations or OS releases. Inferring blanket SME support from an Accelerate speedup, or assuming every Apple CPU exposes the same matrix facility, skips the capability check that the application actually needs.
+
+## Core ML permits compute units; it does not promise placement
+
+Core ML loads a compiled model representation and manages execution. Its compute-unit configuration selects an allowed set. For an already compiled model URL:
+
+```swift
+import CoreML
+
+let configuration = MLModelConfiguration()
+configuration.computeUnits = .cpuAndNeuralEngine
+let model = try MLModel(
+    contentsOf: compiledModelURL,
+    configuration: configuration
+)
+```
+
+`compiledModelURL` is supplied by the application. `.cpuAndNeuralEngine` allows CPU and Neural Engine, and excludes GPU. `.all` permits all available compute units; `.cpuAndGPU` excludes the Neural Engine. These are permissions, not an instruction to place every operation on one processor.[^units]
+
+Conversion success and acceleration success are different tests. A model may compile while unsupported or unsuitable regions execute on CPU. Shape specialization, quantization representation, and stateful operations can affect the partition. Compare configurations on the same target and inputs. An all-device configuration may win, or boundary costs may erase its advantage.
+
+## Shared memory still has boundaries
+
+Two frameworks can allocate separate buffers in the same physical memory pool. Converting a tensor can materialize a contiguous layout, change dtype, or allocate a destination owned by the other framework. Sharing an address is only safe when both sides agree on layout, lifetime, and when the producer has finished writing.
+
+For a partitioned graph, write the latency budget as
+
+$$
+T=\sum_j T_{\text{compute},j}
+ +\sum_k\left(T_{\text{sync},k}+T_{\text{layout},k}+T_{\text{copy},k}\right).
+$$
+
+Some terms can overlap. A toy trace with two 0.2 ms accelerator regions separated by a 0.6 ms boundary takes 1.0 ms before other work. Optimizing each compute region by half yields 0.8 ms. Removing the boundary would be a larger gain if a supported execution strategy permits it. These values illustrate accounting only.
+
+## Verify the generation and inspect a report
+
+On the target Mac, record the hardware and OS:
+
+```bash
+system_profiler SPHardwareDataType SPDisplaysDataType
+sw_vers
+```
+
+Apple's current capability tables map M1 to Apple7, M2 to Apple8, M3 and M4 to Apple9, and M5 to Apple10.[^capabilities] A GPU-family label is a feature gate, not a throughput rank. Metal 4 availability alone does not imply an Apple10 GPU or M5 Neural Accelerators. Check API availability and runtime device-family support together.
+
+For Core ML, open the model in Xcode, select Performance, and generate reports on the intended device for the candidate compute-unit configurations. Inspect compilation, loading, prediction timing, and the per-operation compute-unit mapping. Apple distinguishes a unit compatible with an operation from the unit selected to execute it.[^profile]
+
+For Metal paths, use a Metal capture or system trace to find command-buffer gaps, repeated layout preparation, and the kernels actually running. Keep client latency beside device timing. Xcode's Core ML report does not measure application tokenization, network delay, memory pressure, or power use. The final backend choice should follow a trace of the deployed model and workload, not the accelerator names printed on the chip specification.
+
+[^neural]: [Apple, accelerating machine learning with M5 and A19 GPU Neural Accelerators](https://developer.apple.com/videos/play/tech-talks/111432/).
+
+[^pytorch]: [PyTorch MPS backend, availability checks, and execution model](https://docs.pytorch.org/docs/2.14/notes/mps.html).
+
+[^fallback]: [PyTorch MPS environment variables and CPU fallback](https://docs.pytorch.org/docs/2.14/mps_environment_variables.html).
+
+[^graph]: [Apple MPSGraph framework overview](https://developer.apple.com/documentation/metalperformanceshadersgraph).
+
+[^bnns]: [Apple, CPU inference with BNNSGraph](https://developer.apple.com/videos/play/wwdc2024/10211/).
+
+[^units]: [Apple `MLComputeUnits` allowed processing configurations](https://developer.apple.com/documentation/coreml/mlcomputeunits).
+
+[^capabilities]: [Apple Metal GPU-family and feature tables](https://developer.apple.com/metal/capabilities/).
+
+[^profile]: [Apple, analyzing Core ML performance and operation placement in Xcode](https://developer.apple.com/documentation/coreml/analyzing-a-core-ml-model-s-performance-in-xcode).

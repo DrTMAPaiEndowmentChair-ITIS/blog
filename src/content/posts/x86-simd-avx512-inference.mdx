@@ -1,0 +1,108 @@
+---
+title: 'x86 inference kernels: lanes, masks, and the limits of AVX-512'
+pubDate: 2026-10-21
+category: 'Hardware & Systems'
+description: 'Read x86 SIMD as an execution contract: lane counts, independent feature subsets, masked tails, physical datapaths, and a measurable inference bottleneck.'
+topics: ['CPU inference', 'AVX-512', 'SIMD', 'Kernel engineering']
+---
+
+A CPU kernel spends time moving operands, rearranging them, doing arithmetic, and waiting on dependencies. Wider instructions directly address only some of that work. Before rebuilding an inference engine with AVX-512, identify the operation that dominates its current execution path. A packed weight decoder, a matrix-vector multiply, and a large prompt-processing GEMM need different improvements.
+
+[Inference engine architectures](/inference-engine-architectures/) explains the surrounding runtime. Here the unit of analysis is one inner loop, including the instructions that feed it.
+
+## Count elements before counting operations
+
+For a register width $W$ bits and an element width $b$ bits, the storage capacity is $W/b$ elements. That gives this arithmetic, independent of a processor's clock rate:
+
+| Register width | FP32 or INT32 | FP64 or INT64 | 16-bit values | 8-bit values |
+| -------------- | ------------- | ------------- | ------------- | ------------ |
+| 128 bits       | 4             | 2             | 8             | 16           |
+| 256 bits       | 8             | 4             | 16            | 32           |
+| 512 bits       | 16            | 8             | 32            | 64           |
+
+Those are element counts, not promises that every listed arithmetic operation exists. SSE supplies 128-bit packed FP32 operations; SSE2 extends the family with packed FP64 and integer operations. AVX introduces 256-bit floating-point vectors and VEX encodings. AVX2 extends most integer work to 256 bits. FMA is a separate capability: a floating-point fused multiply-add computes $ab+c$ with one final rounding. A 256-bit FP32 FMA computes eight multiply-adds, conventionally counted as 16 floating-point operations.[^isa]
+
+A scalar instruction can also use an XMM register while operating on one element. Register names alone therefore do not establish vectorization. Inspect instruction mnemonics, operand widths, and the loop body together.
+
+Half-width storage creates another trap. F16C converts FP16 and FP32; it does not establish native FP16 FMA support. AVX-512_BF16 supplies BF16 conversion and dot-product operations with FP32 accumulation. AVX-512_FP16 supplies a different arithmetic family. A four-bit checkpoint often needs nibble extraction, sign handling, scales, and conversion before any multiply. The [quantization guide](/quantization-interactive-guide/) covers the numerical contract; the kernel must implement that contract with the instructions actually available.
+
+## AVX-512 is a collection of capabilities
+
+An application cannot safely reduce detection to a string containing `avx512`. AVX-512F is the foundation. BW adds byte and word operations; DQ adds specified doubleword and quadword operations; VL provides shorter forms of many operations using XMM and YMM registers. VNNI, BF16, FP16, VBMI, and other extensions have their own feature enumeration. Check the requirements for each instruction used by a kernel.[^intrinsics]
+
+This matters when unpacking quantized weights. A fast permutation may require VBMI while the subsequent integer dot product requires VNNI. Detecting the dot product alone leaves the unpacker unsafe. Conversely, a kernel can benefit from opmasks and additional registers while using 256-bit operands through VL. Its useful improvement need not come from 512-bit arithmetic.
+
+## Masks remove special-case work at the boundary
+
+AVX-512 opmask registers describe which elements participate in supported instructions. A merging operation retains inactive destination elements; a zeroing operation fills them with zero. For supported masked loads and stores, masked-off elements do not access memory. This permits a partial final vector without reading beyond a valid array.[^intrinsics]
+
+The following GCC-compatible C function is a deliberately small example. Save it as `masked-add.c`. It computes an elementwise sum, including lengths below 16, and assumes `out` does not overlap either input. The function has no runtime detection and must only be called after a successful usability check.
+
+```c
+#include <immintrin.h>
+#include <stddef.h>
+
+__attribute__((target("avx512f"), noinline))
+void add512(float *restrict out, const float *restrict a,
+            const float *restrict b, size_t n) {
+    size_t i = 0;
+    while (n - i >= 16) {
+        __m512 x = _mm512_loadu_ps(a + i);
+        __m512 y = _mm512_loadu_ps(b + i);
+        _mm512_storeu_ps(out + i, _mm512_add_ps(x, y));
+        i += 16;
+    }
+    unsigned remaining = (unsigned)(n - i);
+    if (remaining) {
+        __mmask16 active = (__mmask16)((1u << remaining) - 1u);
+        __m512 x = _mm512_maskz_loadu_ps(active, a + i);
+        __m512 y = _mm512_maskz_loadu_ps(active, b + i);
+        _mm512_mask_storeu_ps(out + i, active, _mm512_add_ps(x, y));
+    }
+}
+```
+
+The shift executes only for remainders 1 through 15. Unaligned load intrinsics permit arbitrary float alignment, though cache-line and page boundaries can still affect cost. Predication also has limits: an unmasked load followed by a masked arithmetic instruction still performed the original load. The memory instruction itself must carry the mask.
+
+Gather loads address elements through indices. They can reduce instruction count for irregular access without making that access contiguous. An index pattern touching many cache lines still needs those lines. Shuffles and permutations can transpose small blocks or unpack values, but their throughput and cross-lane behavior vary by instruction. Count these operations when evaluating a quantized kernel, especially when unpacking costs rival the dot products.
+
+## Architectural width is not physical throughput
+
+An ISA defines visible register contents and instruction results. A microarchitecture chooses how to execute them. AMD documents Zen 4 AVX-512 execution using 256-bit internal datapaths. A 512-bit instruction remains architecturally valid even when the processor performs its work in narrower portions.[^zen4]
+
+Peak arithmetic also depends on execution ports, latency, issue rate, and independent accumulators. A reduction with one accumulator creates a dependency chain. Unrolling into several accumulators can expose parallel arithmetic, at the cost of more live registers and a final reduction. Wider vectors do not remove that dependency.
+
+Frequency deserves measurement on the actual implementation. Intel's optimization guidance describes frequency behavior for different vector instruction mixes on particular processor generations. A sustained heavy vector loop can run at a different frequency from scalar request handling. That is not a universal fixed AVX-512 penalty, and it cannot be inferred for a different vendor or generation.[^optimization]
+
+## Use a byte budget to predict the bottleneck
+
+For dense $C=AB$, with dimensions $M\times K$, $K\times N$, and $M\times N$, useful work is approximately $2MKN$ floating-point operations. A single-token matrix-vector product reuses each weight much less than a batched matrix multiply.
+
+Consider an illustrative FP32 matrix-vector multiply. Assume weights dominate traffic and each four-byte weight contributes one multiply and one add. Arithmetic intensity approaches $2/4=0.5$ FLOP per byte. At an assumed sustained memory bandwidth of 100 GB/s, the corresponding bandwidth ceiling is 50 GFLOP/s. These are toy assumptions, not a CPU measurement. Doubling arithmetic capacity cannot lift this ceiling without reducing bytes or increasing reuse.
+
+Batching can amortize weight reads across several vectors. Quantization reduces stored bytes but adds unpacking and scale work. NUMA placement can lower the bandwidth actually available to a thread pool. Use [CPU and NUMA tuning](/cpu-numa-inference-tuning/) for that part of the experiment, and [VNNI and AMX](/x86-amx-vnni-avx10/) when the remaining hot operation is a supported dot product or matrix multiply.
+
+## Inspect without executing unsupported code
+
+Compile the example with a conservative translation-unit baseline. GCC's per-function target attribute permits the specialized body without granting AVX-512 permission to startup code.[^gcc]
+
+```sh
+gcc -O3 -march=x86-64 -mtune=generic -c masked-add.c -o masked-add.o
+objdump -d -M intel --disassemble=add512 masked-add.o
+```
+
+Compilation and disassembly do not execute the function. Inspect the tail for masked memory operations, then integrate through the detector in [runtime ISA dispatch](/runtime-isa-dispatch/). Test zero length, 1 through 33 elements, offset pointers, and buffers ending immediately before an inaccessible guard page. Compare outputs with a scalar reference before timing.
+
+For performance, run separate working sets that fit in L1, fit in the last-level cache, and exceed it. Consume the output so the compiler cannot remove the work. Record CPU model, compiler, affinity, thread count, buffer size, elapsed time, and the selected kernel. On Linux, repeated `perf stat` runs can collect cycles, instructions, and cache events where permissions allow; event availability is processor-specific.
+
+Finally inspect the running application. A binary containing ZMM instructions proves inclusion, not execution. Use a profiler to locate the hot function or the runtime's implementation log. Compare the same shapes and numerical format through the baseline and specialized paths. Report prompt processing and token decoding separately: their reuse patterns can make the same SIMD change useful in one phase and irrelevant in the other.
+
+[^isa]: Intel, [Software Developer's Manuals](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html), volumes 1 and 2, for SIMD, instruction semantics, and feature enumeration.
+
+[^intrinsics]: Intel, [Intrinsics Guide](https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html), including instruction-specific CPUID requirements and masked load/store semantics.
+
+[^zen4]: AMD, [4th Gen EPYC processor architecture](https://docs.amd.com/api/khub/documents/Fk9hEabDNdOiD4PcQu7EYw/content), for the Zen 4 AVX-512 datapath description.
+
+[^optimization]: Intel, [Optimization Reference Manual, volume 1](https://cdrdv2-public.intel.com/821612/248966-Optimization-Reference-Manual-V1-050.pdf), for implementation-specific vector throughput and frequency guidance.
+
+[^gcc]: GCC, [x86 function attributes](https://gcc.gnu.org/onlinedocs/gcc/x86-Attributes.html), for the `target` attribute and its compilation scope.

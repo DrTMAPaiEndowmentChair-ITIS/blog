@@ -1,0 +1,142 @@
+---
+title: 'Building a Mac inference stack around an explicit execution loop'
+pubDate: 2026-10-21
+category: 'Serving & Runtime'
+description: 'Design a Mac inference service by tracing tokenization, memory ownership, model execution, cache scheduling, sampling, streaming, cancellation, and measurement.'
+topics: ['Apple Silicon', 'LLM serving', 'MLX', 'Scheduling', 'Memory']
+---
+
+A useful custom inference server gives each request a clear path through tokenization, model execution, and streaming. It also defines who owns every cache and when that owner may release it. HTTP is the easy part. The difficult failures are a disconnected client retaining device memory or an oversized prefill blocking every active decoder.
+
+Use a tested model runtime for the tensor operations. MLX-LM already provides model loading, cache implementations, generation, and a server implementation worth reading.[^server] The design below explains how to assemble and inspect those responsibilities. Its interfaces are illustrative, not a replacement inference engine.
+
+## Define the request before allocating its cache
+
+Resolve a model to an immutable identity that includes its weight revision, quantization settings, tokenizer, and adapters. Validate maximum input and output lengths before admission. Apply the intended chat template once, then retain the resulting token IDs. Different messages that happen to render similar text need not have identical model inputs.
+
+Tokenization belongs in the latency trace. Large prompts can occupy CPU time before the GPU sees work. A bounded tokenization queue prevents a burst of incoming documents from creating unlimited temporary objects. Schedule CPU preprocessing separately from model execution, but preserve a request ID across both.
+
+Incremental text decoding also has state. MLX-LM implements streaming detokenizers with reset, token addition, and finalization behavior.[^tokenizer] Do not assume `decode([one_token])` always returns the next valid text fragment. Token boundaries can split words or byte sequences. Give each live request its own decoding state.
+
+## One execution owner simplifies the first version
+
+Start with one worker owning a loaded model and its mutable caches. HTTP handlers submit commands to that worker and receive token events through bounded queues. This serializes state changes without serializing every client connection. It also avoids accidentally sharing a tokenizer's mutable streaming state across concurrent generators.
+
+MLX streams specify where work executes and allow asynchronous scheduling.[^streams] They do not automatically make Python model objects or cache containers safe for concurrent mutation. Multiple execution streams may become useful after profiling, but introduce dependencies that must be represented explicitly.
+
+Keep weights live across requests. Separate model-load time, first-run specialization, and warm execution in readiness and metrics. A process that accepts traffic before loading its default model has moved startup work into the first user's latency.
+
+The ownership budget is
+
+$$
+M_{\text{weights}}+M_{\text{live state}}+M_{\text{reserved growth}}
+ +M_{\text{temporary}}+M_{\text{other system use}}
+ \leq M_{\text{operational budget}}.
+$$
+
+The budget must leave the machine usable under measured memory pressure. Count cached prefixes even when no request currently decodes from them. Unified memory permits CPU and GPU operations to access arrays without a mandatory device-to-host copy, but they still share finite capacity and bandwidth.[^unified]
+
+## Make execution boundaries visible
+
+An engine interface should identify what work it submitted and what state it changed. This toy contract deliberately leaves model and scheduler implementations out:
+
+```python
+from dataclasses import dataclass
+from typing import Protocol, Sequence
+
+class Completion(Protocol):
+    def wait(self) -> None: ...
+
+@dataclass(frozen=True)
+class TokenEvent:
+    request_id: str
+    token_id: int
+    finished: bool
+
+@dataclass(frozen=True)
+class SubmittedStep:
+    completion: Completion
+    events: Sequence[TokenEvent]
+
+class ExecutionWorker(Protocol):
+    def prefill(self, request_id: str, token_budget: int) -> SubmittedStep: ...
+    def decode(self, request_ids: Sequence[str]) -> SubmittedStep: ...
+    def stop_admission(self, request_id: str) -> None: ...
+    def retire_after_completion(self, request_id: str) -> None: ...
+```
+
+Here a request has already been registered with its tokens and state. The contract permits host events to be consumed only after `completion.wait()` establishes their readiness. A real adapter might expose callbacks or runtime events instead. `retire_after_completion` must retain references until submitted readers and writers finish; deleting a dictionary entry alone does not establish that condition.
+
+Model operations should remain in the runtime's kernels unless a measured gap justifies a custom implementation. [Porting and custom kernels](/mlx-model-porting-and-kernels) explains the correctness checks needed before replacing an operation.
+
+## Prefill and decode compete for the same GPU
+
+Prefill consumes a sequence of prompt tokens. Decode usually advances each selected request by one token, then samples the next token. Long unbroken prefills can monopolize the next execution interval even when many requests are already streaming.
+
+Allocate a bounded prompt-token budget per scheduler turn. Permit active decoders to progress between chunks, then admit another prompt chunk if memory and latency budgets allow. The optimal chunk size depends on launch overhead, prompt shapes, and current decode load. [Continuous batching](/continuous-batching-schedulers) develops the general scheduling problem.
+
+MLX-LM's generation implementation includes `BatchGenerator` with insertion, generation progress, and removal methods. Its prefill and completion batch limits are separate parameters.[^batch] Reuse that machinery where the model and cache path support it. A loop that calls single-request generation repeatedly does not acquire continuous batching just because several HTTP requests are waiting.
+
+For attention caches, admission must reserve future growth. The runtime may construct model-specific state rather than a plain KV pair.[^cache] A recurrent model has different growth behavior from full attention. A batch capability check must therefore include the selected architecture and state implementation.
+
+## Cache reuse requires identity and ownership
+
+Match prefixes by actual token IDs plus the model and input settings that determine hidden states. Include adapters, positions, and any multimodal data. A matching suffix under a different preceding context is not reusable cache state.
+
+If the runtime mutates cache arrays in place, sharing one cache object between diverging requests is unsafe. Use the runtime's supported copying or prefix-cache mechanism, or implement reference-counted immutable prefixes with private continuation state. Copying all cache tensors at every branch may preserve correctness while eliminating the expected memory benefit. Measure which behavior the chosen implementation provides.
+
+Store cache hits in terms of reused tokens and avoided prefill time. Count bytes retained and eviction cost as well. A cache that saves prompt computation but forces the host into swap has failed its admission policy.
+
+## Sampling and streaming have measurable costs
+
+Sampling consumes the current logits or log probabilities after penalties and constraints. MLX-LM's `make_sampler` provides greedy and configured stochastic paths.[^sampling] Keep random state independent per request if reproducibility across scheduling changes matters. A single global random stream can assign different draws when batch composition changes.
+
+Avoid copying a full vocabulary vector to the CPU just to choose one token when the runtime can sample on the device. Grammar constraints may change the calculation: a CPU grammar implementation can require a host decision each step. Profile that boundary rather than treating sampling as free.
+
+A minimal single-request inspection path uses real MLX-LM APIs:
+
+```python
+from mlx_lm import load, stream_generate
+
+model, tokenizer = load("mlx-community/Mistral-7B-Instruct-v0.3-4bit")
+tokens = tokenizer.apply_chat_template(
+    [{"role": "user", "content": "Explain prefix-cache ownership."}],
+    tokenize=True, add_generation_prompt=True,
+)
+for response in stream_generate(model, tokenizer, tokens, max_tokens=64):
+    print(response.text, end="", flush=True)
+```
+
+This verifies model-to-text integration. It provides no HTTP admission, authentication, queue bounds, or cancellation policy. A generation response can contain an empty text segment; token progress and network chunk count are different quantities.
+
+The transport worker should send completed text fragments without blocking the execution owner. Bound the outgoing queue. For a slow client, either pause admission for that request where the engine supports it or terminate according to a stated policy. Unlimited buffering merely moves the memory leak from the GPU to the CPU.
+
+## Cancellation is a state transition
+
+When a client disconnects, stop scheduling new work for its request. Mark pending results as undeliverable, wait for already submitted work through the runtime's completion mechanism, then release private state and prefix references. Do not attempt to free a buffer still used by an in-flight kernel.
+
+Make cleanup idempotent. A request can encounter a stop token, timeout, and disconnect near the same completion boundary. Only one terminal event should release its reservation. Track cancellation latency from notification to final resource retirement, not merely to an HTTP task returning.
+
+## Inspect failures under load
+
+Record arrival, tokenization completion, admission, prefill completion, first generated token, first transmitted text, and final retirement. Distinguish queue wait from compute time. Report actual client TTFT and inter-token gaps alongside aggregate throughput; [inference SLOs](/inference-slos) explains why they answer different questions.
+
+Use runtime allocation counters with OS memory pressure. `mx.get_peak_memory()` reports the recorded peak since process start or the last reset; it does not describe all memory used by macOS.[^memory] Reset and sample counters consistently when comparing configurations.
+
+Replay a fixed workload with mixed prompt lengths, prefix reuse, slow readers, and clients that cancel during both prefill and decode. Check that live state returns to its expected steady level after each run. Increase concurrency until tail latency or memory pressure violates the service target. That measured boundary is the useful capacity of the custom stack.
+
+[^server]: [MLX-LM server, generation worker, queues, and batching integration](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/server.py).
+
+[^tokenizer]: [MLX-LM streaming detokenizer interfaces](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/tokenizer_utils.py).
+
+[^streams]: [MLX streams and execution dependencies](https://ml-explore.github.io/mlx/build/html/usage/using_streams.html).
+
+[^unified]: [MLX CPU/GPU unified memory model](https://ml-explore.github.io/mlx/build/html/usage/unified_memory.html).
+
+[^batch]: [MLX-LM generation, streaming responses, and `BatchGenerator`](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/generate.py).
+
+[^cache]: [MLX-LM model-specific cache construction](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/models/cache.py).
+
+[^sampling]: [MLX-LM sampler implementation](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/sample_utils.py).
+
+[^memory]: [MLX peak allocation counter semantics](https://ml-explore.github.io/mlx/build/html/python/_autosummary/mlx.core.get_peak_memory.html).

@@ -1,0 +1,19 @@
+---
+import { topicVisuals } from '../../data/topic-visuals'
+import TopicVisual from './TopicVisual.astro'
+interface Props {
+  slug: string
+}
+const { slug } = Astro.props
+const entry = topicVisuals[slug]
+---
+
+{
+  entry && (
+    <section class="topic-visuals" aria-label="Visual explanations">
+      {entry.visuals.map((visual) => (
+        <TopicVisual visual={visual} />
+      ))}
+    </section>
+  )
+}

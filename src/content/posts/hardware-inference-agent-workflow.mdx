@@ -1,0 +1,169 @@
+---
+title: 'A hardware-aware inference tuning workflow for agents'
+pubDate: 2026-10-21
+category: 'Ecosystems & Tooling'
+description: 'Use the downloadable tuning skill to inventory hardware, establish execution evidence, collect request-relative timings, and compare correct, reproducible candidates.'
+topics: ['Agent skills', 'Inference optimization', 'Benchmarking', 'Tooling']
+---
+
+An agent sees `avx512`, a GPU device, and an installed inference package. None proves the model uses the corresponding kernels. A useful tuning workflow turns each inference into a test: identify the device, establish runtime coverage, inspect execution, measure the workload, and verify outputs.
+
+The [performance hill-climbing article](/llm-performance-hill-climbing/) explains why an agent needs a stable objective. This guide supplies the hardware-specific procedure and a downloadable skill. It works with an existing inference application; it does not install drivers or choose a model on the user's behalf.
+
+## Download the skill and inspect its tools
+
+Download [hardware-inference-tuning.zip](/downloads/hardware-inference-tuning.zip). The individual files are also readable:
+
+- [SKILL.md](/downloads/hardware-inference-tuning/SKILL.md)
+- [probe_hardware.py](/downloads/hardware-inference-tuning/scripts/probe_hardware.py)
+- [summarize_benchmarks.py](/downloads/hardware-inference-tuning/scripts/summarize_benchmarks.py)
+
+After extraction, work in the directory containing `SKILL.md` and `scripts`. Both scripts use Python's standard library. Run the inventory without a model allocation:
+
+```bash
+python3 scripts/probe_hardware.py > inventory.json
+```
+
+The probe prints JSON with `schema_version: 1` and the fields `system`, `cpu`, `accelerators`, `installed_packages`, and `notes`. It reports OS, release, architecture, logical CPU count, and memory information where available. Its package checks use distribution metadata for MLX, MLX-LM, PyTorch, ONNX Runtime, OpenVINO, and llama-cpp-python. A recorded package version does not mean its accelerator backend works.
+
+On Linux, it parses exposed per-core flags from `/proc/cpuinfo`. `common_features` is their intersection; `features_on_some_cores` contains flags outside that intersection. It inspects DRM/accelerator sysfs entries with PCI IDs and DSA/IAA engine names under `/sys/bus/dsa/devices`. Work queues and groups are excluded from the engine list. These are directory observations; they do not prove access or working offload. It does not execute CPUID, exercise a specialized kernel, or compile a model.
+
+On macOS, it records selected `sysctl` observations for the CPU, memory, and named Arm features. An unavailable query remains unknown. It does not infer Neural Engine placement or enumerate a working MLX GPU backend. On Windows, inventory is deliberately narrower: it does not establish CPUID/XSTATE, DirectML, or NPU availability. The probe installs nothing and changes no settings.
+
+## Define the objective and correctness gate before tuning
+
+Write down a user-visible objective with workload and quality constraints. "Improve inference" leaves the agent free to reduce context length, output length, or model quality and call it progress. A usable brief might ask for lower warm p95 first-token latency at a fixed model revision, prompt set, generation policy, and concurrency, subject to a named quality test.
+
+Keep a manifest beside the raw data. This is an example artifact shape, separate from the summarizer's required schema:
+
+```json
+{
+  "experiment": "threads-candidate-01",
+  "model_revision": "record-the-exact-local-revision",
+  "runtime_revision": "record-the-installed-version-or-commit",
+  "variable": "intra_op_threads",
+  "baseline": 4,
+  "candidate": 8,
+  "corpus": "prompts.jsonl",
+  "correctness_command": "python3 check_outputs.py",
+  "cache_protocol": "warm-model-no-prefix-reuse"
+}
+```
+
+The command names an application-owned check that you must supply. It is not part of the download. Record weight format and actual arithmetic separately, plus context, batch, concurrency, seed/sampling policy, memory pressure, and power/thermal conditions. For quantized candidates, use a quality threshold rather than assuming identical text is necessary or sufficient.
+
+## Promote hardware observations into execution evidence
+
+Use a short evidence ladder:
+
+| Observation                                   | What it establishes                  | Next check                                    |
+| --------------------------------------------- | ------------------------------------ | --------------------------------------------- |
+| A feature flag or PCI ID                      | An exposed hardware candidate        | OS access and runtime compatibility           |
+| A runtime lists a device                      | A backend is discoverable            | Compile the actual graph                      |
+| Compilation succeeds                          | The selected flow accepts that graph | Inspect partitions and arithmetic             |
+| A trace identifies kernels/devices            | An observed execution path           | Measure end-to-end behavior                   |
+| The candidate passes quality and timing gates | A result for this workload           | Regression coverage and a saved configuration |
+
+For x86 AMX, hardware enumeration and kernel tile-state permission remain separate. Linux documents an explicit permission mechanism for dynamically enabled XSTATE. The probe does not request that permission.[^xstate] For NPUs, verify the operator attributes, shapes, layouts, and quantization representation. [Runtime dispatch](/runtime-isa-dispatch/) and [NPU deployment](/npu-dsp-media-inference/) describe those checks.
+
+ONNX Runtime can emit an execution profile for a real graph. With an existing model and matching input fixture:
+
+```python
+import numpy as np
+import onnxruntime as ort
+
+options = ort.SessionOptions()
+options.enable_profiling = True
+session = ort.InferenceSession(
+    "model.onnx",
+    sess_options=options,
+    providers=["CPUExecutionProvider"],
+)
+with np.load("inputs.npz", allow_pickle=False) as fixture:
+    inputs = {item.name: fixture[item.name] for item in session.get_inputs()}
+session.run(None, inputs)
+print(session.end_profiling())
+```
+
+This example deliberately identifies the CPU provider. Change the provider only after validating its installation and model requirements. The resulting profile helps locate operator time and boundaries; the full request needs a separate timer.[^profiling] QNN additionally documents a setting that rejects CPU fallback, useful when a comparison requires full provider coverage.[^qnn]
+
+## Measure completed work and preserve request clocks
+
+Separate loading, compilation, prefill, first-token latency, decode, and scheduling. A lazy framework can record operations before executing them; an asynchronous device can return before completion. MLX documents explicit evaluation and synchronization behavior. Put the required completion boundary around the measured work, while preserving normal overlap inside the production loop.[^mlx]
+
+The summarizer accepts JSONL request observations with these required fields:
+
+| Field                                    | Meaning                                                                      |
+| ---------------------------------------- | ---------------------------------------------------------------------------- |
+| `backend`, `model`, `precision`, `cache` | Nonempty strings identifying the configuration                               |
+| `prompt_tokens`                          | Nonnegative integer prompt length                                            |
+| `token_times_ms`                         | Nonempty array of observed token timestamps relative to this request's start |
+| `elapsed_ms`                             | Request duration, at least the last token timestamp                          |
+| `concurrency`                            | Optional positive integer load label, default 1                              |
+
+Timestamps must be finite, nonnegative, and nondecreasing. Boolean values do not count as numbers or valid integer settings. Precision and cache names are labels, not validated hardware claims. Record exact semantics in the manifest.
+
+Use a monotonic performance clock. This adapter example assumes `token_source()` starts a real request and yields one observation per generated token. It is application glue, not a bundled transport client:[^clock]
+
+```python
+import time
+
+def observe(token_source, metadata):
+    started = time.perf_counter_ns()
+    timestamps = []
+    for token in token_source():
+        timestamps.append((time.perf_counter_ns() - started) / 1_000_000)
+    elapsed = (time.perf_counter_ns() - started) / 1_000_000
+    return {
+        **metadata,
+        "token_times_ms": timestamps,
+        "elapsed_ms": elapsed,
+    }
+```
+
+A network chunk may contain several tokens. Do not relabel chunks as tokens or invent evenly spaced timestamps. If the protocol coalesces token observations, record that limitation and use a source that exposes the needed events. Request start must precede the operation that starts the request, including queueing if the objective includes queueing.
+
+This format fixture uses invented numbers solely to demonstrate arithmetic:
+
+```json
+{
+  "backend": "toy-cpu",
+  "model": "fixture",
+  "precision": "fp16",
+  "cache": "warm",
+  "prompt_tokens": 8,
+  "token_times_ms": [100, 120, 145],
+  "elapsed_ms": 150,
+  "concurrency": 1
+}
+```
+
+Its TTFT is 100 ms, end-to-end time is 150 ms, and mean decode gap is $[145-100]/[3-1]=22.5$ ms. Save actual observations to another file, then run:
+
+```bash
+python3 scripts/summarize_benchmarks.py observations.jsonl > summary.json
+```
+
+The report uses schema version 1 and milliseconds. It groups by backend, model, precision, cache, prompt token count, output token count, and concurrency. For each group it reports sample count, p50, and linearly interpolated p95 for TTFT, end-to-end latency, and each request's mean decode gap. A one-token response has no decode-gap observation. These are distributions over request means, not a pooled distribution of every inter-token interval.
+
+Independent request-relative clocks do not locate requests on a common timeline. The script therefore does not infer aggregate requests/s or tokens/s. Measure a shared wall-clock interval around the whole concurrent workload and count completed work within that interval. A concurrency label cannot reconstruct overlap.
+
+## Run one intervention, then preserve the decision
+
+Use the measured limit to choose the variable. A memory-bound CPU decode suggests bytes, packing, or placement; an NPU boundary problem suggests graph/export changes; a launch-bound path suggests larger useful work per submission. [CPU/NUMA tuning](/cpu-numa-inference-tuning/) and [Mac inference stacks](/building-mac-inference-stack/) provide concrete candidates.
+
+Alternate baseline and candidate runs with the same warmup and workload. A synthetic tool such as `llama-bench` can isolate prompt processing and generation, but does not provide the streaming request schema or an answer-quality result automatically.[^bench] Keep its output as a separate artifact.
+
+Store inventory, manifest, raw observations, profiles, correctness results, and the exact command. Reject a candidate that fails quality or only moves time into another required stage. Save the winning configuration and rerun a regression workload at the intended concurrency. The report should state what ran, which kernels or partitions were observed, what changed, and which target the result met. No hardware performance measurement is implied by downloading the skill.
+
+[^xstate]: Linux kernel, [Using XSTATE features in userspace](https://docs.kernel.org/arch/x86/xstate.html).
+
+[^profiling]: ONNX Runtime, [Profiling tools](https://onnxruntime.ai/docs/performance/tune-performance/profiling-tools.html).
+
+[^qnn]: ONNX Runtime, [QNN execution provider](https://onnxruntime.ai/docs/execution-providers/QNN-ExecutionProvider.html), including explicit CPU-fallback rejection.
+
+[^mlx]: MLX, [Lazy evaluation](https://ml-explore.github.io/mlx/build/html/usage/lazy_evaluation.html).
+
+[^clock]: Python, [Performance counter clock](https://docs.python.org/3/library/time.html#time.perf_counter_ns).
+
+[^bench]: llama.cpp, [llama-bench documentation](https://github.com/ggml-org/llama.cpp/blob/master/tools/llama-bench/README.md).

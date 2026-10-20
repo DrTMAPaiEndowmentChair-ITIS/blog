@@ -1,0 +1,120 @@
+---
+title: 'Arm inference kernels: Neon, scalable SVE loops, and SME matrix state'
+pubDate: 2026-10-21
+category: 'Hardware & Systems'
+description: 'Trace Arm CPU inference through fixed-width SIMD, integer and BF16 matrix instructions, scalable predication, and the SME streaming ABI.'
+topics: ['Arm', 'CPU inference', 'Neon', 'SVE', 'SME']
+---
+
+An Arm CPU may execute a model through fixed-width vectors, scalable vectors, matrix accumulation, or a mixture selected one operator at a time. Architecture names alone do not tell an inference runtime which implementation it can call. Datatype extensions, operating-system exposure, compiler support, and packed tensor layout all matter.
+
+The useful distinction is how each programming model holds partial results. Neon keeps them in fixed-width registers. SVE adds scalable vectors and predicates. SME gives an output matrix block a separate architectural home in ZA.[^comparison]
+
+## Neon arithmetic is fixed-width, but not feature-complete
+
+AArch64 Advanced SIMD, commonly called Neon, has 128-bit vector registers. One register can hold four FP32 elements, eight FP16 storage elements, sixteen bytes, or another supported interpretation. Instruction availability determines which of those representations can participate directly in arithmetic.
+
+The dot-product extension adds instructions such as `SDOT` and `UDOT`. A 128-bit signed dot product groups sixteen signed bytes into four groups of four, accumulating into four INT32 elements. I8MM adds small integer matrix operations, including signed `SMMLA`: a $2\times8$ block multiplied by an $8\times2$ block updates a $2\times2$ INT32 result. That is a different operand arrangement from four independent dot products. A kernel cannot substitute it without arranging its inputs accordingly.[^acle]
+
+BF16 adds another distinction. Instructions such as `BFDOT` and `BFMMLA` consume BF16 values and accumulate into FP32. BF16 storage, FP16 storage, and their arithmetic families are separate contracts. Inspect numerical behavior as well as the supported datatype: Arm documents specific BF16 instruction rounding behavior, so agreement with a scalar FP32 implementation should use a justified tolerance.[^bf16]
+
+For a weight-only INT4 model, none of these facts establishes native four-bit arithmetic. The kernel may unpack weight nibbles, convert them into INT8 values, dynamically quantize activations, accumulate integer products, and apply block scales. The bottleneck can be that preparation. [Quantization-aware architecture](/quantization-aware-architecture/) explains why block structure and scale granularity affect both error and kernel design.
+
+## SVE makes the loop depend on runtime vector length
+
+SVE defines scalable registers and per-element predicates. Ordinary SVE vector lengths range from 128 to 2048 bits in 128-bit increments. Implementations support particular lengths, and the OS controls the thread's current choice. SVE2 extends the instruction repertoire, especially integer and DSP operations; it does not imply a larger register than SVE.[^sve]
+
+A vector-length-agnostic loop asks how many elements fit instead of encoding a count such as eight FP32 values. Predication marks valid elements in the last iteration. This C example adds arrays using Arm ACLE intrinsics:
+
+```c
+#include <arm_sve.h>
+#include <stddef.h>
+#include <stdint.h>
+
+void add_sve(float *restrict out, const float *restrict a,
+             const float *restrict b, size_t n) {
+    uint64_t i = 0;
+    while (i < n) {
+        svbool_t active = svwhilelt_b32(i, (uint64_t)n);
+        svfloat32_t x = svld1_f32(active, a + i);
+        svfloat32_t y = svld1_f32(active, b + i);
+        svst1_f32(active, out + i, svadd_f32_x(active, x, y));
+        i += svcntw();
+    }
+}
+```
+
+`svcntw()` returns the current number of 32-bit elements. The `_x` arithmetic variant leaves inactive results unspecified; the predicated store does not expose them. The example assumes non-overlapping arrays and an ordinary non-streaming SVE call environment. It must only execute on a platform exposing SVE.
+
+With an illustrative 256-bit VL and 19 elements, the loop handles eight, eight, and three valid values. With 128-bit VL it needs five iterations. These are derived iteration counts, not timings. Larger VL changes scheduling and register pressure; cache blocking and reductions still need tuning.
+
+Save the source as `sve-add.c`. With an AArch64 GNU cross-toolchain that supports SVE, inspect its generated code without executing it:
+
+```sh
+aarch64-linux-gnu-gcc -O3 -march=armv8-a+sve \
+  -msve-vector-bits=scalable -c sve-add.c -o sve-add.o
+aarch64-linux-gnu-objdump -d sve-add.o
+```
+
+Look for predicate creation, predicated loads and stores, and an increment based on the vector length. A fixed-vector-length compilation mode makes a stronger deployment assumption. Keep this object separate from the baseline detector. No Arm hardware performance test is implied by cross-compilation.
+
+## SME changes the accumulation model and calling convention
+
+For matrix multiplication, an outer-product formulation is:
+
+$$
+C \leftarrow C + \sum_k A[:,k]B[k,:].
+$$
+
+An SME kernel loads operand vectors and accumulates outer products into ZA. The full ZA register array has side length equal to the streaming vector length in bytes. At an illustrative SVL of 256 bits, each side is 32 bytes, giving $32^2=1024$ bytes of ZA storage. FP32 tile views subdivide that storage; they are not all independent copies of the full array.[^comparison]
+
+SME introduces streaming SVE mode, controlled by `PSTATE.SM`, and separate ZA access controlled by `PSTATE.ZA`. Streaming VL can differ from ordinary SVE VL. Streaming mode changes instruction legality and the register-state contract; the word "streaming" does not mean the hardware automatically fetches a matrix from memory.
+
+SME2 adds multi-vector operations and lookup-table capabilities, including ZT0 state. Exact arithmetic support remains feature-dependent. Detect the required integer or floating-point capability rather than treating SME as permission to use every outer-product datatype.[^sme]
+
+C and C++ code should express streaming and ZA interfaces through the compiler's ACLE support. Attributes such as `__arm_streaming`, `__arm_locally_streaming`, `__arm_new("za")`, and `__arm_inout("za")` describe different interfaces or ownership rules. They are not interchangeable optimization hints. A call into an ordinary function while ZA is live may require preservation work. Unannotated inline assembly that changes streaming state can violate the compiler's assumptions about live vector values.[^acle]
+
+For a custom backend, put a substantial matrix region behind a well-defined SME boundary. Repeatedly entering and leaving streaming mode around tiny pieces can spend the anticipated arithmetic gain on state transitions and calls.
+
+## Apple hardware needs model-specific detection
+
+Apple's earlier private matrix instructions and standardized Arm SME are different interfaces. Intel AMX is a third, unrelated interface despite the shared acronym. A Mac application should choose supported libraries or kernels for the actual SoC and OS, as described in [Apple inference backends](/apple-inference-backends/).
+
+It is also incorrect to assume Apple Silicon categorically lacks SME. Arm identifies Apple M4-series processors among SME2-capable devices, and Apple's XNU source documents its SME and SME2 state management. SME2 support does not establish ordinary non-streaming SVE2 support.[^apple][^devices]
+
+On macOS, inspect advertised SME capabilities directly:
+
+```sh
+sysctl hw.optional.arm.FEAT_SME
+sysctl hw.optional.arm.FEAT_SME2
+```
+
+A missing key or zero value must not enable a kernel. Record the SoC, OS version, and actual results. Do not infer capabilities from "Mac Studio", since that product name spans different chips. These are inspection commands for a target Mac; no Mac test ran for this article.
+
+Linux exposes `HWCAP_SVE` through `AT_HWCAP`, and `HWCAP2_SVE2`, `HWCAP2_SME`, and `HWCAP2_SME2` through `AT_HWCAP2`. Query the applicable flags with `getauxval`. `PR_SVE_GET_VL` and `PR_SME_GET_VL` report separate per-thread configurations; mask their returned values with the documented length masks. The kernel also defines signal-frame and debugger interfaces for the scalable state.[^sve][^sme]
+
+## Measure the operator that reaches the kernel
+
+An optimized library still needs an implementation for the operator's shape, layout, and quantization scheme. KleidiAI supplies packing and compute microkernels for several Arm capabilities, but leaves scheduling and integration to the caller. Its source explicitly describes compiler and call-chain requirements for SME ABI compliance.[^kleidi]
+
+For a reproducible experiment, retain the exact runtime and microkernel revisions, the selected function name, packed-weight format, and thread affinity. Compare a supported Neon path with the SVE or SME path for identical shapes and output tolerances. Time packing separately, then include it in an end-to-end run with the intended weight reuse.
+
+Test zero-length inputs, partial tiles, odd reduction sizes, and activation extremes. On a system supporting multiple VL choices, repeat correctness checks at more than one supported length. Set the worker configuration before creating length-dependent packed data. An emulator can check instruction legality and outputs; it cannot establish native throughput.
+
+Finally split matrix-vector decoding from batched prompt processing. ZA reuse helps only when the kernel feeds useful work into it. If the time remains in weight reads, dequantization, or thread coordination, use [CPU and NUMA tuning](/cpu-numa-inference-tuning/) and [runtime ISA dispatch](/runtime-isa-dispatch/) to investigate the surrounding costs.
+
+[^comparison]: Arm, [Matrix multiplication with Neon, SVE, and SME compared](https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/matrix-matrix-multiplication-neon-sve-and-sme-compared), for the accumulation models and ZA organization.
+
+[^acle]: Arm, [C Language Extensions](https://arm-software.github.io/acle/main/acle.html), for intrinsic contracts and streaming/ZA function interfaces.
+
+[^bf16]: Arm, [BF16 processing for neural networks](https://developer.arm.com/community/arm-community-blogs/b/ai-blog/posts/bfloat16-processing-for-neural-networks-on-armv8_2d00_a), for BF16 dot products, matrix instructions, and rounding behavior.
+
+[^sve]: Linux, [SVE support for AArch64](https://docs.kernel.org/arch/arm64/sve.html), for runtime exposure and per-thread vector length.
+
+[^sme]: Linux, [SME support for AArch64](https://docs.kernel.org/arch/arm64/sme.html), for streaming state, optional arithmetic capabilities, SME2, and OS interfaces.
+
+[^apple]: Apple, [XNU SME state management](https://github.com/apple-oss-distributions/xnu/blob/main/doc/arm/sme.md), for Apple's streaming and matrix-state implementation.
+
+[^devices]: Arm, [SME implementation and detection notes](https://learn.arm.com/insights/sme/), for device-family support and the distinction from non-streaming SVE2.
+
+[^kleidi]: Arm, [KleidiAI source and integration contract](https://github.com/ARM-software/kleidiai), for microkernel responsibilities and SME compiler requirements.

@@ -1,0 +1,136 @@
+---
+title: 'RISC-V, POWER, and IBM Z: three different ways to accelerate CPU inference'
+pubDate: 2026-10-21
+category: 'Hardware & Systems'
+description: 'Build a correct mental model of RVV strip mining, POWER matrix accumulators, and IBM Z NNPA tensor operations, including discovery and format costs.'
+topics: ['RISC-V', 'POWER', 'IBM Z', 'CPU inference', 'Instruction sets']
+---
+
+A portable inference backend cannot treat every accelerator as a wider version of the same vector loop. RISC-V Vector makes the number of active elements an explicit loop result. POWER's Matrix-Multiply Assist holds small output matrices in accumulators. IBM Z combines ordinary vector instructions with a neural-network facility whose interface includes transformed tensors and operation-level requests.
+
+Those differences determine the unit of dispatch, the packing strategy, and what a benchmark must include. The [CPU accelerator map](/modern-cpu-accelerator-map/) places them alongside x86 and Arm; this article follows their execution contracts.
+
+## RVV strip mining depends on the returned length
+
+RISC-V's ratified Vector extension 1.0 defines 32 vector registers. VLEN is the bit capacity of one register. SEW selects element width, and LMUL groups registers to increase the capacity available to one operand. For a supported configuration:
+
+$$
+\operatorname{VLMAX}=\operatorname{LMUL}\frac{\operatorname{VLEN}}{\operatorname{SEW}}.
+$$
+
+With an illustrative VLEN of 256 bits, SEW 32 and LMUL 1 allow eight elements per operand. LMUL 4 allows 32 elements but consumes four registers per group. Larger groups leave fewer independent operands and accumulators. Fractional LMUL lets narrow data occupy part of a register's capacity, which is useful in mixed-width loops.[^rvv]
+
+The application supplies an available element count, AVL, to `vsetvli`, `vsetivli`, or `vsetvl`. Hardware returns `vl`, the count the next instructions actually process. For AVL no larger than VLMAX, it returns AVL. For larger inputs, the specification permits choices intended to balance iterations. In particular, when VLMAX is less than AVL and AVL is less than twice VLMAX, a valid implementation can choose a count between `ceil(AVL/2)` and VLMAX.
+
+That means portable code must advance by the returned count. Replacing it with `min(remaining, VLMAX)` is an unjustified assumption about one implementation's choice.
+
+Here is a complete RV64 assembly function for FP32 addition. Its ABI arguments are output, left input, right input, and element count. Arrays must not overlap. Save it as `rvv-add.S`:
+
+```asm
+    .text
+    .globl add_rvv
+    .type add_rvv, @function
+add_rvv:
+    beqz a3, .Ldone
+.Lnext:
+    vsetvli t0, a3, e32, m1, ta, ma
+    vle32.v v0, (a1)
+    vle32.v v1, (a2)
+    vfadd.vv v2, v0, v1
+    vse32.v v2, (a0)
+    slli t1, t0, 2
+    add a0, a0, t1
+    add a1, a1, t1
+    add a2, a2, t1
+    sub a3, a3, t0
+    bnez a3, .Lnext
+.Ldone:
+    ret
+    .size add_rvv, .-add_rvv
+```
+
+`ta` and `ma` select tail-agnostic and mask-agnostic policies. Inactive register contents are not promised useful values. This loop stores only active elements, so it does not depend on them. A masked reduction or a loop carrying partial results must choose policies and accumulator handling with greater care.
+
+Using a GNU cross-toolchain with ratified V support, compile and inspect without running the code:
+
+```sh
+riscv64-linux-gnu-gcc -march=rv64gcv -mabi=lp64d \
+  -c rvv-add.S -o rvv-add.o
+riscv64-linux-gnu-objdump -d rvv-add.o
+```
+
+The FP32 operation also requires the relevant floating-point facilities, included in this target choice. Reduced embedded-vector profiles have different capabilities. Neither a draft-era vector implementation nor an arbitrary extension string establishes compatibility with this ratified-V binary.
+
+## Discover extensions through the execution environment
+
+On Linux, `riscv_hwprobe` returns capabilities for a specified CPU set. Boolean extension results describe the intersection across that set. The reverse query can identify CPUs matching requested properties. Unknown keys have documented handling, so a detector must cope with older kernels rather than assuming every query exists.[^hwprobe]
+
+Linux separately documents vector availability through ELF HWCAP and process vector-control policy. A compiler flag describes what the binary needs; a kernel interface describes what the process can use. Record both. Detect narrower floating-point or other optional extensions explicitly instead of inferring them from the presence of V.[^rvvlinux]
+
+Scalability also does not promise throughput. VLEN describes architectural capacity, while execution hardware may process it over several cycles. Compare several LMUL choices, count spills and `vsetvli` changes, and use native hardware for timing. An emulator with configurable VLEN is useful for exposing fixed-length assumptions, not for predicting deployment speed.
+
+## POWER separates vectors from matrix accumulators
+
+POWER VSX provides scalar and 128-bit vector operations. Power ISA 3.1's Matrix-Multiply Assist, implemented in POWER10, introduces eight 512-bit accumulator registers for small matrix updates. A 512-bit accumulator can hold sixteen FP32 results, commonly viewed as a $4\times4$ output block. Operand vectors supply outer-product contributions across the reduction dimension.[^mma]
+
+That is not equivalent to a general 512-bit SIMD register. The accumulator holds matrix partial sums while input data travels through the vector register interface. Datatype-specific instructions determine how input elements are grouped and accumulated. The relationship between accumulators and associated vector registers also constrains their simultaneous use.
+
+GCC exposes this through the `__vector_quad` accumulator type and MMA built-ins, including `__builtin_mma_xvf32gerpp` and `__builtin_mma_xvbf16ger2pp`. Initialization, accumulation, and disassembly of the accumulator are explicit operations. Build the specialized object with a toolchain targeting the required POWER level and MMA support; retain a VSX or baseline fallback for older machines.[^gccmma]
+
+In an inference engine, prefer a tuned BLAS or tensor library when it already covers the operator. A custom MMA kernel must account for operand packing, matrix edges, bias and scale application, and accumulator extraction. Measure batch-one matrix-vector shapes as well as matrix-matrix shapes. The latter generally provide more opportunities to reuse each loaded operand.
+
+## IBM Z vector arithmetic and NNPA are different paths
+
+The IBM Z vector facility introduced 32 registers of 128 bits. Vector instructions operate on their element contents and suit loops such as arithmetic, conversion, and preprocessing. This is a conventional vector programming model, with generation-specific instruction additions.[^zvector]
+
+Telum's integrated AI accelerator is reached through the Neural Network Processing Assist facility. IBM's zDNN library expresses neural-network operations over tensor descriptors, transformed buffers, and operation parameters. IBM recommends using the library rather than depending on raw assist instructions.[^zdnn]
+
+Original Telum uses an internal DLFLOAT16 representation, distinct from IEEE FP16 and BF16. Current zDNN documentation also describes INT8 support for Telum II. Therefore "IBM Z AI requires only DLFLOAT16" is too broad across generations. Query available operations, datatypes, and runtime API levels for the actual environment.
+
+The caller starts with a logical descriptor and data layout, creates the transformed descriptor, allocates an appropriately aligned buffer, transforms the data, and invokes supported operations. Transforming into the accelerator's storage arrangement is often called stickification. Padding and physical layout mean transformed size can exceed logical element count times element size. Use the library's size and allocation APIs instead of constructing a buffer from the logical shape alone.
+
+A small initialization probe, compiled against an installed zDNN development package, can start with:
+
+```c
+#include <stdio.h>
+#include <zdnn.h>
+
+int main(void) {
+    zdnn_init();
+    if (!zdnn_is_nnpa_installed()) {
+        puts("NNPA unavailable; select a CPU fallback");
+        return 0;
+    }
+    printf("Maximum transformed tensor bytes: %llu\n",
+           (unsigned long long)zdnn_get_nnpa_max_tensor_size());
+    return 0;
+}
+```
+
+This proves neither that a particular model converts successfully nor that every requested operation exists. zDNN provides additional function, datatype, layout, and version queries. Validate all status returns and operation-specific shape limits. A partition or virtual machine can expose a smaller facility set than the physical system.
+
+## Make conversion costs visible
+
+For all three architectures, distinguish reusable weight preparation from per-request work. A useful accounting equation is:
+
+$$
+T_{\text{request}}=T_{\text{prepare inputs}}+T_{\text{compute}}+T_{\text{restore outputs}}+T_{\text{fallbacks}}.
+$$
+
+For illustration, assume a transformed operator takes 1 ms and conversions take 0.4 ms in each direction. Total time is 1.8 ms, with about 44% spent converting. Those invented numbers demonstrate accounting only. Keeping several compatible operations in transformed layout can remove intermediate conversions; one unsupported operator can reintroduce them.
+
+Retain compiler and library revisions, exposed extensions, selected implementation, logical and packed sizes, thread placement, and numerical error against a reference. Check partial tiles and nonstandard strides. Report kernel-only and complete operator timing side by side. Use [portable inference backends](/portable-inference-backends/) when deciding how much architecture-specific work the runtime should own, and [runtime ISA dispatch](/runtime-isa-dispatch/) to keep specialized code behind a valid deployment contract.
+
+[^rvv]: RISC-V International, [Vector extension 1.0 specification](https://docs.riscv.org/reference/isa/v20260120/unpriv/v-st-ext.html), especially vector configuration, length constraints, and tail policies.
+
+[^hwprobe]: Linux, [RISC-V hardware probing interface](https://docs.kernel.org/arch/riscv/hwprobe.html), for CPU-set queries and extension enumeration.
+
+[^rvvlinux]: Linux, [Vector extension support](https://docs.kernel.org/arch/riscv/vector.html), for userspace availability and vector-control policy.
+
+[^mma]: Moreira et al., [A matrix math facility for Power ISA processors](https://arxiv.org/abs/2104.03142), the original MMA programming-model paper.
+
+[^gccmma]: GCC, [POWER Matrix-Multiply Assist built-ins](https://gcc.gnu.org/onlinedocs/gcc/PowerPC-Matrix-Multiply-Assist-Built-in-Functions.html), for accumulator types and operation names.
+
+[^zvector]: IBM, [Improving performance through vector optimization](https://www.ibm.com/support/pages/system/files/inline-files/%24FILE/vector_optimization.pdf), for the IBM Z vector register model.
+
+[^zdnn]: IBM, [zDNN API reference and source](https://github.com/IBM/zDNN/blob/main/README.md), including Telum generation differences, runtime validation, transformed tensors, and API requirements.

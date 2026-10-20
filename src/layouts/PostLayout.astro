@@ -19,6 +19,7 @@ import CopyCode from '@/components/ui/CopyCode.astro'
 import PostTaxonomy from '@/components/widgets/PostTaxonomy.astro'
 import PostThumbnail from '@/components/ui/PostThumbnail.astro'
 import BaseLayout from '@/layouts/BaseLayout.astro'
+import TopicVisuals from '@/components/viz/TopicVisuals.astro'
 
 import { themeConfig } from '@/config'
 
@@ -87,6 +88,7 @@ const ogImage = `/open-graph/${postSlug}.png`
           {category && <PostTaxonomy category={category} topics={topics} />}
         </div>
         <slot />
+        <TopicVisuals slug={postSlug} />
       </div>
     </main>
     <ImageOptimizer />

@@ -1,0 +1,110 @@
+---
+title: 'Crypto, compression, and copy engines in an inference stack'
+pubDate: 2026-10-21
+category: 'Hardware & Systems'
+description: 'Trace AES and polynomial instructions, QAT, DSA, and IAA through transport, decompression, descriptors, memory translation, and offload crossover costs.'
+topics: ['Accelerators', 'Cryptography', 'Data movement', 'Model loading']
+---
+
+A model server can spend CPU time decrypting a download, checking its digest, decompressing input, and copying buffers before running a single tensor kernel. Modern CPUs have instructions and separate devices for some of that work. The distinction matters. An AES instruction operates on registers in the calling thread. A compression device consumes a queued job whose buffers must remain valid until completion.
+
+Use the [accelerator map](/modern-cpu-accelerator-map/) to classify the hardware. Here the question is narrower: which byte-processing stages can move off the critical path, and what does that transfer cost?
+
+## AES, polynomial multiplication, SHA, and CRC do different jobs
+
+AES-NI accelerates AES round operations, including the final round and key-schedule helpers. `AESENC` does not perform an entire authenticated encryption protocol. The library still handles round keys, mode, counters or chaining, buffer tails, and authentication. VAES allows multiple independent 128-bit AES states within wider vector operands where the corresponding instruction encoding is supported. It does not increase AES's 128-bit block size.
+
+`PCLMULQDQ` multiplies selected 64-bit polynomials over GF(2), producing a 128-bit carry-less product. Coefficient addition is XOR, with no integer carries. `VPCLMULQDQ` provides vector forms. A library can use this machinery for GHASH in GCM or polynomial checksum algorithms. It still needs the appropriate reduction polynomial and data ordering. These instructions do not implement ordinary integer dot products.
+
+The x86 SHA extensions accelerate defined portions of SHA computations, including message scheduling and rounds. They are neither a general-purpose hash table accelerator nor a substitute for a cryptographic API. Finally, x86 `CRC32`, despite its spelling, updates a CRC32C Castagnoli checksum. It is not the IEEE CRC used by many ZIP implementations, and CRC32C is not a cryptographic hash. An attacker can construct CRC collisions deliberately. Use a cryptographic digest for authenticated artifact identity, with a trusted expected digest or signature.[^x86]
+
+The CPU library should dispatch to these paths after checking the necessary ISA and OS state. The [runtime dispatch guide](/runtime-isa-dispatch/) covers safe specialization; globally adding the widest compiler target can make unrelated startup code unusable on another machine.
+
+## Arm and RISC-V expose their own contracts
+
+Arm provides AES, SHA, and polynomial multiplication operations through documented architectural extensions and ACLE interfaces. CRC instructions distinguish CRC32 and CRC32C variants. A compiler intrinsic names an architectural operation; its presence in a header does not establish that the running CPU implements its optional feature. Crypto libraries already manage feature checks, scheduling, and mode-specific details, which is usually a better integration point than an application-owned intrinsic loop.[^arm]
+
+RISC-V separates scalar cryptography extensions such as AES and SHA support from its vector cryptography extensions. Scalar AES operations also differ between RV32 and RV64. Vector crypto instructions operate on specified element groups and have extension-specific requirements. A core implementing the vector extension does not thereby implement vector AES or SHA. Record the exact implemented extensions and the library's selected code path.[^rvscalar][^rvvector]
+
+These instructions are useful for model downloads and encrypted transport when cryptography consumes CPU time. They cannot accelerate attention, GEMM, or dequantization merely because all those routines manipulate bits.
+
+## QAT, DSA, and IAA are queued engines
+
+Intel QuickAssist Technology handles supported cryptographic and compression workloads through a device software stack. Public integrations include QAT Engine/Provider for OpenSSL and QATzip for compression. Algorithm and compression-format coverage depends on the device generation and library configuration. Installing the library does not establish that the hardware path ran, especially when a software path is available.[^qat]
+
+DSA and IAA have separate roles. DSA moves and transforms data through operations such as memory copy, fill, compare, and checksum-related work. IAA targets supported compression/decompression and analytics operations such as scans and filters. DML and QPL expose these capabilities, respectively. IAA is not a tensor matrix unit, and DSA is not a generic "faster memory" switch.[^libraries]
+
+On Linux, the `idxd` driver and `accel-config` tooling manage DSA/IAA resources. Hardware engines, groups, and work queues must be configured and enabled. Shared and dedicated work queues have different submission behavior. These queues are distinct from QAT's submission infrastructure. `ENQCMD` can submit a descriptor to a shared work queue; the instruction itself does not execute the requested copy or decompression on an AVX unit.[^queues]
+
+An operator should first inspect the existing configuration:
+
+```bash
+lspci -nnk
+accel-config list
+ls /sys/bus/dsa/devices
+ls /dev/dsa
+```
+
+IAA devices commonly have `iax` names under `/sys/bus/dsa/devices`, alongside the DSA subsystem's other entries. Missing commands or paths require investigation, not invented device identifiers. Queue provisioning requires administrative control and knowledge of other users.
+
+For an unused, disabled `dsa0` with the named resources available, this illustrative shared-queue setup follows Intel's documented configuration sequence. Match sizes and resource identifiers to the actual device; this is not a universal tuning preset:
+
+```bash
+accel-config save-config -s before.json
+sudo accel-config config-engine dsa0/engine0.0 --group-id=0
+sudo accel-config config-wq dsa0/wq0.0 --group-id=0 --wq-size=32 \
+  --priority=1 --block-on-fault=0 --threshold=4 --type=user \
+  --name=swq --mode=shared --max-batch-size=32 \
+  --max-transfer-size=2097152
+sudo accel-config enable-device dsa0
+sudo accel-config enable-wq dsa0/wq0.0
+```
+
+Grant the application user access to the resulting work-queue device through the deployment's permission policy. Check the chosen library's work-queue naming and selection requirements. DSA configuration does not configure an IAA or QAT compression path. Preserve the earlier configuration, and leave occupied queues to their existing workloads.[^queues]
+
+## A descriptor creates a lifetime contract
+
+A queued job describes an operation, source and destination addresses, length, flags, and completion state. The application must preserve those buffers, avoid consuming incomplete output, and handle unsuccessful submission or completion. Reusing the destination immediately after enqueueing is a race.
+
+Traditional DMA paths establish device-accessible mappings and may require pinned buffers or an allocator supplied by the library. Pinning removes page mobility and has resource costs. Keep buffers and mappings alive across multiple jobs where the supported API permits it.
+
+Do not assume every engine requires pinning. Linux shared virtual addressing can let supported DSA-class devices use application virtual addresses through PASID-tagged transactions, an IOMMU, address translation services, and page requests. This path avoids mandatory page pinning, but page faults and translation misses still take time. A userspace address works because the driver establishes the binding, not because DMA inherently understands arbitrary process pointers.[^sva]
+
+Batching amortizes submission and completion overhead. It also delays the first item while the batch forms. Polling can reduce wakeup delay while consuming a CPU core. A throughput improvement that dedicates a polling core needs different accounting from one that frees cores for inference.
+
+## Work out the crossover before measuring it
+
+Use an explicitly illustrative model. Let a CPU byte-processing path sustain 20 GB/s and an engine path sustain 40 GB/s, with 5 microseconds of fixed offload overhead. Assume decimal bytes, identical semantics, and no overlap:
+
+$$
+T_c=N/(20\times10^9),\qquad
+T_a=5\times10^{-6}+N/(40\times10^9).
+$$
+
+The equality occurs at $N=200{,}000$ bytes. At 64,000 bytes, CPU time is 3.2 microseconds and offload time is 6.6 microseconds. At 1,000,000 bytes, the corresponding times are 50 and 30 microseconds. These are arithmetic examples, not device measurements. A queue backlog, extra copy, page fault, or different compression ratio changes the crossover. So does overlap with useful CPU work.
+
+Measure wall time, CPU time, queue depth, completion latency, and bytes processed together. Freeing CPU cycles can increase serving capacity even when an isolated transfer is not faster.
+
+## Apply the engine to the correct stage
+
+The [model cold-start guide](/model-cold-starts/) already follows storage, page cache, and device upload. Add cryptographic and decompression timings only where those operations actually occur. Safetensors and GGUF are not automatically compressed streams. An INT4 checkpoint is numerically quantized storage, which is a different representation change from DEFLATE compression.
+
+Benchmark real payloads at several chunk sizes, using software and explicitly selected hardware paths. Keep compressed and decompressed byte counts separate. Verify decompressed bytes against the original file, verify checksums against the correct algorithm, and include allocation/mapping time in cold-start measurements. A warm-buffer microbenchmark should exclude those costs only when production also amortizes them.
+
+Then repeat the complete load or request path. If TLS consumes 2% of elapsed time, eliminating that stage entirely gives at most $1/0.98$, about 1.02 times overall speedup under a serial model. If decode saturates DRAM, a simultaneous copy engine may make it slower by competing for bandwidth. [CPU memory tuning](/cpu-numa-inference-tuning/) and the [agent experiment workflow](/hardware-inference-agent-workflow/) show how to retain those whole-workload checks.
+
+[^x86]: Intel, [64 and IA-32 software developer manuals](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html), instruction-reference entries for AES, VAES, PCLMULQDQ, SHA, and CRC32.
+
+[^arm]: Arm, [ACLE specification](https://arm-software.github.io/acle/main/acle.html), including CRC intrinsics, crypto extensions, and feature macros.
+
+[^rvscalar]: RISC-V International, [Scalar cryptography specification](https://docs.riscv.org/reference/isa/extensions/crypto-scalar/_attachments/riscv-crypto-spec-scalar.pdf).
+
+[^rvvector]: RISC-V International, [Vector cryptography specification](https://docs.riscv.org/reference/isa/unpriv/vector-crypto.html).
+
+[^qat]: Intel, [QuickAssist software and integrations](https://www.intel.com/content/www/us/en/developer/topic-technology/open/quick-assist-technology/overview.html).
+
+[^libraries]: Intel, [QPL and DML](https://www.intel.com/content/www/us/en/developer/articles/technical/optimize-data-manipulation-with-qpl-and-dml.html), describing IAA analytics/compression and DSA data movement.
+
+[^queues]: Intel, [DSA user guide](https://cdrdv2-public.intel.com/759709/353216-004-intel-data-streaming-accelerator-user-guide.pdf), including device configuration, shared queues, configuration export, and device-file permissions.
+
+[^sva]: Linux kernel, [Shared virtual addressing with ENQCMD](https://docs.kernel.org/arch/x86/sva.html), covering PASID, IOMMU translation, page requests, and descriptor submission.

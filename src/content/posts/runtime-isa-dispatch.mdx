@@ -1,0 +1,161 @@
+---
+title: 'Portable inference dispatch: prove a CPU kernel is safe before calling it'
+pubDate: 2026-10-21
+category: 'Ecosystems & Tooling'
+description: 'Build a baseline binary with isolated CPU kernels, check hardware and OS state, handle AMX permission, and verify the implementation selected at runtime.'
+topics: ['Runtime dispatch', 'CPU inference', 'Compilers', 'Portability']
+---
+
+A portable inference binary contains code that some deployment CPUs cannot execute. Correct dispatch keeps those instructions behind a verified branch, while startup, detection, error handling, and fallback code remain executable on the baseline machine. Compiler flags are part of that safety boundary.
+
+The dispatch decision has two stages. First establish which implementations are legal for the process and its workers. Then choose an implementation appropriate for the operator, shape, datatype, and packed layout. The widest legal kernel can still be slower for a small matrix.
+
+## Compile the detector for the promised baseline
+
+GCC's `-march` authorizes instructions; `-mtune` changes scheduling choices within the permitted ISA. `-march=native` describes the build host and can produce instructions unavailable on deployment hosts. Applying it globally can put advanced instructions into a constructor or allocator before your detector runs.[^flags]
+
+Keep a conservative translation-unit baseline and put optimized code in separate objects or per-function targets. GCC's `target` attribute can authorize AVX2 or another subset for a particular function. Maintain compatible scalar argument types across the boundary: passing vector types between objects compiled with different ABI assumptions creates another portability problem.[^attributes]
+
+A function declared as AVX2-capable may compile to ordinary AVX floating-point instructions for a particular loop. The target names the permitted set, not a requirement to emit every subset. Conversely, a baseline function written as a scalar C loop may still auto-vectorize into baseline SIMD. If a test requires actual scalar execution, control vectorization explicitly and inspect its assembly.
+
+## x86 needs CPU bits and enabled state
+
+CPUID reports instruction capabilities, but the OS must also preserve architectural state. For AVX, check XSAVE, OSXSAVE, and AVX in leaf 1 before executing `XGETBV`. OSXSAVE is bit 27 of ECX. Read XCR0 with `XGETBV` index zero and require enabled XMM and YMM state, bits 1 and 2, giving a mask of `0x6`.[^sdm]
+
+An AVX2 implementation additionally needs the leaf 7 AVX2 bit. If it uses FMA, check that independently. On Linux, preflight AVX-512 by checking enabled opmask and upper-ZMM components, bits 5, 6, and 7, so the relevant combined XCR0 mask is `0xe6`. Its instruction subsets still need their own checks. See [x86 SIMD](/x86-simd-avx512-inference/) for why BW, VL, BF16, and other names cannot be collapsed into one feature.
+
+Intel Macs need a platform-specific AVX-512 check. Darwin enables the larger save state lazily, so reading XCR0 before first use can reject an otherwise supported path. GCC queries `sysctlbyname("hw.optional.avx512f")` for the kernel's availability decision, alongside the required CPU instruction-subset checks. Use a maintained platform-aware detector rather than transplanting the Linux XCR0 prerequisite unchanged.[^darwin]
+
+Check whether a CPUID leaf and subleaf exist before interpreting them. For production software, a maintained compiler or runtime detector usually avoids duplicating this logic. Review its version and supported features, especially when adding a newly specified ISA.
+
+## A small inspectable dispatcher
+
+This GCC-compatible program uses AVX2 as the optimized path's minimum requirement. It includes an explicit baseline override for testing. On other architectures it compiles only the portable path. Save it as `dispatch.c`:
+
+```c
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <string.h>
+
+static void add_portable(float *out, const float *a,
+                         const float *b, size_t n) {
+    for (size_t i = 0; i < n; ++i) out[i] = a[i] + b[i];
+}
+
+#if defined(__x86_64__) && defined(__GNUC__)
+#include <cpuid.h>
+#include <immintrin.h>
+
+static bool avx2_usable(void) {
+    unsigned a, b, c, d;
+    if (!__get_cpuid(1, &a, &b, &c, &d)) return false;
+    unsigned required = bit_XSAVE | bit_OSXSAVE | bit_AVX;
+    if ((c & required) != required) return false;
+    unsigned lo, hi;
+    __asm__ volatile("xgetbv" : "=a"(lo), "=d"(hi) : "c"(0));
+    if ((lo & 0x6u) != 0x6u) return false;
+    if (!__get_cpuid_count(7, 0, &a, &b, &c, &d)) return false;
+    return (b & bit_AVX2) != 0;
+}
+
+__attribute__((target("avx2"), noinline))
+static void add_avx2(float *out, const float *a,
+                      const float *b, size_t n) {
+    size_t i = 0;
+    for (; n - i >= 8; i += 8) {
+        __m256 x = _mm256_loadu_ps(a + i);
+        __m256 y = _mm256_loadu_ps(b + i);
+        _mm256_storeu_ps(out + i, _mm256_add_ps(x, y));
+    }
+    for (; i < n; ++i) out[i] = a[i] + b[i];
+}
+#endif
+
+int main(int argc, char **argv) {
+    bool baseline = argc > 1 && strcmp(argv[1], "--baseline") == 0;
+    void (*kernel)(float *, const float *, const float *, size_t) = add_portable;
+    const char *name = "portable";
+#if defined(__x86_64__) && defined(__GNUC__)
+    if (!baseline && avx2_usable()) {
+        kernel = add_avx2;
+        name = "avx2";
+    }
+#else
+    (void)baseline;
+#endif
+    float a[37], b[37], out[37];
+    for (size_t i = 0; i < 37; ++i) {
+        a[i] = (float)i;
+        b[i] = 2.0f * (float)i;
+    }
+    kernel(out, a, b, 37);
+    float checksum = 0;
+    for (size_t i = 0; i < 37; ++i) {
+        if (out[i] != a[i] + b[i]) return 1;
+        checksum += out[i];
+    }
+    printf("selected=%s checksum=%.1f\n", name, (double)checksum);
+    return 0;
+}
+```
+
+Compile on x86-64 with a baseline that does not authorize AVX globally:
+
+```sh
+gcc -O3 -march=x86-64 -mtune=generic -fno-tree-vectorize \
+  -fno-lto -Wall -Wextra dispatch.c -o dispatch
+./dispatch --baseline
+./dispatch
+objdump -d -M intel dispatch
+```
+
+Both runs must produce a checksum of 1998.0. The automatic run's path depends on the exposed capabilities. The scalar override can only reduce capability; an unsafe "force AVX2" switch would defeat the safety check. This is a correctness demonstration, not a benchmark or a complete inference kernel. Detection runs before selection, outside the numerical loop.
+
+## AMX requires permission beyond detection
+
+An AMX implementation needs the appropriate tile and datatype CPUID bits, enabled state, and Linux dynamic XSTATE permission. Requesting `ARCH_REQ_XCOMP_PERM` for tile-data component 18 is separate from discovering that AMX exists. Audit alternate signal stacks before requesting permission, and record the failure reason if permission is unavailable.[^xstate]
+
+Linux grants permission per process, while allocating expanded task state at first use. Initialize and warm workers before steady-state timing. After `exec`, the new process must establish its own permission. [VNNI, AMX, and AVX10](/x86-amx-vnni-avx10/) covers tile packing, signal frames, and the current vector specification.
+
+Do not probe capabilities by deliberately executing an instruction and catching SIGILL. That conflates ISA absence, denied state, and programming mistakes. Linux's Arm documentation explicitly says unsupported features do not have a reliable fault-based detection contract.[^hwcap]
+
+## Arm dispatch uses the platform's interface
+
+On AArch64 Linux, read `AT_HWCAP` and `AT_HWCAP2` with `getauxval`, then test the documented capability flags. Dot product, I8MM, BF16, SVE, and SME are distinct checks. A runtime must also respect the current thread's vector-length and streaming-state contracts before calling a specialized implementation.[^hwcap]
+
+On macOS, query named features with `sysctlbyname`, such as `hw.optional.arm.FEAT_DotProd`, `hw.optional.arm.FEAT_I8MM`, `hw.optional.arm.FEAT_BF16`, or `hw.optional.arm.FEAT_SME2`. Treat lookup failure and zero as unavailable. Apple's XNU source defines these advertised feature nodes.[^sysctl]
+
+SME2 does not imply ordinary SVE2 availability. A compiler's target-feature macro describes its current compilation mode, not the machine where the executable later runs. [Arm inference kernels](/arm-neon-sve-sme/) explains those distinctions. RISC-V and POWER need their own detection and compilation contracts, covered in [the RVV, POWER, and IBM Z guide](/riscv-power-z-inference-isa/).
+
+## The scheduler is part of the contract
+
+A VM can mask CPUID or expose a migration-compatible feature set. Probe inside the guest. A normal container shares its host kernel and does not manufacture a different ISA, but cpusets, affinity, resource policy, and syscall restrictions can change usable execution paths. Keep the detector's observations with the deployment record.
+
+On heterogeneous systems, one successful probe on one core is insufficient if workers can migrate to cores with different capabilities. Use the OS's process-safe capability contract or constrain the workers to a verified compatible CPU set. Do not assume a marketing core class establishes an instruction set. Affinity also affects cache sharing and memory bandwidth, so measure it rather than treating pinning as an automatic speedup.
+
+Packed weights introduce another dispatch dependency. If two implementations require different layouts, changing a function pointer without changing its packed-data descriptor is incorrect. Record the kernel family, datatype, blocking parameters, and relevant vector length with the prepared buffer. Dispatch must select a compatible pair.
+
+## Verify inclusion, selection, and execution separately
+
+Disassembly establishes that a specialized body exists. A dispatcher log establishes that software selected it. A profiler establishes that the expected function consumes time. JIT-generated kernels may require the runtime's code-dump or profiling integration; they will not appear as ordinary static functions in the original executable.
+
+For oneDNN, `ONEDNN_VERBOSE=1` reports implementations and reorders. Its `ONEDNN_MAX_CPU_ISA` control can cap dispatch for controlled comparisons, such as an AVX2 ceiling on a capable x86 deployment. Supported values and affected primitives depend on the library build and version.[^onednn]
+
+Test the baseline path even on the fastest development host. Compare outputs for empty dimensions, tails, extreme quantized values, and several real operator shapes. Keep startup, packing, and warm execution measurements separate, then measure complete requests. A release artifact should identify its baseline, included target variants, selected implementation, and fallback reasons. Without those records, a reported "CPU inference regression" can be a changed kernel, changed layout, or changed execution environment with the same model file.
+
+[^flags]: GCC, [x86 options](https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html), for `-march`, `-mtune`, and build-host assumptions.
+
+[^attributes]: GCC, [x86 function attributes](https://gcc.gnu.org/onlinedocs/gcc/x86-Attributes.html), for per-function target compilation.
+
+[^sdm]: Intel, [Software Developer's Manuals](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html), for CPUID, OSXSAVE, XGETBV, and XCR0 requirements.
+
+[^darwin]: Apple, [XNU on-demand AVX-512 state management](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/i386/fpu.c), and GCC, [Darwin-specific AVX-512 detection](https://github.com/gcc-mirror/gcc/blob/master/gcc/common/config/i386/cpuinfo.h), for lazy state enablement and the kernel query.
+
+[^xstate]: Linux, [Using XSTATE features in user space](https://docs.kernel.org/arch/x86/xstate.html), for AMX permission and process/task distinctions.
+
+[^hwcap]: Linux, [AArch64 ELF hardware capabilities](https://docs.kernel.org/arch/arm64/elf_hwcaps.html), for supported runtime checks and the limits of fault probing.
+
+[^sysctl]: Apple, [XNU hardware sysctl definitions](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_mib.c), for named Arm feature discovery.
+
+[^onednn]: Intel oneDNN, [CPU dispatcher control](https://uxlfoundation.github.io/oneDNN/dev_guide_cpu_dispatcher_control.html) and [verbose mode](https://uxlfoundation.github.io/oneDNN/dev_guide_verbose.html), for ISA ceilings and selected implementation inspection.

@@ -1,0 +1,469 @@
+---
+import type { TopicVisual } from '../../types/topic-visuals'
+
+interface Props {
+  visual: TopicVisual
+}
+
+const { visual } = Astro.props
+const number = (value: number) =>
+  new Intl.NumberFormat('en', { maximumSignificantDigits: 5 }).format(value)
+const barValues = visual.kind === 'bars' ? visual.rows.map((row) => row.value) : [0]
+const barValueWidth =
+  visual.kind === 'bars'
+    ? Math.max(...visual.rows.map((row) => `${number(row.value)} ${visual.unit}`.length)) + 0.5
+    : 0
+const low = Math.min(0, ...barValues)
+const high = Math.max(0, ...barValues)
+const span = high - low || 1
+const points = visual.kind === 'line' ? visual.points : []
+const xMin = Math.min(0, ...points.map((point) => point.x))
+const xMax = Math.max(0, ...points.map((point) => point.x))
+const yMin = Math.min(0, ...points.map((point) => point.y))
+const yMax = Math.max(0, ...points.map((point) => point.y))
+const x = (value: number) => 58 + ((value - xMin) / (xMax - xMin || 1)) * 450
+const y = (value: number) => 214 - ((value - yMin) / (yMax - yMin || 1)) * 178
+const polyline = points.map((point) => `${x(point.x)},${y(point.y)}`).join(' ')
+const ticks = [0, 0.5, 1]
+---
+
+<figure
+  class="topic-visual"
+  aria-labelledby={`${visual.id}-title`}
+  data-topic-visual={visual.id}
+  data-kind={visual.kind}
+>
+  <figcaption id={`${visual.id}-title`}>{visual.title}</figcaption>
+  <p class="visual-description">{visual.description}</p>
+
+  {
+    visual.kind === 'flow' && (
+      <ol class="visual-flow">
+        {visual.steps.map((step) => (
+          <li>
+            <span class="flow-mark" aria-hidden="true" />
+            <strong>{step.label}</strong>
+            <p>{step.detail}</p>
+          </li>
+        ))}
+      </ol>
+    )
+  }
+
+  {
+    visual.kind === 'sequence' && (
+      <div class="visual-sequence">
+        {visual.steps.map((step) => (
+          <details>
+            <summary>{step.label}</summary>
+            <p>{step.detail}</p>
+          </details>
+        ))}
+      </div>
+    )
+  }
+
+  {
+    visual.kind === 'compare' && (
+      <div class="visual-comparison">
+        {visual.columns.map((column) => (
+          <section>
+            <h3>{column.label}</h3>
+            <ul>
+              {column.points.map((point) => (
+                <li>{point}</li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    )
+  }
+
+  {
+    visual.kind === 'bars' && (
+      <dl class="visual-bars" style={`--bar-value-width:${barValueWidth}ch`}>
+        {visual.rows.map((row) => (
+          <div class="visual-bar-row">
+            <dt>{row.label}</dt>
+            <dd>
+              <span class="bar-track" aria-hidden="true">
+                <span class="bar-zero" style={`left:${(-low / span) * 100}%`} />
+                <span
+                  class="bar-fill"
+                  style={`left:${((Math.min(0, row.value) - low) / span) * 100}%;width:${(Math.abs(row.value) / span) * 100}%`}
+                />
+              </span>
+              <span class="bar-number">
+                {number(row.value)} {visual.unit}
+              </span>
+            </dd>
+            {row.detail && <p>{row.detail}</p>}
+          </div>
+        ))}
+      </dl>
+    )
+  }
+
+  {
+    visual.kind === 'matrix' && (
+      <div
+        class="visual-table"
+        tabindex="0"
+        role="region"
+        aria-label={`${visual.title}, comparison table`}
+      >
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Case</th>
+              {visual.columns.map((column) => (
+                <th scope="col">{column}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {visual.rows.map((row) => (
+              <tr>
+                <th scope="row">{row.label}</th>
+                {row.cells.map((cell) => (
+                  <td>{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  {
+    visual.kind === 'line' && (
+      <div class="visual-line">
+        <svg
+          viewBox="0 0 560 280"
+          role="img"
+          aria-labelledby={`${visual.id}-title ${visual.id}-axes`}
+        >
+          <desc id={`${visual.id}-axes`}>
+            {visual.xLabel} on the horizontal axis; {visual.yLabel} on the vertical axis. Exact
+            values follow the chart.
+          </desc>
+          {ticks.map((fraction) => {
+            const value = yMin + fraction * (yMax - yMin)
+            return (
+              <g>
+                <line class="chart-grid" x1="58" x2="508" y1={y(value)} y2={y(value)} />
+                <text class="chart-tick" x="50" y={y(value) + 4} text-anchor="end">
+                  {number(value)}
+                </text>
+              </g>
+            )
+          })}
+          {ticks.map((fraction) => {
+            const value = xMin + fraction * (xMax - xMin)
+            return (
+              <text class="chart-tick" x={x(value)} y="235" text-anchor="middle">
+                {number(value)}
+              </text>
+            )
+          })}
+          <polyline class="chart-line" points={polyline} />
+          {points.map((point) => (
+            <circle class="chart-point" cx={x(point.x)} cy={y(point.y)} r="3">
+              <title>
+                {visual.xLabel}: {number(point.x)}; {visual.yLabel}: {number(point.y)}
+              </title>
+            </circle>
+          ))}
+          <text class="chart-label" x="283" y="265" text-anchor="middle">
+            {visual.xLabel}
+          </text>
+          <text class="chart-label" x="58" y="18">
+            {visual.yLabel}
+          </text>
+        </svg>
+        <details class="chart-values">
+          <summary>Show exact values</summary>
+          <div
+            class="visual-table"
+            tabindex="0"
+            role="region"
+            aria-label={`${visual.title}, data values`}
+          >
+            <table>
+              <thead>
+                <tr>
+                  <>
+                    <th scope="col">{visual.xLabel}</th>
+                    <th scope="col">{visual.yLabel}</th>
+                  </>
+                </tr>
+              </thead>
+              <tbody>
+                {points.map((point) => (
+                  <tr>
+                    <td>{number(point.x)}</td>
+                    <td>{number(point.y)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </div>
+    )
+  }
+
+  <p class="visual-takeaway">{visual.takeaway}</p>
+  {visual.caveat && <p class="visual-caveat">{visual.caveat}</p>}
+  {
+    visual.sources && visual.sources.length > 0 && (
+      <p class="visual-sources">
+        {visual.sources.map((source, index) => (
+          <>
+            <span>{index > 0 ? ' · ' : ''}</span>
+            <a href={source.href} rel="noopener noreferrer">
+              {source.label}
+            </a>
+          </>
+        ))}
+      </p>
+    )
+  }
+</figure>
+
+<style>
+  .topic-visual {
+    --visual-secondary: color-mix(in srgb, var(--text-primary) 75%, var(--bg));
+    margin: 2.75rem 0;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    background: var(--code-bg);
+    color: var(--text-primary);
+    text-align: left;
+  }
+  :global(.prose) .topic-visual {
+    text-align: left;
+  }
+  :global(.prose) .topic-visual figcaption {
+    color: var(--text-primary);
+    font: 500 1rem/1.45 var(--display);
+    text-wrap: balance;
+    text-align: left;
+  }
+  .topic-visual p {
+    margin: 0.75rem 0 0;
+    font-size: var(--font-size-s);
+    line-height: 1.65;
+  }
+  .topic-visual .visual-description {
+    margin: 0.625rem 0 1.25rem;
+  }
+  .visual-flow {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.75rem;
+    padding: 0;
+    list-style: none;
+  }
+  .visual-flow li {
+    position: relative;
+    min-width: 0;
+  }
+  :global(.prose) .visual-flow > li {
+    padding: 0;
+  }
+  :global(.prose) .visual-flow > li::before {
+    content: none;
+  }
+  .visual-flow li:not(:last-child)::after {
+    content: '↓';
+    position: absolute;
+    bottom: -1.5rem;
+    left: 0;
+    color: var(--accent);
+  }
+  .flow-mark {
+    display: block;
+    width: 1.5rem;
+    height: 0.3rem;
+    margin-bottom: 0.75rem;
+    background: var(--accent);
+  }
+  .visual-flow strong {
+    font-size: var(--font-size-s);
+    font-weight: 500;
+  }
+  .visual-flow p {
+    margin-top: 0.375rem;
+  }
+  .visual-sequence {
+    display: grid;
+    gap: 0.5rem;
+  }
+  .visual-sequence details {
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    background: var(--bg);
+    padding: 0.625rem 0.75rem;
+  }
+  .visual-sequence summary,
+  .chart-values summary {
+    cursor: pointer;
+    font-size: var(--font-size-s);
+  }
+  .visual-sequence summary::marker,
+  .chart-values summary::marker {
+    color: var(--accent);
+  }
+  .visual-comparison {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+    gap: 1rem;
+  }
+  .visual-comparison section {
+    min-width: 0;
+    padding-top: 0.75rem;
+    border-top: 2px solid var(--accent);
+  }
+  .visual-comparison h3 {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    font: 500 var(--font-size-s)/1.5 var(--sans);
+  }
+  .visual-comparison ul {
+    margin: 0.5rem 0 0;
+    padding-left: 1rem;
+  }
+  .visual-comparison li {
+    margin-top: 0.375rem;
+    font-size: var(--font-size-s);
+    line-height: 1.6;
+  }
+  .visual-comparison li::marker {
+    color: var(--accent);
+  }
+  .visual-bars {
+    display: grid;
+    gap: 1rem;
+    margin: 0;
+  }
+  .visual-bar-row dt {
+    font-size: var(--font-size-s);
+    font-weight: 500;
+  }
+  .visual-bar-row dd {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) min(var(--bar-value-width), 45%);
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0.375rem 0 0;
+  }
+  .visual-bar-row p {
+    margin-top: 0.375rem;
+  }
+  .bar-track {
+    position: relative;
+    display: block;
+    height: 0.625rem;
+    background: var(--border);
+  }
+  .bar-zero {
+    position: absolute;
+    top: -0.15rem;
+    bottom: -0.15rem;
+    width: 1px;
+    background: var(--visual-secondary);
+  }
+  .bar-fill {
+    position: absolute;
+    inset-block: 0;
+    background: var(--accent);
+  }
+  .bar-number {
+    font: 400 var(--font-size-s)/1.5 var(--mono);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+  .visual-table {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .visual-table table {
+    width: 100%;
+    margin: 0;
+    border-collapse: collapse;
+  }
+  .visual-table :is(th, td) {
+    padding: 0.625rem;
+    min-width: 6.25rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    text-align: left;
+    font-size: var(--font-size-s);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+  }
+  .visual-table th {
+    font-weight: 500;
+  }
+  .visual-table thead {
+    background: var(--accent-muted);
+  }
+  .visual-line svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+  .chart-grid {
+    stroke: var(--border);
+    stroke-width: 1;
+  }
+  .chart-line {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .chart-point {
+    fill: var(--accent);
+  }
+  .chart-tick {
+    fill: var(--visual-secondary);
+    font: 20px var(--mono);
+  }
+  .chart-label {
+    fill: var(--text-primary);
+    font: 21px var(--sans);
+  }
+  .chart-values {
+    margin-top: 0.5rem;
+  }
+  .chart-values .visual-table {
+    margin-top: 0.75rem;
+  }
+  .topic-visual .visual-takeaway {
+    margin-top: 1.25rem;
+    padding-top: 0.875rem;
+    border-top: 1px solid var(--border);
+  }
+  .topic-visual .visual-caveat,
+  .topic-visual .visual-sources {
+    color: var(--visual-secondary);
+    font-size: 0.75rem;
+  }
+  .visual-sources a {
+    color: inherit;
+  }
+  @media (max-width: 560px) {
+    .topic-visual {
+      padding: 1rem;
+    }
+  }
+</style>

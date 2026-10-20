@@ -1,0 +1,106 @@
+---
+title: 'CPU inference tuning across memory channels, caches, and NUMA'
+pubDate: 2026-10-21
+category: 'Serving & Runtime'
+description: 'Derive a CPU decode bandwidth bound, inspect thread pools and memory placement, and measure prefill and generation without inventing a universal thread count.'
+topics: ['CPU inference', 'NUMA', 'Memory bandwidth', 'Profiling']
+---
+
+A CPU inference kernel can use the intended vector instructions and still spend most of its time waiting for weights. Adding threads may saturate memory sooner, contend for cache, or fetch pages across a socket link. The relevant question is how arithmetic and bytes move for the deployed shapes.
+
+Start with the execution path in [inference engine architectures](/inference-engine-architectures/). Then separate prefill, decode, loading, and request scheduling. They exercise the same machine differently.
+
+## Derive a bandwidth bound with explicit assumptions
+
+For $F$ arithmetic operations and $D$ bytes crossing the limiting memory boundary, arithmetic intensity is $I=F/D$. A Roofline bound gives achievable rate no greater than $\min(P, BI)$, where $P$ is the appropriate compute ceiling and $B$ is sustainable bandwidth for that access pattern. Equivalently, elapsed time is at least $\max(F/P,D/B)$ before additional overhead.[^roofline]
+
+Consider an illustrative dense decoder with eight billion weight elements. Assume every generated token reads all weights once from DRAM, weights do not remain in the last-level cache, and effective read bandwidth is an assumed decimal 100 GB/s.
+
+- At FP16, weight payload is $8\times10^9\times2=16$ GB, so the read floor is 160 ms per token, or 6.25 tokens/s.
+- At four bits per weight, payload is 4 GB, so the floor is 40 ms, or 25 tokens/s.
+- If a toy format stores one FP16 scale per group of 32 weights, scale bytes add $8\times10^9/32\times2=0.5$ GB. The floor becomes 45 ms, or about 22.2 tokens/s.
+
+These are bounds under stated assumptions, not benchmarks or predictions for a named processor. Real formats can have additional metadata and mixed-precision tensors. Activations, KV reads, intermediate buffers, imperfect access, and dequantization take time. Sparse or mixture-of-experts execution changes which weights are read. Cache reuse changes the boundary across which $D$ must be counted.
+
+For the same toy four-bit payload with scale metadata, a matrix-vector multiply costs roughly 16 billion operations if a multiply and add count separately. Its weight-only intensity is about $16/4.5=3.56$ operations per byte. A large matrix engine cannot sustain its peak without sufficient operand supply.
+
+## Prefill creates different reuse
+
+Single-sequence decode often multiplies weights by one new token's activations. Prefill multiplies the same weight matrix by many token rows. A blocked GEMM can reuse weight tiles across those rows while keeping partial sums in registers or cache. Arithmetic grows with token count without requiring a full independent DRAM weight read for every row.
+
+That is why [AMX and dot-product support](/x86-amx-vnni-avx10/) or [Arm SME kernels](/arm-neon-sve-sme/) may matter more for some prefill shapes than batch-one decode. Larger decode batches can also reuse weights, but they change request latency, KV traffic, and admission limits. The [continuous batching guide](/continuous-batching-schedulers/) covers the scheduler side.
+
+Long-context decode may spend substantial time reading attention state. Use the [KV memory guide](/kv-cache-memory-systems/) to calculate that part instead of treating every decoder as purely weight-bound.
+
+## Memory channels and packed weights
+
+DRAM channel count, populated channels, transfer rate, and the memory controller constrain bandwidth. Installed capacity alone does not reveal sustainable throughput. Check DIMM population and firmware information where available, then measure a read pattern resembling the application. A STREAM copy result and a quantized matrix-vector kernel consume different mixes of reads, writes, instructions, and cache resources.
+
+Weight packing arranges values for a kernel's access pattern. It may interleave rows, align blocks, and precompute sums used by quantization corrections. A packed representation can reduce shuffles or improve locality while increasing memory usage. Keep original weights, packed weights, temporary buffers, and KV allocations in the working-set budget.
+
+GGML's quantization implementations illustrate why storage bits do not specify arithmetic. Block formats contain scales and packed values; specialized dot routines decode and combine them according to the selected format and CPU path. An unpacking-heavy kernel can be instruction-bound despite reading fewer bytes. Measure the kernel rather than multiplying an advertised INT8 rate by an INT4 compression ratio.[^ggml]
+
+Packing is also an initialization cost. Time it separately, then amortize it only over a realistic number of requests. An optimization that repacks every request can lose despite a faster inner loop.
+
+## Thread pools can multiply accidentally
+
+There can be request workers, intra-operator workers, inter-operator workers, and another pool inside a math library. Four simultaneous requests each creating sixteen active workers can oversubscribe a machine before tokenization or I/O enters the picture.
+
+ONNX Runtime exposes intra-op and inter-op controls, execution mode, affinity, spinning, and options for global pools. Its default behavior differs from explicitly setting a thread count. Configure the pool actually executing the kernels; an `OMP_NUM_THREADS` environment variable is not a universal controller for every runtime.[^threads]
+
+Sweep a few counts within the process's permitted CPUs. Record physical cores, SMT siblings, CPU quotas, request concurrency, and pool settings. Decode may stop improving once memory saturates; prefill may continue scaling. SMT may help hide some stalls or hurt shared resources. There is no useful universal instruction to "use every logical core" or "use only half."
+
+## NUMA placement begins when pages acquire backing memory
+
+Linux memory policy influences allocation by NUMA node. Under the usual local policy, a faulting thread's locality matters for newly allocated pages. Pinning compute threads after another thread initialized all anonymous weights can leave the bytes on the wrong node. CPU affinity controls where threads run; memory policy controls a different resource.[^numa]
+
+Inspect topology before choosing a policy:
+
+```bash
+lscpu -e=CPU,NODE,SOCKET,CORE,ONLINE
+numactl --hardware
+```
+
+For an existing, verified llama.cpp build and local model, this is a candidate single-node experiment. Replace node zero and eight threads with valid values from the inventory:
+
+```bash
+numactl --cpunodebind=0 --membind=0 \
+  ./build/bin/llama-bench -m /models/model.gguf \
+  -ngl 0 -nopo 1 -nkvo 1 -t 8 -p 512 -n 128 -r 7 -o json
+```
+
+`--membind` is restrictive and can fail when that node lacks available memory. Existing file-backed page-cache residency can also defeat a simplistic first-touch expectation. Record the cache state and inspect actual residency with `numastat -p PID` or `/proc/PID/numa_maps`. Do not clear system caches on a shared server merely to produce a cold result.[^numactl]
+
+A replica per node can keep each replica's weights and KV local, at the cost of duplicated storage and capacity. A single wider replica can use more channels but may exchange activations and fetch remote data. Interleaving pages may spread bandwidth demand while adding remote traffic. Benchmark these as distinct configurations, with the same total request load.
+
+## A measurement sequence that answers a question
+
+`llama-bench` supports prompt processing and generation tests, repetitions, thread counts, and structured output. The examples disable GPU layers, operator offload, and KV offload explicitly. Its synthetic token workload diagnoses kernels; it does not measure HTTP queueing, tokenizer latency, or answer quality. Keep a separate end-to-end workload.[^bench]
+
+First save the model hash, runtime revision, compiler configuration, dispatch log, CPU topology, and workload. Warm the process separately. Collect repeated prefill and generation timings, then alternate baseline and candidate runs to expose drift from temperature or background traffic.
+
+On Linux with permitted counters, examine a fixed run:
+
+```bash
+perf stat -r 5 -e cycles,instructions,cache-misses,page-faults \
+  ./build/bin/llama-bench -m /models/model.gguf \
+  -ngl 0 -nopo 1 -nkvo 1 -t 8 -p 512 -n 128 -r 1 -o json
+```
+
+These process-wide counters include initialization. They cannot isolate steady-state decode by themselves. Generic `cache-misses` also does not establish DRAM byte volume. Use available model-specific memory-controller and interconnect counters for bandwidth questions, and sample hot functions when dequantization or packing may dominate. Check event support and multiplexing before interpreting a number.[^perf]
+
+Finally, rerun correctness and quality gates. Verify shapes, finite outputs, tokenizer configuration, and representative generation or task scores. A different reduction order need not yield bit-identical floats; quantization needs a stated quality threshold. Retain the candidate only when it meets that threshold and improves the named objective under the intended concurrency. The [agent workflow](/hardware-inference-agent-workflow/) records that decision alongside raw samples.
+
+[^roofline]: Williams, Waterman, and Patterson, [Roofline: an insightful visual performance model for multicore architectures](https://doi.org/10.1145/1498765.1498785), 2009.
+
+[^ggml]: GGML, [CPU quantization and dot-product implementations](https://github.com/ggml-org/ggml/blob/master/src/ggml-cpu/quants.c).
+
+[^threads]: ONNX Runtime, [Thread management](https://onnxruntime.ai/docs/performance/tune-performance/threading.html).
+
+[^numa]: Linux kernel, [NUMA memory policy](https://docs.kernel.org/admin-guide/mm/numa_memory_policy.html).
+
+[^numactl]: numactl project, [numactl manual](https://github.com/numactl/numactl/blob/master/numactl.8).
+
+[^bench]: llama.cpp, [llama-bench documentation](https://github.com/ggml-org/llama.cpp/blob/master/tools/llama-bench/README.md).
+
+[^perf]: Linux kernel, [perf stat documentation](https://github.com/torvalds/linux/blob/master/tools/perf/Documentation/perf-stat.txt).
